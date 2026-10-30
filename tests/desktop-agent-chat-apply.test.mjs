@@ -510,7 +510,7 @@ test("the preload bridge invokes the chat channel only for the seven operations 
   assert.deepEqual(invokes.at(-1), ["pomegr:agent-chat", "list", bare]);
 });
 
-const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-grant-follow-up.mjs", "agent-chat-images.mjs", "agent-chat-task-log.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-choices.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs", "agent-chat-thread.mjs", "agent-chat-compaction.mjs", "agent-chat-summary.mjs", "agent-chat-task-bridge.mjs", "agent-chat-timing.mjs", "agent-chat-prepare.mjs", "agent-chat-provider-files.mjs", "agent-chat-worktrees.mjs", "agent-chat-warm.mjs", "agent-chat-jev.mjs", "agent-chat-jev-key.mjs", "agent-chat-jev-transport.mjs", "agent-chat-github.mjs", "agent-chat-aril.mjs", "agent-chat-space.mjs", "agent-chat-prompt-parts.mjs", "aril-switch.mjs", "aril-owner-memory.mjs"];
+const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-grant-follow-up.mjs", "agent-chat-images.mjs", "agent-chat-task-log.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-choices.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs", "agent-chat-thread.mjs", "agent-chat-compaction.mjs", "agent-chat-summary.mjs", "agent-chat-task-bridge.mjs", "agent-chat-timing.mjs", "agent-chat-prepare.mjs", "agent-chat-provider-files.mjs", "agent-chat-worktrees.mjs", "agent-chat-warm.mjs", "agent-chat-jev.mjs", "agent-chat-jev-key.mjs", "agent-chat-jev-transport.mjs", "agent-chat-github.mjs", "agent-chat-aril.mjs", "agent-chat-space.mjs", "agent-chat-prompt-parts.mjs", "aril-switch.mjs", "aril-owner-memory.mjs", "aril-thread-limit.mjs", "agent-chat-memory.mjs", "agent-chat-approved.mjs"];
 const sourceOf = (file) => readFile(new URL(`../desktop/runtime/${file}`, import.meta.url), "utf8");
 
 function callText(source, start) {
@@ -566,7 +566,7 @@ test("every request the controller makes refuses redirects, is bounded in time, 
   assert.equal([...controller.matchAll(/fetchImpl\(/gu)].length, 1, "one function makes every request");
   assert.match(controller, /cache: "no-store", redirect: "error", signal: AbortSignal\.timeout\(/u);
   assert.match(controller, /\[DESKTOP_AUTH_HEADER\]: authorizationToken/u);
-  assert.match(controller, /const TASK_ACTIONS = new Set\(\["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove"\]\);/u);
+  assert.match(controller, /const TASK_ACTIONS = new Set\(\["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set", "aril_settings_set"\]\);/u);
   for (const forbidden of ["queue_settings", "resolve_done", "resolve_requeue", "start", "image"]) assert.equal(new RegExp(`TASK_ACTIONS[^;]*"${forbidden}"`, "u").test(controller), false, forbidden);
   assert.match(controller, /if \(!TASK_ACTIONS\.has\(action\)\) return refused\("invalid"\);/u);
 });

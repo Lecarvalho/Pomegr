@@ -789,7 +789,7 @@ test("rework metadata participates in the snapshot and whole-prompt budgets", ()
 
 test("Aril instructions declare evidenced rework directly and learn concrete checks", () => {
   for (const phrase of ['{"op":"declare_rework"', "at most 5", "without Apply", "never in a grant write turn",
-    "rework (a recorded link", "weaker model evidence than a clean merge", "same kind of work", "concrete check", "add_memory",
+    "rework (a recorded link", "weaker model evidence than a clean merge", "same kind of work", "add a check that would catch it in the next brief", "pomegr-memory",
     "A follow-up may declare rework", "task text, a fix PR, or the log", "the preload allow-list, and the client parser."]) assert.ok(AGENT_CHAT_INSTRUCTIONS.includes(phrase), phrase);
   const prompt = composePrompt({ board: {}, now, followUp: {
     summary: "Move", state: "dismissed", operations: [{ op: "move_task", id: "T-1", column: "Done" }],

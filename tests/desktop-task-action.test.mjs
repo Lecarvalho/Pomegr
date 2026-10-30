@@ -47,7 +47,7 @@ test("task action channel and list are fixed", () => {
   assert.deepEqual([...TASK_ACTION_NAMES], [
     "create", "update", "delete", "move",
     "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set", "rework_declare", "rework_remove",
-    "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop",
+    "aril_settings_set", "aril_memory_set", "grant_start", "grant_stop",
   ]);
 });
 

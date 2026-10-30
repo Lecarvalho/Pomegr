@@ -33,11 +33,11 @@ export function serveArilActionRoute({ request, response, taskStore, repositoryI
         json(response, 200, { ok: true, settings: result.settings });
         return;
       }
-      if ((action === "aril_memory_add" || action === "aril_memory_update") && result.entry && typeof result.entry === "object" && !Array.isArray(result.entry)) {
-        json(response, 200, { ok: true, entry: result.entry });
+      if (action === "aril_memory_set" && result.memory && typeof result.memory === "object" && !Array.isArray(result.memory)) {
+        json(response, 200, { ok: true, memory: result.memory });
         return;
       }
-      if (action === "aril_memory_remove" || action === "grant_stop") {
+      if (action === "grant_stop") {
         json(response, 200, { ok: true });
         return;
       }
@@ -54,6 +54,24 @@ const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 const TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
 const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const rejected = (error) => ({ ok: false, error });
+
+// Aril's own update of a repository's memory: the lines to add and to remove, applied to the text as it is. Desktop main alone asks; a paired device never reaches it.
+export function serveArilMemoryUpdate({ request, response, taskStore, body }) {
+  if (request.headers["x-pomegr-lan-gateway"] !== undefined) { json(response, 403, rejected("unavailable")); return; }
+  const fields = ["repositoryId", "add", "remove"];
+  if (!isPlainObject(body) || Object.keys(body).length !== fields.length || !fields.every((key) => Object.hasOwn(body, key))
+    || typeof body.repositoryId !== "string" || !REPOSITORY_ID_PATTERN.test(body.repositoryId)) {
+    json(response, 400, rejected("invalid")); return;
+  }
+  try {
+    const result = taskStore?.updateArilMemory?.(body.repositoryId, { add: body.add, remove: body.remove });
+    if (result?.ok === true && Number.isSafeInteger(result.added) && Number.isSafeInteger(result.removed)) {
+      json(response, 200, { ok: true, added: result.added, removed: result.removed }); return;
+    }
+    const error = ["invalid", "not_found", "limit"].includes(result?.error) ? result.error : "unavailable";
+    json(response, GRANT_STATUS[error], rejected(error));
+  } catch { json(response, 503, rejected("unavailable")); }
+}
 
 export function serveArilRework({ request, response, taskStore, body }) {
   if (request.headers["x-pomegr-lan-gateway"] !== undefined) { json(response, 403, rejected("unavailable")); return; }

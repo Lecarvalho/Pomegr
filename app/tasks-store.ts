@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import {
   TASK_COLUMN_ROLES, TASK_GATE_REASONS, TASK_GATE_THRESHOLDS, TASK_ID_PATTERN, TASK_QUEUE_PAUSE_REASONS, TASK_QUEUE_WAIT_REASONS, TASK_QUEUE_WAIT_TASK_LIMIT, createEmptyTaskBoard,
-  type ArilGrant, type ArilMemoryEntry, type ArilSettings, type Task, type TaskBoard, type TaskCheck, type TaskGateReason, type TaskGates, type TaskGateThreshold, type TaskGateUsage, type TaskProvider, type TaskQueuePauseReason, type TaskQueueSchedule, type TaskQueueWait, type TaskQueueWaitReason, type TaskState,
+  type ArilGrant, type ArilMemory, type ArilSettings, type Task, type TaskBoard, type TaskCheck, type TaskGateReason, type TaskGates, type TaskGateThreshold, type TaskGateUsage, type TaskProvider, type TaskQueuePauseReason, type TaskQueueSchedule, type TaskQueueWait, type TaskQueueWaitReason, type TaskState,
 } from "../shared/task-contract";
 
 // Client for the committed task board (GET /api/tasks).
@@ -246,9 +246,13 @@ function validArilSettings(value: unknown): value is ArilSettings & { settledAt?
     && typeof reviewer.differentFromBuilder === "boolean" && typeof body.pairedDevices === "boolean" && typeof body.followUps === "boolean"
     && (body.settledAt === undefined || body.settledAt === null || timestamp(body.settledAt));
 }
-function validArilMemory(value: unknown): value is ArilMemoryEntry {
+function parseArilMemory(value: unknown): ArilMemory | null {
   const body = record(value);
-  return body !== null && count(body.id, 1) && text(body.text, 300) && count(body.createdAt, 0) && count(body.updatedAt, 0);
+  if (body === null || typeof body.text !== "string" || body.text.length > 6_000) return null;
+  const previous = body.previous === null ? null : typeof body.previous === "string" && body.previous.length <= 40_000 ? body.previous : undefined;
+  const updatedBy = body.updatedBy === "owner" || body.updatedBy === "aril" ? body.updatedBy : body.updatedBy === null ? null : undefined;
+  if (previous === undefined || updatedBy === undefined || !(body.updatedAt === null || count(body.updatedAt, 0))) return null;
+  return { text: body.text, previous, updatedAt: body.updatedAt as number | null, updatedBy };
 }
 function validArilGrant(value: unknown): value is ArilGrant {
   const body = record(value);
@@ -259,7 +263,7 @@ function validArilGrant(value: unknown): value is ArilGrant {
 // Aril settings, memory, and the latest grant of a ready board. Absent when any part is malformed, so the panel says unavailable.
 function parseAril(value: unknown): TaskBoard["aril"] {
   const body = record(value);
-  const memory = body && listOf(body.memory, 100, validArilMemory);
+  const memory = body && parseArilMemory(body.memory);
   if (!body || !validArilSettings(body.settings) || !memory || !(body.grant === undefined || body.grant === null || validArilGrant(body.grant))) return undefined;
   return { settings: body.settings, memory, grant: body.grant ?? null };
 }

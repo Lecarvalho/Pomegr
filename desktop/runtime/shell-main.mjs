@@ -676,7 +676,7 @@ async function startDesktop() {
         });
         // An applied chat start takes the Tasks page's manual start, including its native confirmation. The start and the chat share one set of task worktrees, so the chat's cached worktree facts follow a start and a Done task's removal.
         const repositoryGithub = createRepositoryGithub(), taskWorktrees = createTaskWorktrees({ root: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY), environment: sessionEnvironment.startup });
-        const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: sessionEnvironment.startup, sessionEnvironment: sessionEnvironment.current, worktrees: taskWorktrees, prefetchWorktrees: true, prefetchGithub: true, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot, repositoryGithub, safeStorage, startTask: (event, repositoryId, taskId) => taskStarter.startApproved(event, repositoryId, taskId) });
+        const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: sessionEnvironment.startup, sessionEnvironment: sessionEnvironment.current, worktrees: taskWorktrees, prefetchWorktrees: true, prefetchGithub: true, sweepThreads: true, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot, repositoryGithub, safeStorage, startTask: (event, repositoryId, taskId) => taskStarter.startApproved(event, repositoryId, taskId) });
         taskStarter = createTaskStart({
           sessionForProcess: (pid) => requestTerminalSession(monitorChild, pid),
           isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken,
@@ -688,7 +688,7 @@ async function startDesktop() {
         const taskImage = createTaskImage({ isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken });
         const taskLog = createTaskLog({ isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken });
         phoneAccess = createLanSharingController({
-          upstreamOrigin: web.origin, agentChat: (operation, payload) => agentChat.handle(operation, payload, { paired: true }), agentChatImage: (operation, payload) => agentChat.image(operation, payload), taskStart: taskStarter.startPaired, taskImage: taskImage.runPaired, taskLog: taskLog.readLog,
+          upstreamOrigin: web.origin, agentChat: (operation, payload) => agentChat.handle(operation, payload, { paired: true }), agentChatImage: (operation, payload) => agentChat.image(operation, payload), taskStart: taskStarter.startPaired, taskImage: taskImage.runPaired, taskLog: taskLog.readLog, arilOn: agentChat.arilOn,
           authorizationToken,
           autoStart: desktopSettings.lanSharingAutoStart,
           canPersist: settingsLoad.canPersist,
@@ -725,7 +725,7 @@ async function startDesktop() {
           }),
         });
         const taskBridge = { ipcMain, isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken };
-        const removeTaskBridges = [installTaskIssuesIpc({ ...taskBridge, dialog, getWindow: () => mainWindow }), installTaskActionIpc(taskBridge), installTaskImageIpc({ ...taskBridge, action: taskImage }), installTaskFeatureIpc(taskBridge), installTaskLogIpc({ ...taskBridge, action: taskLog }), installTaskScorecardIpc({ ...taskBridge, appVersion: boundedDesktopVersion(app.getVersion()) }), installSessionHistoryIpc(taskBridge), installSessionLinkIpc({ ...taskBridge, openExternal: (url) => shell.openExternal(url) }), installAgentChatIpc({ ...taskBridge, chat: agentChat }),
+        const removeTaskBridges = [installTaskIssuesIpc({ ...taskBridge, dialog, getWindow: () => mainWindow }), installTaskActionIpc({ ...taskBridge, arilOn: agentChat.arilOn }), installTaskImageIpc({ ...taskBridge, action: taskImage }), installTaskFeatureIpc(taskBridge), installTaskLogIpc({ ...taskBridge, action: taskLog }), installTaskScorecardIpc({ ...taskBridge, appVersion: boundedDesktopVersion(app.getVersion()) }), installSessionHistoryIpc(taskBridge), installSessionLinkIpc({ ...taskBridge, openExternal: (url) => shell.openExternal(url) }), installAgentChatIpc({ ...taskBridge, chat: agentChat }),
           installSessionContinueIpc({ ...taskBridge, terminal: taskStarter.terminal, environment: sessionEnvironment.startup, sessionEnvironment: sessionEnvironment.current,
             confirm: (plan) => confirmSessionContinue(dialog, () => mainWindow, plan) })];
         removeTaskActionIpc = () => { for (const remove of removeTaskBridges) remove(); };

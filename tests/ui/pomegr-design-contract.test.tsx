@@ -13,26 +13,63 @@ import { ArilControlSamples } from "../../app/components/design-system/DesignSys
 import { ArilSettingsSamples } from "../../app/components/design-system/DesignSystemTaskGatesSample";
 import type { StorageSnapshot } from "../../shared/storage-contract";
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
-it("includes every Aril settings and memory panel state", () => {
+it("includes every state of the repository settings and the running-grant line that Settings › Aril keeps", () => {
   render(<ArilSettingsSamples />);
-  for (const state of ["desktop editable", "paired read-only", "paired allowed", "empty memory", "full memory", "save failure", "not ready", "ready", "confirm", "active", "last ended", "paired stop-only"]) expect(screen.getByText(`Aril settings, ${state}`)).toBeInTheDocument();
+  for (const state of ["desktop editable", "paired read-only", "paired allowed", "save failure"]) expect(screen.getByText(`Aril repository settings, ${state}`)).toBeInTheDocument();
+  for (const label of ["Grant line, active", "Grant line, Aril off", "Grant line, browser", "Capacity strip, grant active"]) expect(screen.getByText(label)).toBeInTheDocument();
   expect(screen.getByRole("alert")).toHaveTextContent("Aril settings could not be saved. Try again.");
+  // A grant's own sections are gone from the samples as from the page.
+  for (const heading of ["Grant", "Actions under a grant", "Limits", "Work rules"]) expect(screen.queryByRole("heading", { name: heading })).toBeNull();
 });
-it("includes every state of Aril's switch, the owner's memory, and the thread space, drawn with the shared chip, rows, and button roles", () => {
+it("includes every state of the Aril cards, drawn with the shared switch, the six button roles, and the one chip", () => {
   const { container } = render(<ArilControlSamples />);
-  for (const label of ["Aril switch, Off", "Aril switch, On", "Aril switch, paired device", "Aril switch, change failed", "Aril switch, not reachable", "Your memory, desktop app", "Your memory, over the limit",
-    "Your memory, paired device", "Thread space", "Thread space, flush question", "Thread space, flushed", "Thread space, not flushed"]) expect(screen.getAllByText(label, { selector: "span" }).length).toBeGreaterThan(0);
-  // The state is the one chip: neutral for Off, positive for On; a switch is the settings row's own switch.
-  expect([...container.querySelectorAll(".arilSwitchControl .commandChip")].map((chip) => [chip.textContent, chip.classList.contains("positive")])).toEqual([["Off", false], ["On", true], ["Off", false], ["Off", false]]);
-  expect(container.querySelectorAll(".arilSettingsPanel .commandSettingRow input[role=\"switch\"]").length).toBe(7);
-  expect(screen.getByText("Aril reads the newest 20 lines. The 5 older lines do not fit its limit of 6,000 characters.")).toBeInTheDocument();
-  expect(screen.getByText("Remove the oldest 20 of 40 messages and their images?")).toBeInTheDocument();
-  expect(screen.getByText("Removed 20 messages and freed 700 KB.")).toHaveAttribute("role", "status");
-  // Only the six button roles: the flush is a Quiet action, its confirmation a Secondary and a Quiet one. No primary, no bespoke button.
-  const roles = new Set(["commandPrimaryAction", "commandSecondaryAction", "commandQuietAction", "commandIconAction", "commandTextLink"]);
-  for (const button of container.querySelectorAll("button")) expect([...button.classList].some((name) => roles.has(name))).toBe(true);
+  for (const label of ["Switch", "Aril off, everything below read only", "Aril card, Off", "Aril card, On", "Aril card, paired device", "Aril card, change failed", "Aril card, reading", "Aril card, not reachable", "Memory, you", "Memory, change shown", "Memory, repository",
+    "Memory, read-only", "Memory, save failure", "Memory, reading", "Conversation space", "Conversation space, never", "Conversation space, flush question", "Conversation space, flushed",
+    "Conversation space, not flushed", "Effort routing, key set", "Effort routing, no key", "Effort routing, key field"]) expect(screen.getAllByText(label, { selector: "span" }).length).toBeGreaterThan(0);
+  // The state is a word beside the heading, green only while On; a switch is the shared switch and nothing else.
+  expect([...container.querySelectorAll(".arilHeroState")].map((state) => [state.textContent, state.closest(".arilHero")?.classList.contains("isOn")])).toEqual([["Off", false], ["Off", false], ["On", true], ["Off", false], ["Off", false]]);
+  expect(container.querySelectorAll("input[role=\"switch\"]").length).toBe(0);
+  for (const toggle of container.querySelectorAll("[role=\"switch\"]")) expect(toggle).toHaveClass("commandSwitch");
+  expect(container.querySelectorAll(".arilHero .commandSwitch.isSmall").length).toBe(4);
+  // While Aril is off the cards under the switch card are one gray, aria-disabled wrapper after a neutral notice, and their controls are disabled.
+  const off = container.querySelector(".arilBelow.isLocked") as HTMLElement;
+  expect(off).toHaveAttribute("aria-disabled", "true");
+  expect(off.previousElementSibling).toHaveClass("arilOffNotice");
+  expect(off.previousElementSibling?.previousElementSibling).toHaveClass("arilHero");
+  expect(off.querySelector(".arilMemoryField")).toBeDisabled();
+  for (const control of off.querySelectorAll("button, textarea")) expect((control as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText("Remove the oldest 200 of 401 messages and their images?")).toBeInTheDocument();
+  expect(screen.getByText("Removed 200 messages and freed 1.5 MB.")).toHaveAttribute("role", "status");
+  // The tabs are the memory's own tab list; every other button is one of the roles, and nothing is primary or amber.
+  const roles = new Set(["commandPrimaryAction", "commandSecondaryAction", "commandQuietAction", "commandIconAction", "commandTextLink", "commandSwitch", "arilTab"]);
+  for (const button of container.querySelectorAll("button")) expect([...button.classList].some((name) => roles.has(name)) || button.getAttribute("role") === "combobox").toBe(true);
   expect(container.querySelector(".commandPrimaryAction")).toBeNull();
   expect(container.querySelector(".commandChip.warning, .commandChip.negative")).toBeNull();
+  // The bars: the thread past 80% of the limit is coral, never amber.
+  expect(container.querySelectorAll(".arilSpaceFill.isNear").length).toBeGreaterThan(0);
+  expect(container.querySelectorAll(".arilSpaceTick").length).toBeGreaterThan(0);
+  expect(container.querySelectorAll(".arilMemoryField").length).toBeGreaterThan(0);
+});
+it("documents the shared switch and keeps the Aril section to tokens, the type ramp, and the radius scale", () => {
+  const switchStyles = readFileSync(join(process.cwd(), "app", "styles", "command-switch.css"), "utf8");
+  const arilStyles = readFileSync(join(process.cwd(), "app", "styles", "settings-aril.css"), "utf8");
+  expect(designContract).toMatch(/\| Switch \| `\.commandSwitch` on a `button` with `role="switch"` \|/);
+  expect(designContract).toMatch(/\*\*Switch\*\* renders the shared switch/);
+  expect(styles).toMatch(/\.commandSwitch\[aria-checked="true"\]\s*\{\s*background:\s*var\(--command-green\)/);
+  expect(styles).toMatch(/\.commandSwitch:focus-visible\s*\{\s*outline:\s*2px solid var\(--focus-ring\)/);
+  expect(styles).toMatch(/@media \(pointer: coarse\), \(max-width: 760px\)\s*\{\s*[^}]*\.commandSwitch::after/);
+  for (const sheet of [switchStyles, arilStyles]) {
+    expect(sheet).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/);
+    expect(sheet).not.toMatch(/font(?:-size)?:[^;}]*\b\d+px/);
+    for (const radius of sheet.matchAll(/border-radius:\s*([^;}]+)/g)) expect(radius[1].trim()).toMatch(/^(?:var\(--(?:control|panel|composer)-radius\)|50%)$/);
+  }
+  // No focus ring on the memory field (the caret marks focus); the near-limit fill is the brand text color and never amber.
+  expect(arilStyles).toMatch(/\.arilMemoryField:focus-visible\s*\{\s*outline:\s*0;/);
+  expect(arilStyles).toMatch(/\.arilSpaceFill\.isNear\s*\{\s*background:\s*var\(--command-brand-text\)/);
+  expect(arilStyles).not.toMatch(/amber/);
+  expect(arilStyles).toMatch(/\.arilBelow\.isLocked\s*\{\s*opacity:\s*0\.55;\s*filter:\s*grayscale\(1\);\s*pointer-events:\s*none;/);
+  expect(designContract).toMatch(/Aril is off, so everything below is read only\. Turn Aril on to change it\./);
+  expect(designContract).toMatch(/memory field in Settings › Aril shows no focus ring/);
 });
 it("includes desktop and paired task log samples", () => { render(<ScorecardSection />); for (const name of ["entries", "paired"]) expect(screen.getByText(`Task log, ${name}`)).toBeInTheDocument(); });
 it("renders each read-only Terminal state from synthetic samples", () => {
@@ -706,7 +743,7 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/^## GitHub$/m);
     expect(designContract).toMatch(/\*\*Providers\*\*, \*\*GitHub\*\*, \*\*Aril\*\*, \*\*Storage\*\*, \*\*Data display\*\*/);
     expect(designContract).toMatch(/^## Aril$/m);
-    expect(designContract).toMatch(/Effort routing section, its key field, and its state are drawn only by the desktop app/);
+    expect(designContract).toMatch(/One compact row in its own card, drawn only by the desktop app/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx"), "utf8");
     expect(sample).toMatch(/Task modal, promote issue"/);
     expect(sample).toMatch(/Task modal, promote issue, outside contributor and changed/);

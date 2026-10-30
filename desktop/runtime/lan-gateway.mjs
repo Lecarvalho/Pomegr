@@ -579,6 +579,17 @@ export async function startLanGateway(options = {}) {
       response.end(JSON.stringify({ status: TASK_START_STATUSES.includes(answer?.status) ? answer.status : "unavailable" }));
       return;
     }
+    if (taskAction && typeof options.arilOn === "function" && !options.arilOn()) {
+      // With Aril Off a repository's memory is read only on a paired device too: the one memory write is refused here, before the web host.
+      let named = null;
+      try { named = JSON.parse(actionBody.toString("utf8"))?.action; } catch { /* the web host refuses invalid JSON */ }
+      if (named === "aril_memory_set") {
+        noStore(response);
+        response.writeHead(409, { "Content-Type": "application/json; charset=utf-8" });
+        response.end('{"ok":false,"error":"conflict"}');
+        return;
+      }
+    }
     if (agentChat) {
       // One fixed operation and its payload in; the chat's own bounded answer out. Nothing of it reaches the web host.
       let answer = { ok: false, error: "invalid" };

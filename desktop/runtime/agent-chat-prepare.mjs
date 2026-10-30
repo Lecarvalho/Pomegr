@@ -88,9 +88,9 @@ export function createTurnPreparation({ monitor, postAction, worktreeInventory, 
     try { return root ? await repositoryGithub.read(repositoryId, root) : null; } catch { return null; }
   }
 
-  // The owner's memory, oldest first: the lines that guide Aril in every repository. Empty when it cannot be read, so a turn goes on without it.
+  // The owner's memory: the text that guides Aril in every repository. None when it cannot be read, so a turn goes on without it.
   async function readOwnerMemory() {
-    try { return ownerMemory ? await ownerMemory.read() : []; } catch { return []; }
+    try { return ownerMemory ? await ownerMemory.read() : null; } catch { return null; }
   }
 
   // The time of the repository's last completed answer, the owner's memory, and with `thread` the summary and the newest messages the prompt's history holds.

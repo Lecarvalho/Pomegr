@@ -1,9 +1,12 @@
+import { applyMemoryUpdate, ARIL_MEMORY, isMemoryText, legacyMemory, normalizeMemoryText } from "../../shared/aril-memory.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { isTaskId, normalizeModelIdentifier } from "./task-record.mjs";
 import { TASK_GROUP_LIMIT } from "./task-groups.mjs";
 import { splitTaskTags } from "./task-tags.mjs";
 
 export function ensureArilSettings(database) {
+  // `aril_memory` is the older list of memory lines. It is read until the repository's text exists and is deleted in the same
+  // transaction that writes the text, so a failed migration leaves the lines as they were.
   database.exec(`
     CREATE TABLE IF NOT EXISTS aril_settings (
       repository_id TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL
@@ -12,6 +15,9 @@ export function ensureArilSettings(database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT, repository_id TEXT NOT NULL, text TEXT NOT NULL,
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS aril_memory_text (
+      repository_id TEXT PRIMARY KEY, text TEXT NOT NULL, previous TEXT, updated_at INTEGER NOT NULL, updated_by TEXT NOT NULL
+    ) WITHOUT ROWID;
   `);
 }
 
@@ -52,13 +58,61 @@ function writeSettings(database, repositoryId, settings, at) {
     ON CONFLICT(repository_id) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
     .run(repositoryId, JSON.stringify(settings), at);
 }
-const entry = (row) => ({ id: Number(row.id), text: row.text, createdAt: Number(row.created_at), updatedAt: Number(row.updated_at) });
+const legacyEntry = (row) => ({ id: Number(row.id), text: row.text, createdAt: Number(row.created_at), updatedAt: Number(row.updated_at) });
+const legacyRows = (database, repositoryId) => preparedStatement(database,
+  "SELECT id, text, created_at, updated_at FROM aril_memory WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId).map(legacyEntry);
+
+/**
+ * A repository's memory: `{ text, previous, updatedAt, updatedBy }`. The text is the stored one; before it is stored, the older lines of
+ * the repository read as text (one `- ` line each, oldest first), so the memory is whole while a migration has not succeeded. `previous`
+ * is the text before the last change (null when there was none), and `updatedBy` is `owner` or `aril`.
+ */
+export function readArilMemory(database, repositoryId) {
+  const row = preparedStatement(database, "SELECT text, previous, updated_at, updated_by FROM aril_memory_text WHERE repository_id = ?").get(repositoryId);
+  if (row) return { text: row.text, previous: row.previous ?? null, updatedAt: Number(row.updated_at), updatedBy: row.updated_by === "aril" ? "aril" : "owner" };
+  const rows = legacyRows(database, repositoryId);
+  if (rows.length === 0) return { text: "", previous: null, updatedAt: null, updatedBy: null };
+  const legacy = legacyMemory(rows);
+  return { text: legacy.text, previous: legacy.previous, updatedAt: legacy.updatedAt, updatedBy: "owner" };
+}
+
+// Writes the text and removes the repository's older lines in the caller's transaction: both stand or neither does.
+function writeMemory(database, repositoryId, { text, previous, at, by }) {
+  preparedStatement(database, `INSERT INTO aril_memory_text (repository_id, text, previous, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(repository_id) DO UPDATE SET text = excluded.text, previous = excluded.previous, updated_at = excluded.updated_at, updated_by = excluded.updated_by`)
+    .run(repositoryId, text, previous, at, by);
+  preparedStatement(database, "DELETE FROM aril_memory WHERE repository_id = ?").run(repositoryId);
+}
+
+/**
+ * Moves every repository's older memory lines into its text, once. Each repository is its own transaction that writes the text and deletes
+ * the lines together, so a failure leaves that repository's lines exactly where they were, still read as its memory. It never throws.
+ */
+export function migrateArilMemory(database) {
+  let repositories = [];
+  try { repositories = preparedStatement(database, "SELECT DISTINCT repository_id FROM aril_memory").all().map((row) => row.repository_id); } catch { return; }
+  for (const repositoryId of repositories) {
+    try {
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        if (preparedStatement(database, "SELECT 1 FROM aril_memory_text WHERE repository_id = ?").get(repositoryId) === undefined) {
+          const { text, previous, updatedAt } = legacyMemory(legacyRows(database, repositoryId));
+          writeMemory(database, repositoryId, { text, previous, at: updatedAt ?? Date.now(), by: "owner" });
+        } else preparedStatement(database, "DELETE FROM aril_memory WHERE repository_id = ?").run(repositoryId);
+        database.exec("COMMIT");
+      } catch (error) {
+        try { database.exec("ROLLBACK"); } catch { /* connection may already be unusable */ }
+        throw error;
+      }
+    } catch { /* The lines stay as they are and are read as the memory; the next open tries again. */ }
+  }
+}
+
 // settledAt is when the owner last settled the settings (the row's update time), or null while nothing is stored.
 export function readAril(database, repositoryId) {
   const row = preparedStatement(database, "SELECT updated_at FROM aril_settings WHERE repository_id = ?").get(repositoryId);
   const settledAt = row ? new Date(Number(row.updated_at)).toISOString() : null;
-  return { settings: { ...readSettings(database, repositoryId), settledAt }, memory: preparedStatement(database,
-    "SELECT id, text, created_at, updated_at FROM aril_memory WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId).map(entry) };
+  return { settings: { ...readSettings(database, repositoryId), settledAt }, memory: readArilMemory(database, repositoryId) };
 }
 
 function validRule(database, repositoryId, rule) {
@@ -106,23 +160,32 @@ export function pruneArilTask({ database, repositoryId, now }, taskId) {
   writeSettings(database, repositoryId, settings, now());
 }
 
-export function arilMemoryAdd({ database, repositoryId, ensureRepository, now }, payload) {
-  if (!exact(payload, ["text"]) || !line(payload.text, 300)) return invalid();
-  if (preparedStatement(database, "SELECT COUNT(*) AS n FROM aril_memory WHERE repository_id = ?").get(repositoryId).n >= 100) return { ok: false, error: "limit" };
+/** The owner replaces a repository's memory text whole. The text before the change is kept as `previous`. `limit` is a text over 6,000 characters. */
+export function arilMemorySet({ database, repositoryId, ensureRepository, now }, payload) {
+  if (!exact(payload, ["text"]) || typeof payload.text !== "string") return invalid();
+  const text = normalizeMemoryText(payload.text);
+  if (text.length > ARIL_MEMORY.textLength) return { ok: false, error: "limit" };
+  if (!isMemoryText(text)) return invalid();
+  const current = readArilMemory(database, repositoryId);
+  if (text === current.text) return { ok: true, memory: current };
   ensureRepository(database, repositoryId);
-  const at = now();
-  const result = preparedStatement(database, "INSERT INTO aril_memory (repository_id, text, created_at, updated_at) VALUES (?, ?, ?, ?)")
-    .run(repositoryId, payload.text, at, at);
-  return { ok: true, entry: { id: Number(result.lastInsertRowid), text: payload.text, createdAt: at, updatedAt: at } };
+  const memory = { text, previous: current.text, updatedAt: now(), updatedBy: "owner" };
+  writeMemory(database, repositoryId, { text, previous: current.text, at: memory.updatedAt, by: "owner" });
+  return { ok: true, memory };
 }
-export function arilMemoryUpdate({ database, repositoryId, now }, payload) {
-  if (!exact(payload, ["id", "text"]) || !Number.isSafeInteger(payload.id) || payload.id < 1 || !line(payload.text, 300)) return invalid();
-  const row = preparedStatement(database, "UPDATE aril_memory SET text = ?, updated_at = ? WHERE repository_id = ? AND id = ? RETURNING *")
-    .get(payload.text, now(), repositoryId, payload.id);
-  return row ? { ok: true, entry: entry(row) } : { ok: false, error: "not_found" };
-}
-export function arilMemoryRemove({ database, repositoryId }, payload) {
-  if (!exact(payload, ["id"]) || !Number.isSafeInteger(payload.id) || payload.id < 1) return invalid();
-  const result = preparedStatement(database, "DELETE FROM aril_memory WHERE repository_id = ? AND id = ?").run(repositoryId, payload.id);
-  return result.changes ? { ok: true } : { ok: false, error: "not_found" };
+
+/**
+ * Aril's update of a repository's memory, applied to the text as it is now: lines to add and lines to remove (`applyMemoryUpdate`).
+ * Answers `{ ok: true, added, removed }`, with zero counts when nothing changed, or `invalid`, `not_found` (a line to remove is not there),
+ * or `limit` (the result would pass 6,000 characters). Only desktop main reaches it.
+ */
+export function arilMemoryApply({ database, repositoryId, ensureRepository, now }, payload) {
+  if (!exact(payload, ["add", "remove"])) return invalid();
+  const current = readArilMemory(database, repositoryId);
+  const result = applyMemoryUpdate(current.text, payload);
+  if (!result.ok) return { ok: false, error: result.error === "too_long" ? "limit" : result.error };
+  if (result.added + result.removed === 0) return { ok: true, added: 0, removed: 0 };
+  ensureRepository(database, repositoryId);
+  writeMemory(database, repositoryId, { text: result.text, previous: current.text, at: now(), by: "aril" });
+  return { ok: true, added: result.added, removed: result.removed };
 }

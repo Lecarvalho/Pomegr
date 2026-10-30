@@ -17,7 +17,7 @@ const DEFAULT_ARIL = {
     limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
     workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,
   },
-  memory: [],
+  memory: { text: "", previous: null, updatedAt: null, updatedBy: null },
 };
 
 function secretBoard(repositoryId = REPOSITORY_ID) {

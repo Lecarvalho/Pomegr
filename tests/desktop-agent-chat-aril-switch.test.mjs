@@ -100,8 +100,8 @@ test("a paired device reads the switch and the owner's memory but cannot change 
   const h = await chatHarness(context);
   const paired = { paired: true };
   assert.equal((await h.chat.handle("aril_switch", {}, paired)).ok, true);
-  assert.deepEqual(await h.chat.handle("owner_memory", {}, paired), { ok: true, entries: [] });
-  for (const [operation, payload] of [["owner_memory_add", { text: "x" }], ["owner_memory_update", { id: 1, text: "x" }], ["owner_memory_remove", { id: 1 }], ["thread_space", {}], ["thread_flush", { repositoryId }]]) {
+  assert.deepEqual(await h.chat.handle("owner_memory", {}, paired), { ok: true, memory: { text: "", previous: null, updatedAt: null, updatedBy: null } });
+  for (const [operation, payload] of [["owner_memory_set", { text: "x" }], ["thread_space", {}], ["thread_limit_set", { megabytes: 10 }], ["thread_flush", { repositoryId }]]) {
     assert.deepEqual(await h.chat.handle(operation, payload, paired), { ok: false, error: "desktop_only" }, operation);
   }
 });

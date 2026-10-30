@@ -14,10 +14,12 @@ import { createGithubKeeper, prefetchGithubSettings } from "./agent-chat-github.
 import { createTurnPreparation } from "./agent-chat-prepare.mjs";
 import { agentChatMcpServer, prepareInstructionsFile } from "./agent-chat-provider-files.mjs";
 import { extractChoices, shownAnswer } from "./agent-chat-choices.mjs";
+import { extractMemory, recordMemory } from "./agent-chat-memory.mjs";
 import { createCompaction } from "./agent-chat-compaction.mjs";
 import { createChatJev, installJevKeyIpc, previousAnswer } from "./agent-chat-jev.mjs";
 import { composePrompt, composePromptParts, proposalOutcome } from "./agent-chat-prompt.mjs";
-import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, FEATURE_EDIT_OPERATIONS, proposalImages, queueProposalState, recordRework, START_FAILURES, startProposalTask, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
+import { createSessionStart, createWorktreeRemoval } from "./agent-chat-approved.mjs";
+import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, FEATURE_EDIT_OPERATIONS, proposalImages, queueProposalState, recordRework, startProposalTask } from "./agent-chat-proposal.mjs";
 import { CHAT_EFFORTS, runChatTurn, startChatProcess } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, ANSWER_LENGTH, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId, nextMessageId } from "./agent-chat-store.mjs";
 import { createAgentChatSummaries, summarizedView } from "./agent-chat-summary.mjs";
@@ -51,7 +53,7 @@ const PROVIDERS = new Set(["claude", "codex"]);
 const EFFORTS = new Set(CHAT_EFFORTS);
 // The effort a record carries: the field for a level, nothing for none, so an older record without one still reads as null.
 const effortField = (effort) => (typeof effort === "string" && EFFORTS.has(effort) ? { effort } : {});
-const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove"]);
+const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set", "aril_settings_set"]);
 // The canonical queue control of the Tasks page. The chat sends it only for an approved queue proposal, with the one setting `on`.
 const QUEUE_ACTION = "queue_settings";
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
@@ -123,8 +125,12 @@ export function createAgentChat(options = {}) {
   // The follow-ups that wait for the one turn: `repositoryId/proposalId` to `{ repositoryId, conversationId, proposalId,
   // provider, model, queuedAt }`. A proposal has at most one here, so a second answer to it replaces the first.
   const followUps = new Map();
-  // The On/Off switch, the owner's memory, and the thread space (see agent-chat-aril.mjs). Off drops the follow-ups that wait.
-  const aril = createArilControl({ dataRoot, now, store, images, arilSwitch: options.arilSwitch, ownerMemory: options.ownerMemory, space: options.threadSpace, onOff: () => followUps.clear(), busy: (repositoryId) => turnBusy(repositoryId) || compaction.running(repositoryId) });
+  // The On/Off switch, the owner's memory, the thread space, and its limit (see agent-chat-aril.mjs). Off drops the follow-ups that wait. A thread is
+  // busy while a turn, a follow-up, a compaction, or the owner's Apply of a proposal of it runs: nothing flushes it then.
+  const aril = createArilControl({ dataRoot, now, store, images, arilSwitch: options.arilSwitch, ownerMemory: options.ownerMemory, threadLimit: options.threadLimit, space: options.threadSpace, onOff: () => followUps.clear(),
+    busy: (repositoryId) => turnBusy(repositoryId) || compaction.running(repositoryId) || [...applying].some((key) => key.startsWith(`${repositoryId}/`)) });
+  // Desktop main alone asks for it, a little after it starts: a thread that grew past the owner's limit while the app was closed is flushed then.
+  if (options.sweepThreads) void aril.sweep();
 
   async function monitor(pathname, init) {
     const response = await fetchImpl(`${monitorOrigin}${pathname}`, {
@@ -164,6 +170,9 @@ export function createAgentChat(options = {}) {
   // The reads a turn makes before its process starts (see agent-chat-prepare.mjs): they begin together, and each is timed.
   const preparation = createTurnPreparation({ ownerMemory: aril.ownerMemory, monitor, postAction, worktreeInventory, workflowReader: options.workflowReader || createWorkflowReader({ execFile }), repositoryGithub, dataRoot: options.dataRoot, environment: runEnvironment, store, summaries: summaries ?? NO_SUMMARIES, clock });
   const { readBoard, repositoryRoot } = preparation;
+  // The two approved actions that are not task actions (agent-chat-approved.mjs).
+  const startSession = createSessionStart(startTask);
+  const removeWorktree = createWorktreeRemoval({ readBoard, monitor, repositoryRoot, worktrees, worktreeInventory });
   // Desktop main alone asks for it, a little after it starts: the facts of every repository with a board are read before the first message.
   const worktreePrefetch = options.prefetchWorktrees ? prefetchWorktreeFacts({ inventory: worktreeInventory, readHome: () => monitor("/api/tasks?view=home", { method: "GET" }), rootOf: repositoryRoot, ...(typeof options.prefetchWorktrees === "object" ? options.prefetchWorktrees : {}) }) : null;
   // Desktop main alone asks for it too: the repositories Aril was used for recently have their GitHub settings read before the first message.
@@ -346,8 +355,9 @@ export function createAgentChat(options = {}) {
       void postAction("log-ack", turn.repositoryId, { consumer: "aril", through: turn.logThrough }).catch(() => {});
     }
     const answer = typeof outcome?.text === "string" ? outcome.text : "";
-    // The choices block comes out of the answer first; the proposal is read from the text that is left.
-    const offered = status === "complete" ? extractChoices(answer) : null;
+    // The memory block comes out of the answer first, then the choices block; the proposal is read from the text that is left.
+    const memoryRead = status === "complete" ? extractMemory(answer) : null;
+    const offered = memoryRead ? extractChoices(memoryRead.text) : null;
     let read = offered ? extractProposal(offered.text, { grantWrite: Boolean(turn.grantPlans) }) : { text: shownAnswer(answer), proposal: null, unreadable: false };
     try {
       const conversation = await store.read(turn.repositoryId, turn.conversationId);
@@ -362,6 +372,12 @@ export function createAgentChat(options = {}) {
       read = await recordRework(read, (payload) => disposed || turn.stopped ? UNAVAILABLE : monitor("/internal/tasks/aril-declare-rework", { method: "POST",
         headers: { "content-type": "application/json" }, body: JSON.stringify({ repositoryId: turn.repositoryId, ...payload }),
       }), ANSWER_LENGTH);
+      // Only an owner's message can carry a memory update. Each update goes to its own memory, applied by desktop main with no Apply (agent-chat-memory.mjs).
+      if (memoryRead && turn.promptSections) {
+        const apply = { owner: (update) => aril.ownerMemory.apply(update), repository: (update) => disposed || turn.stopped ? UNAVAILABLE : monitor("/internal/tasks/aril-memory-update", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ repositoryId: turn.repositoryId, ...update }) }) };
+        read = await recordMemory(read, memoryRead, { on: () => aril.isOn() && !disposed, apply }, ANSWER_LENGTH);
+      }
       const message = { id: nextMessageId(conversation.messages), role: "agent", text: read.text, at: now().toISOString(), provider: turn.provider, model: turn.model, ...effortField(turn.effort), status };
       // How long the run took, how large its prompt was, and how long each step of its preparation took, as numbers, for an owner's message.
       const timing = turn.promptSections ? timingOf(turn.timing?.(), turn.promptSections, turn.prepare, turn.route) : null;
@@ -402,12 +418,13 @@ export function createAgentChat(options = {}) {
     } catch { /* The conversation keeps the owner's message; the next read marks the answer as interrupted. */ }
     finally {
       release(turn);
-      if (status === "complete") {
-        const compacted = compaction.afterTurn(turn.repositoryId);
-        // The next message of the thread finds a run ready: the owner's message has just been answered, and the same run is the likely next one.
-        // It waits for a compaction of the thread to end, and a turn that has started by then makes the request a no-op.
-        if (turn.promptSections) void compacted.then(() => warm.request(turn.repositoryId, { provider: turn.provider, model: turn.model ?? null, effort: turn.ownerEffort ?? null }));
-      }
+      const compacted = status === "complete" ? compaction.afterTurn(turn.repositoryId) : Promise.resolve();
+      // A thread over the owner's limit is flushed once nothing of it runs: now, or when the compaction that may follow has ended. A turn,
+      // a follow-up, or a compaction that is still running makes the flush wait for the next time the thread is idle.
+      void compacted.then(() => aril.autoFlush(turn.repositoryId));
+      // The next message of the thread finds a run ready: the owner's message has just been answered, and the same run is the likely next one.
+      // It waits for a compaction of the thread to end, and a turn that has started by then makes the request a no-op.
+      if (status === "complete" && turn.promptSections) void compacted.then(() => warm.request(turn.repositoryId, { provider: turn.provider, model: turn.model ?? null, effort: turn.ownerEffort ?? null }));
     }
   }
 
@@ -426,7 +443,8 @@ export function createAgentChat(options = {}) {
       || !text || text.length > MESSAGE_LENGTH || !MESSAGE_TEXT.test(text) || !PROVIDERS.has(provider)
       || !(model === null || (typeof model === "string" && MODEL.test(model)))
       || !(effort === null || (typeof effort === "string" && EFFORTS.has(effort)))) return INVALID;
-    if (active) return refused("busy");
+    // A message waits for a flush of its thread, so a flush never works on a conversation that the message's turn is saving.
+    if (active || aril.flushing(repositoryId)) return refused("busy");
     const prep = preparation.begin(repositoryId, entered);
     const reservation = { reserved: true, repositoryId, conversationId };
     active = reservation;
@@ -631,44 +649,6 @@ export function createAgentChat(options = {}) {
     if (!image) return refused("not_found");
     const bytes = await images.read(payload.repositoryId, payload.conversationId, image);
     return bytes ? { ok: true, type: image.type, bytes } : refused("not_found");
-  }
-
-  // An approved start goes to the manual start of the Tasks page and to nothing else: the same start plan, gates, and
-  // launch slot and native confirmation. Only a confirmed launch answers
-  // the proposal; a start that was held or failed keeps it pending with the fixed status, so the owner may apply it
-  // again. Null when the start was cancelled (the app is closing), which stores nothing.
-  async function startSession(event, repositoryId, taskId, proposal) {
-    let status;
-    try { status = (await startTask(event, repositoryId, taskId))?.status; } catch { status = "failed"; }
-    if (status === "cancelled") return null;
-    if (status === "started") return { ...proposal, state: "applied", results: [{ ok: true, start: "started" }] };
-    return { ...proposal, state: "pending", results: [{ ok: false, error: "not_started", start: START_FAILURES.includes(status) ? status : "unavailable" }] };
-  }
-
-  async function removeWorktree(repositoryId, operation) {
-    try {
-      const board = await readBoard(repositoryId);
-      if (!board) return "failed";
-      const task = board.tasks.find(({ id }) => id === operation.id);
-      if (task?.review?.state === "running") return "in_use";
-      // A task with no outcome yet may have a session or a live dispatch.
-      if (task && !["needs_review", "stalled", "blocked", "done"].includes(task.state)) {
-        if (task.session) return "in_use";
-        // The board omits dispatch tokens. Its existing private task read also checks an unbound live dispatch.
-        const read = await monitor(`/internal/agent-chat/task?${new URLSearchParams({ repositoryId, taskId: task.id })}`, { method: "GET" });
-        if (read?.ok !== true || typeof read.task?.editable !== "boolean") return "failed";
-        if (!read.task.editable) return "in_use";
-      }
-      const root = await repositoryRoot(repositoryId);
-      if (!root) return "failed";
-      const request = { repositoryRoot: root, repositoryId, taskId: operation.id };
-      // The removal reads the live tree and the live commits itself (`remove` in task-worktree.mjs); the turns' cached facts are never asked.
-      if (!await worktrees.locate(request)) { worktreeInventory.changed(repositoryId, operation.id); return "not_found"; }
-      const result = await worktrees.remove({ ...request, deleteBranch: operation.branch, detailed: true });
-      // A removed worktree leaves the cached rows at once; any other answer means the cached facts were out of date.
-      worktreeInventory.changed(repositoryId, result === "removed" ? operation.id : null);
-      return WORKTREE_RESULTS.includes(result) ? result : "failed";
-    } catch { return "failed"; }
   }
 
   // Apply and Dismiss are the owner's answer to one proposal; each proposal takes one answer.

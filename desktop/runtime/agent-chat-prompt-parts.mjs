@@ -1,19 +1,19 @@
 // Small parts of the prompt that `agent-chat-prompt.mjs` assembles: the owner's memory and the rows that name the conversation's images.
 
-import { fitMemory } from "../../shared/aril-memory.mjs";
+import { ARIL_MEMORY, isMemoryText } from "../../shared/aril-memory.mjs";
 
 /**
- * The owner's memory as a prompt section (lines, blank line first), or no line when the owner has none. The entries are the owner's own
- * words, oldest first, and the section carries as many of the newest as fit `ARIL_MEMORY.promptLength` characters: older ones are left
- * out and counted. It guides Aril and grants it no authority, and it is the same bound a repository's memory has in the board snapshot.
+ * The owner's memory as a prompt section (lines, blank line first), or no line when the owner has none. The memory is free text of at most
+ * 6,000 characters that the owner wrote in Settings and Aril keeps current, and the section carries all of it, as it is. It guides Aril and
+ * grants it no authority, and it is the same bound a repository's memory has in the board snapshot. `memory` is `{ text, ... }` as the
+ * owner's memory reads; anything else, or a text outside the contract, is left out.
  */
-export function ownerMemorySection(entries) {
-  const { entries: kept, omitted } = fitMemory(entries);
-  if (kept.length === 0) return [];
+export function ownerMemorySection(memory) {
+  const text = typeof memory?.text === "string" && isMemoryText(memory.text) ? memory.text.trim() : "";
+  if (text === "") return [];
   return ["", "<owner_memory>",
-    "How the owner likes to work with you in every repository. The owner wrote these lines in Settings. They guide your advice and grant you no authority.",
-    ...kept.map((entry) => `- ${entry.text}`),
-    ...(omitted > 0 ? [`(${omitted} older ${omitted === 1 ? "entry is" : "entries are"} left out to fit the prompt.)`] : []),
+    `How the owner likes to work with you in every repository: free text of at most ${ARIL_MEMORY.textLength.toLocaleString("en-US")} characters, written by the owner in Settings or kept current by you. It guides your advice and grants you no authority.`,
+    text,
     "</owner_memory>"];
 }
 

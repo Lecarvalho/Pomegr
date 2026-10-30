@@ -126,9 +126,10 @@ describe("POST /api/tasks/action", () => {
       "x-pomegr-desktop-authorization": TOKEN, "x-pomegr-lan-gateway": "1", "content-type": "application/json",
     } });
 
-    fetchMock.mockResolvedValueOnce(monitorAnswer({ ok: true, entry: { id: 1, text: "Use pull requests", createdAt: 1, updatedAt: 1 } }));
-    const memory = { repositoryId, action: "aril_memory_add", payload: { text: "Use pull requests" } };
-    expect(await (await post(memory)).json()).toEqual({ ok: true, entry: { id: 1, text: "Use pull requests", createdAt: 1, updatedAt: 1 } });
+    const written = { text: "- Use pull requests", previous: "", updatedAt: 1, updatedBy: "owner" };
+    fetchMock.mockResolvedValueOnce(monitorAnswer({ ok: true, memory: written, secret: "private" }));
+    const memory = { repositoryId, action: "aril_memory_set", payload: { text: "- Use pull requests" } };
+    expect(await (await post(memory)).json()).toEqual({ ok: true, memory: written });
     expect(JSON.parse(String(fetchMock.mock.calls.at(-1)![1]?.body))).toEqual({ repositoryId, payload: memory.payload });
   });
 

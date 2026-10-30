@@ -114,7 +114,10 @@ These rules always apply:
   Each other control action needs an explicit confirmation boundary.
 - Aril starts only its own read-only provider runs, and Pomegr may stop them. Aril
   changes nothing itself: each change goes through a fixed action, after the owner
-  applies Aril's proposal or while a grant is active and Aril is On. No proposal applies itself.
+  applies Aril's proposal, while a grant is active and Aril is On, or, for its memory, by
+  the one fixed update that desktop main validates and applies while Aril is On: at
+  most 6,000 characters, only the owner's memory and the thread's repository memory,
+  never a file written by the run. No proposal applies itself.
   [Agent chat](docs/internal/architecture/agent-chat.md) lists every run, every action,
   and their exceptions. A change that adds one updates that page in the same pull request.
 - Start processes with `execFile` or `spawn` and an argument array. Never put

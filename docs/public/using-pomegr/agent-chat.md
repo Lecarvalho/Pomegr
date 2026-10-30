@@ -10,7 +10,7 @@ board. You ask in a chat panel on the right side of the window. Aril reads the b
 the repository's files, and what Pomegr observed, then answers. Aril proposes board
 changes, and you apply them.
 
-Aril records links when the evidence shows that one task or pull request fixes earlier work, without **Apply changes**. Each link names a fixed cause, appears in the answer and task log, and changes no task. Aril weighs reworked results when choosing models and proposes a memory check when a cause repeats. You still apply memory proposals.
+Aril records links when the evidence shows that one task or pull request fixes earlier work, without **Apply changes**. Each link names a fixed cause, appears in the answer and task log, and changes no task. Aril weighs reworked results when choosing models and adds a memory check when a cause repeats.
 
 Aril has one switch, **On** or **Off**, at the top of the **Aril** section of Settings, and its state shows beside Aril's name in the panel. Aril is Off until you turn it on, and only you can. While it is Off, the chat still answers when you write, and nothing else Aril does by itself happens (see [Turn Aril on or off](#turn-aril-on-or-off)).
 
@@ -320,34 +320,40 @@ The first thing in the **Aril** section of Settings is one switch. The panel's h
 
 - **Aril is Off until you turn it on.** Only you turn it on. Aril never does, and it is Off again only when you turn it off. A restart keeps what you chose.
 - **Off takes effect at once**, in the desktop app and on a paired phone. A grant then starts, reviews, sends back, merges, and marks Done nothing, and writes no tasks. After you apply or dismiss a proposal, Aril writes no follow-up. A session that is already running goes on.
-- **The chat still answers.** Write to Aril while it is Off and it answers, as it always does.
+- **The chat still answers.** Write to Aril while it is Off and it answers, as it always does. Aril saves nothing to memory while it is Off.
+- **Settings turns read only.** Everything under the switch in **Settings**, under **Aril**, is gray and read only while Aril is Off: your memory and each repository's, the conversation space and its limit, the effort routing, and the repository settings. Pomegr refuses those changes too, on the computer and from a paired phone. A notice says so. Turn Aril on to change them. Pomegr still flushes a conversation that passes your limit, because that is housekeeping on your own files, not something Aril does.
 - **A phone** can always turn Aril off. It can turn Aril on only after you allow that with **Paired devices** under the switch in the desktop app.
 
 ## Aril's settings and memory
 
-Ask Aril to settle this repository's actions, limits, work rules, merge settings, or
-reviewer choice, or to remember a working preference. Aril proposes each change, and you
-select **Apply changes** to save it. Aril never changes settings or memory by itself. Only
+Ask Aril to settle this repository's merge settings or reviewer choice. Aril proposes each
+change, and you select **Apply changes** to save it. Aril never changes settings by itself. Only
 you can allow paired devices to manage these settings, in the desktop app. They are in the
-**Aril** section of Settings (see [Aril settings](tasks.md#aril-settings)), where you can also edit or delete memory entries.
+**Aril** section of Settings (see [Aril settings](tasks.md#aril-settings)).
 
-Aril does not ask again what a setting or memory entry already answers. It asks again when
+Aril does not ask again what a setting or the memory already answers. It asks again when
 you say that a rule changed, or when a workflow file of the repository changed after you
 settled the rule. These files are `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, a pull request
 template, `.pomegr/signals.md`, and the files in `.github/workflows/`. Aril reads the changed
 file, then proposes an update or asks only about what the change left unclear.
 
-### Your memory
+### Memory
 
-**Your memory** in the **Aril** section holds lines about how you like to work with Aril in every repository, such as "Reply in the language I write in." You add, edit, and delete the lines in the desktop app. A paired phone reads them. Aril reads them in each prompt and cannot change them. Aril reads at most 6,000 characters of each memory, the newest lines first. Settings tells you when older lines do not fit.
+**Memory** in the **Aril** section holds what Aril should know about how you like things done. It has one tab for you, for every repository, and one for each repository. Each memory is free text of at most 6,000 characters, such as "Reply in the language I write in." Edit it in the field; it saves when you leave the field. A paired phone reads your memory, and edits a repository's memory only when you allowed paired devices for that repository.
+
+Memory is context for Aril. It is not permission: a line in it lets Aril do nothing new, and it is not an agreement about what Aril may do on its own.
+
+Aril keeps your memory and the repository's up to date by itself. When you settle a lasting preference in the chat, or say that a line is wrong, Aril updates the memory and tells you in one line under its answer. It saves only what you said in the chat, never text it read in a file, a task, or a pull request, and only while Aril is **On**. Under the field, Settings says who changed the memory last and when. **Show change** shows the text before the change beside the text now. Aril never changes more than 6,000 characters, and nothing you edit stays hidden from you. Edit or empty the text at any time.
 
 Do not keep secrets in a memory.
 
 ### Free space from a thread
 
-A repository's conversation has no size limit, so its files grow with use. **Thread space** in the **Aril** section of Settings, in the desktop app, lists what each repository's conversation takes on disk, with its images, and its number of messages.
+A repository's conversation grows with use. **Conversation space** in the **Aril** section of Settings, in the desktop app, shows what each repository's conversation takes on disk, with its images, as a bar against a limit, and its number of messages. The bar turns coral at 80% of the limit.
 
-**Flush oldest messages** removes the oldest half of that repository's messages, and the images they carry. It asks first, and tells you what it removed and how much space it freed. Aril keeps its summary of the conversation and the newest half. Pomegr will not flush a conversation while Aril is answering in that repository, and no phone can flush.
+**Flush oldest at** sets the size at which Pomegr flushes a conversation by itself: 2 MB, 5 MB, 10 MB, 25 MB, or **Never**. The default is 5 MB. When a conversation passes it and Aril is not answering or summarizing in that repository, Pomegr removes its oldest messages and their images until it is at 75% of the limit. It keeps the newest message and its summary of the conversation. **Messages that no summary covers yet are gone when they are removed**, so choose **Never** if you want to keep every message.
+
+**Flush oldest** removes the oldest half of that repository's messages, and the images they carry, when you ask. It asks first, and tells you what it removed and how much space it freed. Aril keeps its summary of the conversation and the newest half. Pomegr will not flush a conversation while Aril is answering in that repository, and no phone can flush or change the limit.
 
 Settings and repository memory are sent with each chat prompt to your chosen provider, and so is your own memory.
 
@@ -375,7 +381,7 @@ Settings and repository memory are sent with each chat prompt to your chosen pro
   settings (whether squash, merge commit, rebase, auto-merge, and delete-branch-on-merge are on) and its default branch name.
   It gets the names and dates of the changed workflow files, but not their content, and the facts of the task worktrees that remain, but not their paths.
   Merge and branch results appear as fixed task-log labels.
-- **Your memory and the switch.** Your memory is kept in a private file on this computer, and the switch in another. The memory goes to the provider with each prompt, within 6,000 characters. The switch goes nowhere.
+- **Your memory and the switch.** Your memory is kept in a private file on this computer, a repository's memory in Pomegr's task store, and the switch and the flush limit in files of their own. Each memory goes to the provider with each prompt, within 6,000 characters. The switch and the limit go nowhere.
 - **Sent to Jev, only with your key.** If you set a Jev key, each message without an image also sends Jev your message and the last
   2,000 characters of Aril's previous answer, so it can suggest a lower effort. Nothing else goes to Jev.
 - **Not observed.** A chat run leaves no session, so it does not show in **Sessions**.

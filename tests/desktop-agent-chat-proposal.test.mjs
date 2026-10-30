@@ -7,6 +7,7 @@ import {
   BOARD_OPERATIONS,
   IMAGE_OPERATION,
   IMAGES_PER_OPERATION,
+  LEGACY_MEMORY_OPERATIONS,
   extractProposal,
   normalizeOperation,
   normalizeProposal,
@@ -29,7 +30,7 @@ test("rework declarations are bounded, exact, separate from Apply, and forbidden
   }
   const proposal = (operations) => ({ summary: "Record the fix", operations });
   assert.deepEqual(normalizeProposal(proposal([link])), proposal([link]));
-  for (const other of [{ op: "create_task", text: "Check wiring" }, { op: "add_memory", text: "Check every layer." },
+  for (const other of [{ op: "create_task", text: "Check wiring" },
     { op: "start_session", id: "T-1" }, { op: "set_queue", on: true }, { op: "set_aril_settings", settings: {} }, { op: "remove_worktree", id: "T-1", branch: false }]) {
     assert.deepEqual(normalizeProposal(proposal([link, other])), proposal([link, other]));
   }
@@ -68,14 +69,25 @@ test("every operation is accepted in its minimal form and kept as written", () =
     [{ op: "start_session", id: "T-1" }, { op: "start_session", id: "T-1" }],
     [{ op: "set_queue", on: false }, { op: "set_queue", on: false }],
     [{ op: "set_aril_settings", settings: {} }, { op: "set_aril_settings", settings: {} }],
-    [{ op: "add_memory", text: "Use tests" }, { op: "add_memory", text: "Use tests" }],
-    [{ op: "update_memory", id: 1, text: "Use tests" }, { op: "update_memory", id: 1, text: "Use tests" }],
-    [{ op: "remove_memory", id: 1 }, { op: "remove_memory", id: 1 }],
     [{ op: "remove_worktree", id: "T-1", branch: false }, { op: "remove_worktree", id: "T-1", branch: false }],
     [{ op: "declare_rework", fix: "T-1", reworks: "#336", cause: "missed_wiring" }, { op: "declare_rework", fix: "T-1", reworks: "#336", cause: "missed_wiring" }],
   ];
-  assert.equal(accepted.length, BOARD_OPERATIONS.length);
+  // The three memory operations are left: a stored proposal may still hold one, and a new answer may not (see the next test).
+  assert.equal(accepted.length + LEGACY_MEMORY_OPERATIONS.length, BOARD_OPERATIONS.length);
   for (const [source, expected] of accepted) assert.deepEqual(normalizeOperation(source), expected, source.op);
+});
+
+test("memory is no longer proposed: a new answer with a memory operation is outside the contract, and a stored proposal still reads back", () => {
+  const stored = [{ op: "add_memory", text: "Use tests" }, { op: "update_memory", id: 1, text: "Use tests" }, { op: "remove_memory", id: 1 }];
+  assert.deepEqual([...LEGACY_MEMORY_OPERATIONS], ["add_memory", "update_memory", "remove_memory"]);
+  for (const operation of stored) {
+    assert.equal(normalizeOperation(operation), null, operation.op);
+    assert.equal(normalizeProposal({ summary: "Remember", operations: [operation] }), null, operation.op);
+    assert.deepEqual(normalizeOperation(operation, { stored: true }), operation, operation.op);
+  }
+  // Applying one that was saved does nothing: Aril keeps its memory by itself now.
+  return applyOperations([stored[0]], { post: () => assert.fail("a saved memory operation changes nothing"), board: {} })
+    .then((results) => assert.deepEqual(results, [{ ok: false, error: "unsupported" }]));
 });
 
 test("Aril settings proposals accept only the current limit names", () => {

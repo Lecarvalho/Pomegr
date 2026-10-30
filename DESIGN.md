@@ -185,6 +185,7 @@ Each product surface has its own page. See [Find the page](#find-the-page).
 - The `/design-system` page is the code-led visual authority. This file and the surface pages are its written contract.
 - `app/design-system/page.tsx` serves the page and `app/components/design-system/` renders it.
 - The page uses the real shared classes with static sample data only.
+- **Switch** renders the shared switch off, on, small, and unavailable, and the Aril cards of Settings › Aril in each of their states.
 - **Agent grid tile states** renders the shipped grid with fixed finished, idle, active, stopped, warning, and selected examples for all three metrics.
 - **Repository setup row states** renders plugin updates, all feedback tones, five capture states, the inline confirmation, and the provider section head.
 - **Inspector sheet frame** renders the shared phone header, Back action, and 44px body actions inline, without modal effects.
@@ -329,7 +330,7 @@ Compact and phone modes keep the accessible names and the current-route state.
 - Controls use a 4px radius.
 - Evidence panels use a 6px radius.
 - Borders are one pixel and rectangular.
-- Do not use pills, ornamental clipping, or irregular silhouettes in the application.
+- Do not use pills, ornamental clipping, or irregular silhouettes in the application. The [switch](#controls-outside-the-six-roles) is the one pill.
 - The Agent chat has the intended exceptions below, and no other surface may use them.
 
 #### Agent chat exceptions
@@ -360,8 +361,8 @@ These are exceptions to the 4px and 6px radius rule and to the six button roles.
 - The scrim is not drawn at 760px and narrower, where the panel is a sheet.
 - The message field in the composer shows no focus ring when it is focused, and its caret marks focus.
 - The search field under the Aril header shows no focus ring either, and its text caret marks focus.
-- The add and edit fields of a memory line in Settings › Aril show no focus ring either, and their caret marks focus. They keep their one-pixel control line.
-- The message field, the search field, and the memory line fields are the only Aril controls without the ring: every button and select in the composer keeps it for keyboard users, and so does every match of the search.
+- The memory field in Settings › Aril shows no focus ring either, and its caret marks focus. It has no border: its ground fill and the 4px control radius mark it.
+- The message field, the search field, and the memory field are the only Aril controls without the ring: every button and select in the composer keeps it for keyboard users, and so does every match of the search.
 - The composer's model select reads the model alone on its closed control, through the `CommandSelect` option `groupInValue={false}`.
 
 Touch size is separate from shape:
@@ -396,7 +397,7 @@ All six roles share these rules:
 - The disabled treatment is opacity .48.
 - Borders use the panel line token. The stronger control line shows only on hover and on form fields such as selects.
 - Hover and focus move between neutral tones without lift.
-- Every interactive control shows the visible focus ring, but for the Aril message field, search field, and memory line fields, which show none (see [Agent chat exceptions](#agent-chat-exceptions)).
+- Every interactive control shows the visible focus ring, but for the Aril message field, search field, and memory field, which show none (see [Agent chat exceptions](#agent-chat-exceptions)).
 - Controls keep reduced-motion behavior.
 
 States:
@@ -464,7 +465,23 @@ These controls keep their own contracts on purpose. They are not counted among t
 | Copy-transcript button | | Its copied and error states carry meaning |
 | Desktop session-header ID chip | `button.sessionIdChip` | Keeps the chip look and copies the full session ID on click. It shows the stronger line on hover. It turns positive after a copy and negative after a failure. |
 | Aril composer Send and Stop | `.agentChatSend` on an Icon action | Round 32px, brand fill, `--command-on-brand` ink, and an `aria-label` of Send or Stop. See [Agent chat exceptions](#agent-chat-exceptions). |
+| Switch | `.commandSwitch` on a `button` with `role="switch"` | A pill track and a round thumb. It acts at once and never asks. See [Switch](#switch). |
 | Home suggestion chip | `.agentChatSuggestionChip` on a Quiet action | Raised fill, composer radius, 32px, and no border. It fills the message field and sends nothing. See [Agent chat exceptions](#agent-chat-exceptions). |
+
+#### Switch
+
+- `CommandSwitch` (`app/components/command-center/CommandSwitch.tsx`) draws the switch, and `app/styles/command-switch.css` styles it.
+- It is a `button` with `role="switch"` and `aria-checked`. A caller names it with `aria-label` or `aria-labelledby`.
+- It acts at once, in either direction, and asks for no confirmation.
+- The track is 44px by 24px and the thumb is 18px. The small size is 36px by 20px with a 14px thumb, for a quiet row beside a main switch.
+- The track radius is `--composer-radius`, which a track of 24px or 20px clamps to a full pill. The thumb is 50%.
+- Off is never a warning. The off track is `--command-line-strong` in light mode and `--command-line` in dark mode.
+- On is green: `--command-green` in light mode, and in dark mode a mix of `--command-green` and `--command-ground` that keeps the thumb readable.
+- The thumb is `--command-on-brand` in both themes.
+- The thumb slides over 220ms and the track recolors over 200ms. Reduced motion removes both.
+- The focus ring is the shared 2px `--focus-ring` with a 2px offset. Disabled is opacity .48.
+- On a coarse pointer and on a phone, an `::after` hit area reaches 44px. The track keeps its size.
+- The native `input` checkboxes with `role="switch"` that other Settings rows use keep their contract until they move to this switch.
 
 Compositions that are not a seventh role:
 

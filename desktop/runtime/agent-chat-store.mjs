@@ -62,7 +62,7 @@ function storedOperation(operation, grantWrite) {
     if (Object.hasOwn(completeWhen, "checks")) source.complete_when = completeWhen.checks;
     if (Object.hasOwn(completeWhen, "own")) source.own_condition = completeWhen.own;
   }
-  return normalizeOperation(source, { grantWrite });
+  return normalizeOperation(source, { grantWrite, stored: true });
 }
 
 function storedResult(result) {

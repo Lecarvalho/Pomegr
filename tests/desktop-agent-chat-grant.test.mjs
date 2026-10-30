@@ -43,7 +43,7 @@ test("grant provider follows the reviewer rule, then installed Claude, then Code
     [null, [codexExecutable], "codex"],
   ]) {
     const h = await chatHarness(context, { files });
-    h.state.board.aril = { settings: { reviewer: { provider: reviewer, model: "ignored" } }, memory: [{ id: 1, text: "Use repository checks" }] };
+    h.state.board.aril = { settings: { reviewer: { provider: reviewer, model: "ignored" } }, memory: { text: "- Use repository checks", previous: null, updatedAt: 1, updatedBy: "owner" } };
     await answer(h, "Nothing left.\nNo tasks written.");
     const { provider, model, prompt } = h.runs[0].options;
     assert.equal(provider, expected);

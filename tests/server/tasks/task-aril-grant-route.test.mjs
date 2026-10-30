@@ -82,6 +82,27 @@ test("grant writing never returns an arbitrary store failure", async (t) => {
   fixedError(await post(port, "grant-write-tasks", { repositoryId: REPOSITORY_ID, plan: "next.md", tasks: [{ text: "work" }] }), 400, "invalid");
 });
 
+test("Aril memory route is desktop-main-only, exact, and applies the lines to the text as it is", async (t) => {
+  const { port, store } = await setup(t);
+  const body = { repositoryId: REPOSITORY_ID, add: ["Docs in English."], remove: [] };
+  for (const headers of [{ "content-type": "application/json" }, { ...DESKTOP, origin: "http://localhost" }, { "x-pomegr-agent-authorization": AGENT_TOKEN, "content-type": "application/json" }]) {
+    assert.equal((await post(port, "aril-memory-update", body, headers)).status, 401);
+  }
+  for (const marker of ["1", "0", ""]) fixedError(await post(port, "aril-memory-update", body, { ...DESKTOP, "x-pomegr-lan-gateway": marker }), 403, "unavailable");
+  for (const invalid of [{ ...body, scope: "owner" }, { repositoryId: REPOSITORY_ID, add: ["x"] }, { ...body, repositoryId: "bad" }, { ...body, add: "x" }, { ...body, add: [], remove: [] }, { ...body, add: ["x".repeat(301)] }, envelope(body)]) {
+    fixedError(await post(port, "aril-memory-update", invalid), 400, "invalid");
+  }
+  fixedError(await send(port, { path: "/internal/tasks/aril-memory-update?x=1", body: JSON.stringify(body) }), 400, "invalid");
+  assert.deepEqual((await post(port, "aril-memory-update", body)).json, { ok: true, added: 1, removed: 0 });
+  assert.deepEqual((await post(port, "aril-memory-update", body)).json, { ok: true, added: 0, removed: 0 });
+  assert.equal(store.readBoard(REPOSITORY_ID).aril.memory.updatedBy, "aril");
+  fixedError(await post(port, "aril-memory-update", { ...body, add: [], remove: ["A line that is not there."] }), 404, "not_found");
+  assert.equal(store.apply(REPOSITORY_ID, "aril_memory_set", { text: Array.from({ length: 20 }, () => `- ${"x".repeat(297)}`).join("\n") }).ok, true);
+  fixedError(await post(port, "aril-memory-update", { ...body, add: ["y".repeat(300)] }), 409, "limit");
+  const board = await send(port, { method: "GET", path: `/api/tasks?repositoryId=${REPOSITORY_ID}`, headers: DESKTOP });
+  assert.deepEqual(Object.keys(board.json.aril.memory).sort(), ["previous", "text", "updatedAt", "updatedBy"], "the board serves the memory in its one shape");
+});
+
 test("Aril rework route is desktop-main-only, exact, and answers fixed recording results", async (t) => {
   const { port, store } = await setup(t);
   const body = { repositoryId: REPOSITORY_ID, fix: "#342", reworks: "#336", cause: "missed_wiring" };

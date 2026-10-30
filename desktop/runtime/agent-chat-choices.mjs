@@ -2,6 +2,7 @@
 // fenced block, validated strictly, and stored on the answer. A choice only ever becomes the owner's own message: nothing here
 // applies, starts, or changes anything. A block that cannot be read is dropped and the answer text stays.
 
+import { hideMemory } from "./agent-chat-memory.mjs";
 import { visibleAnswer } from "./agent-chat-proposal.mjs";
 
 export const CHOICES_FENCE = "pomegr-replies";
@@ -88,11 +89,11 @@ export function extractChoices(answer) {
 }
 
 /**
- * The text of an answer as the panel shows it while it is written, or when it did not complete: without a proposal block or a choices
- * block, closed or begun.
+ * The text of an answer as the panel shows it while it is written, or when it did not complete: without a proposal block, a choices
+ * block, or a memory block, closed or begun.
  */
 export function shownAnswer(partial) {
-  const text = visibleAnswer(partial);
+  const text = hideMemory(visibleAnswer(partial));
   return text.replace(FENCE, (_match, lead) => lead).replace(OPEN_FENCE, "").replace(/\n{3,}/gu, "\n\n").trimEnd();
 }
 

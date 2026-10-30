@@ -19,6 +19,7 @@ function setup(t) {
   t.after(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
   return { store, directory, set: (settings, repo = REPO) => store.apply(repo, "aril_settings_set", { settings }) };
 }
+const EMPTY = { text: "", previous: null, updatedAt: null, updatedBy: null };
 const invalid = (answer) => assert.deepEqual(answer, { ok: false, error: "invalid" });
 
 test("board carries the settings settlement time without adding it to writable settings", (t) => {
@@ -42,11 +43,11 @@ test("plan rules accept only bounded repository-relative Markdown paths", (t) =>
 
 test("defaults, subset replacement, repository isolation and persistence", (t) => {
   const { store, directory, set } = setup(t);
-  assert.deepEqual(store.readBoard(REPO).aril, { settings: { ...defaults(), settledAt: null }, memory: [], grant: null });
+  assert.deepEqual(store.readBoard(REPO).aril, { settings: { ...defaults(), settledAt: null }, memory: EMPTY, grant: null });
   assert.deepEqual(set({}), { ok: true, settings: defaults() });
   assert.equal(set({ actions: { ...defaults().actions, start: true }, pairedDevices: true }).ok, true);
   assert.deepEqual(set({ actions: defaults().actions }), { ok: true, settings: { ...defaults(), pairedDevices: true } });
-  assert.deepEqual(store.readBoard(OTHER).aril, { settings: { ...defaults(), settledAt: null }, memory: [], grant: null });
+  assert.deepEqual(store.readBoard(OTHER).aril, { settings: { ...defaults(), settledAt: null }, memory: EMPTY, grant: null });
   const again = openTaskStore({ directory });
   try { assert.equal(again.readBoard(REPO).aril.settings.pairedDevices, true); } finally { again.close(); }
   const leaked = store.readBoard(REPO).aril;
@@ -182,72 +183,125 @@ test("task deletion prunes task rules and retains unrelated settings and memory"
     store.apply(repo, "create", { text: "First" }); store.apply(repo, "create", { text: "Second" });
     assert.equal(set({ workRules: [{ kind: "tasks", value: ["T-1", "T-2"] }, { kind: "tasks", value: ["T-1"] }, { kind: "text", value: "Rule" }] }, repo).ok, true);
   }
-  assert.equal(store.apply(REPO, "aril_memory_add", { text: "Keep this" }).ok, true);
+  assert.equal(store.apply(REPO, "aril_memory_set", { text: "- Keep this" }).ok, true);
   assert.equal(store.apply(REPO, "delete", { id: "T-1" }).ok, true);
   assert.deepEqual(store.readBoard(REPO).aril.settings.workRules, [{ kind: "tasks", value: ["T-2"] }, { kind: "text", value: "Rule" }]);
   assert.equal(store.readBoard(OTHER).aril.settings.workRules.length, 3);
-  assert.equal(store.readBoard(REPO).aril.memory[0].text, "Keep this");
+  assert.equal(store.readBoard(REPO).aril.memory.text, "- Keep this");
 });
 
-test("memory CRUD, ordering, fixed answers, repository isolation, limits and line rules", (t) => {
+test("a repository's memory is free text the owner replaces whole: the text before is kept, with who and when, and it stays in its repository", (t) => {
   const { store } = setup(t);
-  const apply = (action, payload, repo = REPO) => store.apply(repo, `aril_memory_${action}`, payload);
-  for (const text of ["", " ", "a".repeat(301), "a\nb", "a\rb", "a\tb", "a\0b", "a\u007fb", "a\u0085b", "a\u2028b", "a\u2029b", 5]) invalid(apply("add", { text }));
-  invalid(apply("add", { text: "yes", extra: true }));
-  const first = apply("add", { text: "a".repeat(300) });
-  assert.deepEqual(Object.keys(first).sort(), ["entry", "ok"]);
-  assert.deepEqual(first.entry, { id: 1, text: "a".repeat(300), createdAt: 1700000000000, updatedAt: 1700000000000 });
-  assert.equal(apply("add", { text: "other" }, OTHER).ok, true);
-  for (const action of ["update", "remove"]) {
-    assert.deepEqual(apply(action, { id: first.entry.id, ...(action === "update" ? { text: "edit" } : {}) }, OTHER), { ok: false, error: "not_found" });
-    for (const id of [0, -1, 1.5, "1", null]) invalid(apply(action, { id, ...(action === "update" ? { text: "edit" } : {}) }));
-  }
-  invalid(apply("update", { id: 1, text: "bad\nline" }));
-  const updated = apply("update", { id: 1, text: "Changed" });
-  assert.deepEqual(updated, { ok: true, entry: { ...first.entry, text: "Changed" } });
-  for (let i = 1; i < 100; i++) assert.equal(apply("add", { text: `Entry ${i}` }).ok, true);
-  assert.deepEqual(apply("add", { text: "Overflow" }), { ok: false, error: "limit" });
-  assert.equal(apply("update", { id: 1, text: "At limit" }).ok, true);
-  const memory = store.readBoard(REPO).aril.memory;
-  assert.equal(memory.length, 100);
-  assert.deepEqual(memory.map((entry) => entry.id), memory.map((entry) => entry.id).toSorted((a, b) => a - b));
-  assert.deepEqual(apply("remove", { id: 1 }), { ok: true });
-  assert.deepEqual(apply("remove", { id: 1 }), { ok: false, error: "not_found" });
-  assert.equal(apply("add", { text: "Room again" }).ok, true);
-  assert.equal(store.readBoard(OTHER).aril.memory.length, 1);
+  const set = (text, repo = REPO) => store.apply(repo, "aril_memory_set", { text });
+  assert.deepEqual(store.readBoard(REPO).aril.memory, EMPTY);
+  for (const text of ["a\0b", "a\u007fb", "a\u0085b", "a\u2028b", "a\u2029b", 5, null]) invalid(set(text));
+  invalid(store.apply(REPO, "aril_memory_set", { text: "yes", extra: true }));
+  invalid(store.apply(REPO, "aril_memory_set", {}));
+  assert.deepEqual(set("a".repeat(6001)), { ok: false, error: "limit" });
+  const first = set("- Docs in English.\r\n- One owner page per subject.\tTabs are fine.");
+  assert.deepEqual(first, { ok: true, memory: { text: "- Docs in English.\n- One owner page per subject.\tTabs are fine.", previous: "", updatedAt: 1700000000000, updatedBy: "owner" } });
+  assert.deepEqual(Object.keys(first).sort(), ["memory", "ok"]);
+  assert.equal(set("b".repeat(6000)).ok, true, "6,000 characters fit");
+  assert.deepEqual(store.readBoard(REPO).aril.memory, { text: "b".repeat(6000), previous: "- Docs in English.\n- One owner page per subject.\tTabs are fine.", updatedAt: 1700000000000, updatedBy: "owner" });
+  assert.equal(set("b".repeat(6000)).memory.previous.startsWith("- Docs"), true, "the same text is not a change");
+  assert.deepEqual(store.readBoard(OTHER).aril.memory, EMPTY);
+  assert.equal(set("- Other repository.", OTHER).ok, true);
+  assert.equal(store.readBoard(REPO).aril.memory.text, "b".repeat(6000));
+  assert.equal(set("").ok, true, "the owner may empty it");
+  assert.equal(store.readBoard(REPO).aril.memory.text, "");
+  assert.deepEqual(Object.keys(store.readBoard(REPO).aril.memory).sort(), ["previous", "text", "updatedAt", "updatedBy"]);
+  for (const retired of ["aril_memory_add", "aril_memory_update", "aril_memory_remove"]) assert.deepEqual(store.apply(REPO, retired, { text: "x" }), { ok: false, error: "unsupported" }, retired);
 });
 
-test("opening an existing version-one store adds both tables without losing tasks", (t) => {
+test("Aril's update is applied to the text as it is, written as Aril's, and bounded: too long, a line that is not there, and other shapes change nothing", (t) => {
+  const { store, directory } = setup(t);
+  const update = (payload, repo = REPO) => store.updateArilMemory(repo, payload);
+  assert.deepEqual(update({ add: ["Docs in English."], remove: [] }), { ok: true, added: 1, removed: 0 }, "the first line starts a text");
+  assert.deepEqual(store.readBoard(REPO).aril.memory, { text: "- Docs in English.", previous: "", updatedAt: 1700000000000, updatedBy: "aril" });
+  assert.equal(store.apply(REPO, "aril_memory_set", { text: "- Docs in English.\nFree words." }).ok, true);
+  assert.equal(store.readBoard(REPO).aril.memory.updatedBy, "owner");
+  assert.deepEqual(update({ add: ["Plans merge at once."], remove: ["Docs in English."] }), { ok: true, added: 1, removed: 1 });
+  assert.deepEqual(store.readBoard(REPO).aril.memory, { text: "Free words.\n- Plans merge at once.", previous: "- Docs in English.\nFree words.", updatedAt: 1700000000000, updatedBy: "aril" });
+  assert.deepEqual(update({ add: ["Plans merge at once."], remove: [] }), { ok: true, added: 0, removed: 0 }, "nothing changes");
+  assert.deepEqual(update({ add: [], remove: ["A line that is not there."] }), { ok: false, error: "not_found" });
+  for (const bad of [{}, { add: [], remove: [] }, { add: ["x".repeat(301)], remove: [] }, { add: ["a\nb"], remove: [] }, { add: Array(11).fill("x"), remove: [] }, { add: ["x"], remove: [], scope: "owner" }, { add: "x", remove: [] }]) invalid(update(bad));
+  assert.equal(store.apply(REPO, "aril_memory_set", { text: Array.from({ length: 20 }, () => `- ${"x".repeat(297)}`).join("\n") }).ok, true);
+  assert.deepEqual(update({ add: ["y".repeat(300)], remove: [] }), { ok: false, error: "limit" }, "an update that would pass 6,000 characters changes nothing");
+  assert.equal(store.readBoard(REPO).aril.memory.text.length, 5999);
+  assert.deepEqual(store.readBoard(OTHER).aril.memory, EMPTY, "another repository is untouched");
+  assert.deepEqual(update({ add: ["x"], remove: [] }, "not-a-repository"), { ok: false, error: "invalid" });
+  void directory;
+});
+
+test("opening an existing version-one store adds the settings and memory tables without losing tasks", (t) => {
   const { store, directory } = setup(t);
   store.apply(REPO, "create", { text: "Existing" });
   store.close();
   const database = new DatabaseSync(path.join(directory, "tasks.sqlite"));
-  database.exec("DROP TABLE IF EXISTS aril_settings; DROP TABLE IF EXISTS aril_memory;");
+  database.exec("DROP TABLE IF EXISTS aril_settings; DROP TABLE IF EXISTS aril_memory; DROP TABLE IF EXISTS aril_memory_text;");
   database.close();
   const reopened = openTaskStore({ directory });
   try {
     assert.equal(reopened.readBoard(REPO).tasks[0].text, "Existing");
-    assert.deepEqual(reopened.readBoard(REPO).aril, { settings: { ...defaults(), settledAt: null }, memory: [], grant: null });
-    assert.equal(reopened.apply(REPO, "aril_memory_add", { text: "New" }).ok, true);
+    assert.deepEqual(reopened.readBoard(REPO).aril, { settings: { ...defaults(), settledAt: null }, memory: EMPTY, grant: null });
+    assert.equal(reopened.apply(REPO, "aril_memory_set", { text: "- New" }).ok, true);
     const inspect = new DatabaseSync(path.join(directory, "tasks.sqlite"));
     try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, "1"); } finally { inspect.close(); }
   } finally { reopened.close(); }
 });
 
-test("memory updates keep creation time and survive reopening in original creation order", (t) => {
+test("the older memory lines become each repository's text once, oldest first, and stay readable until the text is written", (t) => {
   const { store, directory } = setup(t);
+  store.apply(REPO, "create", { text: "Existing" });
   store.close();
-  let at = 1700000000000;
-  const timed = openTaskStore({ directory, now: () => at });
+  const file = path.join(directory, "tasks.sqlite");
+  const insert = (database, repo, text, created, updated = created) => database.prepare("INSERT INTO aril_memory (repository_id, text, created_at, updated_at) VALUES (?, ?, ?, ?)").run(repo, text, created, updated);
+  let database = new DatabaseSync(file);
+  insert(database, REPO, "Second line.", 2000, 5000);
+  insert(database, REPO, "First line.", 1000);
+  insert(database, REPO, "Third line.", 3000);
+  insert(database, OTHER, "Other repository.", 1500);
+  // The text cannot be written: the lines stay where they are and are read as the memory, so nothing is lost while the migration cannot finish.
+  database.exec("CREATE TRIGGER block_memory_text BEFORE INSERT ON aril_memory_text BEGIN SELECT RAISE(ABORT, 'blocked'); END;");
+  database.close();
+  let blocked = openTaskStore({ directory });
   try {
-    const first = timed.apply(REPO, "aril_memory_add", { text: "First" }).entry;
-    at += 1000;
-    const second = timed.apply(REPO, "aril_memory_add", { text: "Second" }).entry;
-    at += 1000;
-    assert.deepEqual(timed.apply(REPO, "aril_memory_update", { id: first.id, text: "Updated" }).entry,
-      { ...first, text: "Updated", updatedAt: at });
-    timed.close();
-    const reopened = openTaskStore({ directory });
-    try { assert.deepEqual(reopened.readBoard(REPO).aril.memory, [{ ...first, text: "Updated", updatedAt: at }, second]); } finally { reopened.close(); }
-  } finally { timed.close(); }
+    assert.deepEqual(blocked.readBoard(REPO).aril.memory, { text: "- First line.\n- Second line.\n- Third line.", previous: null, updatedAt: 5000, updatedBy: "owner" });
+    assert.equal(blocked.readBoard(OTHER).aril.memory.text, "- Other repository.");
+  } finally { blocked.close(); }
+  database = new DatabaseSync(file);
+  assert.equal(database.prepare("SELECT COUNT(*) AS n FROM aril_memory").get().n, 4, "the lines are still there");
+  assert.equal(database.prepare("SELECT COUNT(*) AS n FROM aril_memory_text").get().n, 0);
+  database.exec("DROP TRIGGER block_memory_text");
+  database.close();
+  const migrated = openTaskStore({ directory });
+  try {
+    assert.deepEqual(migrated.readBoard(REPO).aril.memory, { text: "- First line.\n- Second line.\n- Third line.", previous: null, updatedAt: 5000, updatedBy: "owner" });
+    assert.equal(migrated.readBoard(OTHER).aril.memory.text, "- Other repository.");
+  } finally { migrated.close(); }
+  database = new DatabaseSync(file);
+  try {
+    assert.equal(database.prepare("SELECT COUNT(*) AS n FROM aril_memory").get().n, 0, "the text was written and the lines went in the same transaction");
+    assert.equal(database.prepare("SELECT COUNT(*) AS n FROM aril_memory_text").get().n, 2);
+  } finally { database.close(); }
+  // Opening again migrates nothing and changes nothing.
+  const again = openTaskStore({ directory });
+  try { assert.equal(again.readBoard(REPO).aril.memory.text, "- First line.\n- Second line.\n- Third line."); } finally { again.close(); }
+});
+
+test("lines that do not fit one text become the newest lines that fit, and the whole is kept as the text before", (t) => {
+  const { store, directory } = setup(t);
+  store.apply(REPO, "create", { text: "Existing" });
+  store.close();
+  let database = new DatabaseSync(path.join(directory, "tasks.sqlite"));
+  for (let index = 0; index < 100; index += 1) database.prepare("INSERT INTO aril_memory (repository_id, text, created_at, updated_at) VALUES (?, ?, ?, ?)").run(REPO, `${index}`.padEnd(300, "x"), index, index);
+  database.close();
+  const reopened = openTaskStore({ directory });
+  try {
+    const memory = reopened.readBoard(REPO).aril.memory;
+    assert.ok(memory.text.length <= 6000);
+    assert.equal(memory.previous.split("\n").length, 100, "nothing is lost");
+    assert.ok(memory.text.endsWith(memory.previous.split("\n").at(-1)), "the newest line is kept");
+    assert.equal(memory.updatedBy, "owner");
+  } finally { reopened.close(); }
 });

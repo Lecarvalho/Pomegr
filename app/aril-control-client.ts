@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import type { ArilControlOperationName, ArilSwitchState, OwnerMemoryEntry, ThreadFlushed, ThreadSpace } from "../shared/agent-chat-contract";
+import { THREAD_LIMIT_MEGABYTES, type ArilControlOperationName, type ArilSwitchState, type OwnerMemory, type ThreadFlushed, type ThreadSpace } from "../shared/agent-chat-contract";
 import { useClientAccess } from "./hooks/ClientAccessContext";
 
-// Client of Aril's own controls: the On/Off switch, the owner's memory, and the space each thread takes. The desktop app owns them: this
+// Client of Aril's own controls: the On/Off switch, the owner's memory, the space each thread takes, and its limit. The desktop app owns them: this
 // module only asks, through the desktop bridge in the app window or through the paired-device route on a phone. Nothing is kept in browser storage.
 
 export type ArilControlAvailability = "pending" | "desktop" | "paired" | "absent";
@@ -106,72 +106,72 @@ export function useArilSwitch(active = true): ArilSwitchControl {
   return { availability, state, busy, failed, canTurnOn: availability === "desktop" || (availability === "paired" && state?.pairedOn === true), setOn, setPairedOn };
 }
 
-const entryOf = (value: unknown): OwnerMemoryEntry | null => {
-  const entry = record(value);
-  return entry && typeof entry.id === "number" && typeof entry.text === "string" && typeof entry.createdAt === "number" && typeof entry.updatedAt === "number"
-    ? { id: entry.id, text: entry.text, createdAt: entry.createdAt, updatedAt: entry.updatedAt } : null;
+const memoryOf = (value: unknown): OwnerMemory | null => {
+  const memory = record(value);
+  if (!memory || typeof memory.text !== "string" || !(memory.previous === null || typeof memory.previous === "string")) return null;
+  const updatedBy = memory.updatedBy === "owner" || memory.updatedBy === "aril" ? memory.updatedBy : memory.updatedBy === null ? null : undefined;
+  if (updatedBy === undefined || !(memory.updatedAt === null || typeof memory.updatedAt === "number")) return null;
+  return { text: memory.text, previous: memory.previous, updatedAt: memory.updatedAt, updatedBy };
 };
 
 export type OwnerMemoryControl = {
   availability: ArilControlAvailability;
-  /** Oldest first; null until the desktop has answered. */
-  entries: OwnerMemoryEntry[] | null;
+  /** Null until the desktop has answered. */
+  memory: OwnerMemory | null;
   /** Only the desktop app edits the owner's memory; a paired device reads it. */
   editable: boolean;
   busy: boolean;
-  add(text: string): Promise<boolean>;
-  update(id: number, text: string): Promise<boolean>;
-  remove(id: number): Promise<boolean>;
+  /** Replaces the text whole. Answers whether the desktop kept it. */
+  set(text: string): Promise<boolean>;
 };
 
 /** The owner's memory: read once when the view opens, and again after each change the desktop accepted. */
 export function useOwnerMemory(): OwnerMemoryControl {
   const availability = useArilControlAvailability();
-  const [entries, setEntries] = useState<OwnerMemoryEntry[] | null>(null);
+  const [memory, setMemory] = useState<OwnerMemory | null>(null);
   const [busy, setBusy] = useState(false);
-  // Each change the desktop accepted asks for the lines again, through `revision`.
-  const [revision, setRevision] = useState(0);
   const ready = reachable(availability);
   useEffect(() => {
     if (!ready) return undefined;
     let live = true;
     void request("owner_memory", {}).then((answer) => {
-      const list = answer?.ok === true && Array.isArray(answer.entries) ? answer.entries.map(entryOf) : null;
-      if (live && list && list.every((entry) => entry !== null)) setEntries(list as OwnerMemoryEntry[]);
+      const read = answer?.ok === true ? memoryOf(answer.memory) : null;
+      if (live && read) setMemory(read);
     });
     return () => { live = false; };
-  }, [ready, revision]);
-  const change = useCallback(async (operation: ArilControlOperationName, payload: Json) => {
+  }, [ready]);
+  const set = useCallback(async (text: string) => {
     setBusy(true);
     try {
-      const ok = (await request(operation, payload))?.ok === true;
-      if (ok) setRevision((current) => current + 1);
-      return ok;
+      const answer = await request("owner_memory_set", { text });
+      const kept = answer?.ok === true ? memoryOf(answer.memory) : null;
+      if (kept) setMemory(kept);
+      return kept !== null;
     } finally { setBusy(false); }
   }, []);
-  return {
-    availability, entries, editable: availability === "desktop", busy,
-    add: (text) => change("owner_memory_add", { text }),
-    update: (id, text) => change("owner_memory_update", { id, text }),
-    remove: (id) => change("owner_memory_remove", { id }),
-  };
+  return { availability, memory, editable: availability === "desktop", busy, set };
 }
 
 export type ThreadSpaceControl = {
   /** Null until the desktop has answered. */
   repositories: ThreadSpace[] | null;
+  /** "Flush oldest at" in megabytes (0 is Never); null until the desktop has answered. */
+  limit: number | null;
   /** The repository being flushed, if any. */
   flushing: string | null;
   /** Removes the oldest half of a thread's messages and answers what it removed, or why it did not: `busy` while Aril answers in that repository. */
   flush(repositoryId: string): Promise<{ flushed: ThreadFlushed } | { error: "busy" | "failed" }>;
+  /** Sets "Flush oldest at". Answers whether the desktop kept it. */
+  setLimit(megabytes: number): Promise<boolean>;
 };
 
-/** What each thread takes on disk, and its flush. Drawn only by the desktop app. */
+/** What each thread takes on disk, its flush, and the limit that flushes a thread by itself. Drawn only by the desktop app. */
 export function useThreadSpace(): ThreadSpaceControl {
   const availability = useArilControlAvailability();
   const [repositories, setRepositories] = useState<ThreadSpace[] | null>(null);
+  const [limit, setLimitState] = useState<number | null>(null);
   const [flushing, setFlushing] = useState<string | null>(null);
-  // The sizes are read when the section opens, and again after each flush, through `revision`.
+  // The sizes are read when the section opens, and again after each flush and each new limit, through `revision`.
   const [revision, setRevision] = useState(0);
   const desktop = availability === "desktop";
   useEffect(() => {
@@ -179,8 +179,10 @@ export function useThreadSpace(): ThreadSpaceControl {
     let live = true;
     void request("thread_space", {}).then((answer) => {
       const list = answer?.ok === true && Array.isArray(answer.repositories) ? answer.repositories.map(record) : null;
-      if (live && list && list.every((entry) => entry && typeof entry.repositoryId === "string" && typeof entry.bytes === "number" && typeof entry.messages === "number")) {
+      if (live && list && typeof answer?.limit === "number" && THREAD_LIMIT_MEGABYTES.includes(answer.limit)
+        && list.every((entry) => entry && typeof entry.repositoryId === "string" && typeof entry.bytes === "number" && typeof entry.messages === "number")) {
         setRepositories((list as Json[]).map((entry) => ({ repositoryId: entry.repositoryId as string, bytes: entry.bytes as number, messages: entry.messages as number })));
+        setLimitState(answer.limit);
       }
     });
     return () => { live = false; };
@@ -194,5 +196,12 @@ export function useThreadSpace(): ThreadSpaceControl {
         ? { flushed: { messages: answer.messages, conversations: answer.conversations, images: answer.images, freed: answer.freed } } : { error: answer?.error === "busy" ? "busy" as const : "failed" as const };
     } finally { setFlushing(null); }
   }, []);
-  return { repositories, flushing, flush };
+  // A new limit may flush a thread that is over it, so the sizes are read again a moment later as well.
+  const setLimit = useCallback(async (megabytes: number) => {
+    const answer = await request("thread_limit_set", { megabytes });
+    const kept = answer?.ok === true && answer.limit === megabytes;
+    if (kept) { setLimitState(megabytes); setRevision((current) => current + 1); }
+    return kept;
+  }, []);
+  return { repositories, limit, flushing, flush, setLimit };
 }

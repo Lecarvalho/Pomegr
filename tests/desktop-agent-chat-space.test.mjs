@@ -9,6 +9,7 @@ import test from "node:test";
 
 import { createAgentChatImages } from "../desktop/runtime/agent-chat-images.mjs";
 import { createArilControl } from "../desktop/runtime/agent-chat-aril.mjs";
+import { createArilSwitch } from "../desktop/runtime/aril-switch.mjs";
 import { AGENT_CHAT_DIRECTORY, createAgentChatStore, nextMessageId } from "../desktop/runtime/agent-chat-store.mjs";
 import { createAgentChatSummaries } from "../desktop/runtime/agent-chat-summary.mjs";
 import { createThreadSpace } from "../desktop/runtime/agent-chat-space.mjs";
@@ -212,7 +213,7 @@ test("two flushes at once run one, and an odd count rounds down", async (context
 test("the controls serve the sizes and the flush to the desktop window only", async (context) => {
   const h = await fixture(context);
   await conversation(h, { start: 0, count: 6 });
-  const control = createArilControl({ dataRoot: h.dataRoot, store: h.store, images: h.images });
+  const control = createArilControl({ dataRoot: h.dataRoot, store: h.store, images: h.images, arilSwitch: createArilSwitch({ initial: { on: true } }) });
   const desktop = { event: {} };
   assert.deepEqual(await control.handlers.thread_space({}, { paired: true }), { ok: false, error: "desktop_only" });
   assert.deepEqual(await control.handlers.thread_flush({ repositoryId }, { paired: true }), { ok: false, error: "desktop_only" });

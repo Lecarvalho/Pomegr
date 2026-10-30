@@ -1,11 +1,11 @@
 import { validModelIdentifier, validModelLabel } from "../../shared/model-notification.mjs";
 import { agentBoardRepository } from "./agent-board-repository.mjs";
-import { serveArilActionRoute, serveArilRework, serveGrantFollowUps, serveGrantRunner } from "./task-aril-routes.mjs";
+import { serveArilActionRoute, serveArilMemoryUpdate, serveArilRework, serveGrantFollowUps, serveGrantRunner } from "./task-aril-routes.mjs";
 // The serving layer may not import `server/tasks/` (dependency-cruiser `server-serving-layer`), so the fixed
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete",
   "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue",
-  "session_assign", "session_unassign", "after_set", "rework_declare", "rework_remove", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop",
+  "session_assign", "session_unassign", "after_set", "rework_declare", "rework_remove", "aril_settings_set", "aril_memory_set", "grant_start", "grant_stop",
 ]);
 export const TASK_ACTION_PATH_PREFIX = "/internal/tasks/";
 // The renderer caps the action payload at 16 KiB; the request adds only the fixed envelope around it.
@@ -31,6 +31,9 @@ export const AGENT_SESSION_REF_PATTERN = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-
 const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 export { agentBoardRepository };
 const SERVED_READINESS = new Set(["ready", "loading", "unavailable"]);
+// A repository's memory as the board serves it: its text, the text before the last change, and who changed it when (null while it never was).
+const isArilMemory = (memory) => isPlainObject(memory) && typeof memory.text === "string" && (memory.previous === null || typeof memory.previous === "string")
+  && (memory.updatedAt === null || Number.isSafeInteger(memory.updatedAt)) && [null, "owner", "aril"].includes(memory.updatedBy);
 const RUN_MODEL_LIMIT = 64;
 export const GATE_THRESHOLDS = Object.freeze([70, 85, 95]);
 export const GATE_REASONS = Object.freeze([
@@ -136,7 +139,7 @@ function projectBoard(repositoryId, board, runModels) {
   if (!board || typeof board !== "object" || !SERVED_READINESS.has(board.readiness)
     || !Array.isArray(board.columns) || !Array.isArray(board.features) || !Array.isArray(board.tasks)
     || !board.queue || typeof board.queue !== "object" || !Array.isArray(board.queue.order)
-    || (board.readiness === "ready" && (!isPlainObject(board.aril) || !isPlainObject(board.aril.settings) || !Array.isArray(board.aril.memory)))) {
+    || (board.readiness === "ready" && (!isPlainObject(board.aril) || !isPlainObject(board.aril.settings) || !isArilMemory(board.aril.memory)))) {
     throw new TypeError("Task board unavailable");
   }
   const gates = projectGates(board.queue.gates); const schedule = projectSchedule(board.queue.schedule); const waits = projectWaits(board.queue.waits);
@@ -352,7 +355,7 @@ function sessionOfRepository(resolveSession, sessionId, repositoryId) {
 // `POST /internal/tasks/<action>`.
 export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSession = null, resolveSessionFacts = null, resolveGateFacts = null, resolveUsage = null, resolveCheckFacts = null, readCheckFacts = null, resolveOutcomeFacts = null, resolvePullRequestFacts = null, acceptArilFollowUp = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
-  if (action !== "aril-declare-rework" && !TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action) && !WORKTREE_ACTIONS.includes(action) && !GRANT_ACTIONS.includes(action) && !FOLLOW_UP_ACTIONS.includes(action)) {
+  if (action !== "aril-declare-rework" && action !== "aril-memory-update" && !TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action) && !WORKTREE_ACTIONS.includes(action) && !GRANT_ACTIONS.includes(action) && !FOLLOW_UP_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
     return;
   }
@@ -384,6 +387,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     return;
   }
   if (FOLLOW_UP_ACTIONS.includes(action)) return serveGrantFollowUps({ request, response, taskStore, acceptArilFollowUp, action, body });
+  if (action === "aril-memory-update") return serveArilMemoryUpdate({ request, response, taskStore, body });
   if (action === "aril-declare-rework" || GRANT_ACTIONS.includes(action)) return action === "aril-declare-rework" ? serveArilRework({ request, response, taskStore, body }) : serveGrantRunner({ request, response, taskStore, resolveGateFacts, resolveUsage, resolvePullRequestFacts, readCheckFacts: readCheckFacts ?? resolveCheckFacts, resolveOutcomeFacts, action, body });
   if (action === "queue-next") {
     serveQueueNext({ response, taskStore, resolveGateFacts, body });
