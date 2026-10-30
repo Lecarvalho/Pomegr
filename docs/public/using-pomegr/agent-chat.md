@@ -25,7 +25,7 @@ you need not ask what happened. Each one is one or two sentences: the task IDs, 
 did, and what needs you, such as a refused merge. Actions close together are one follow-up. Each
 follow-up is also a notification; clicking it opens the chat at that follow-up. A follow-up is a
 fixed line that Pomegr writes from the task log: no model runs, and it proposes nothing. Turn
-them off with **Send follow-ups** in Aril settings.
+them off with **Send follow-ups** in the **Aril** section of Settings.
 
 ## Before you start
 
@@ -158,7 +158,7 @@ that used a ready process reads "Started 0.1s (warm)". Codex starts only when yo
 ### Let Jev choose a lower effort (optional)
 
 Replies like "thanks" or a yes or no do not need much thinking. If you have a Jev key, enter it
-under **Effort routing** in **Aril settings** in the desktop app. Then, for each message, Pomegr
+under **Effort routing** in the **Aril** section of **Settings** in the desktop app. Then, for each message, Pomegr
 asks Jev how much effort the reply needs, while it prepares the answer. The **Effort** you chose
 stays the highest: Jev can lower it for a simple reply and never raises it, and it never changes
 the provider or the model. If Jev does not answer within 1.5 seconds, or fails, your effort is used.
@@ -309,8 +309,8 @@ A kept worktree does not stop the next row. Pomegr never forces a removal.
 Ask Aril to settle this repository's actions, limits, work rules, merge settings, or
 reviewer choice, or to remember a working preference. Aril proposes each change, and you
 select **Apply changes** to save it. Aril never changes settings or memory by itself. Only
-you can allow paired devices to manage these settings, in the desktop app. The panel is in
-[Aril settings](tasks.md#aril-settings), where you can also edit or delete memory entries.
+you can allow paired devices to manage these settings, in the desktop app. They are in the
+**Aril** section of Settings (see [Aril settings](tasks.md#aril-settings)), where you can also edit or delete memory entries.
 
 Aril does not ask again what a setting or memory entry already answers. It asks again when
 you say that a rule changed, or when a workflow file of the repository changed after you

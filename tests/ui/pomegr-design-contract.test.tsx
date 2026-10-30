@@ -687,7 +687,9 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/issue chip\*\* is the same outline `\.commandChip` with the class `taskIssueChip`/);
     expect(designContract).toMatch(/the number follows the ID as plain muted `--text-xs` data-font text/);
     expect(designContract).toMatch(/^## GitHub$/m);
-    expect(designContract).toMatch(/\*\*Providers\*\*, \*\*GitHub\*\*, \*\*Storage\*\*, \*\*Data display\*\*/);
+    expect(designContract).toMatch(/\*\*Providers\*\*, \*\*GitHub\*\*, \*\*Aril\*\*, \*\*Storage\*\*, \*\*Data display\*\*/);
+    expect(designContract).toMatch(/^## Aril$/m);
+    expect(designContract).toMatch(/Effort routing section, its key field, and its state are drawn only by the desktop app/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx"), "utf8");
     expect(sample).toMatch(/Task modal, promote issue"/);
     expect(sample).toMatch(/Task modal, promote issue, outside contributor and changed/);

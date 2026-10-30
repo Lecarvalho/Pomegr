@@ -275,7 +275,7 @@ The head actions appear in this order:
 - The threshold and the time of that line use the data font and ink. The stop clause shows only when a stop time is set.
 - In the desktop app only, **Scorecard** comes just before **Queue settings**, in the same Quiet role. It opens the [Scorecard panel](#scorecard-panel).
 - In the desktop app and on a paired device, **Log** comes before **Scorecard** when present, otherwise before **Queue settings**, in the same Quiet role and sizes, with `aria-haspopup="dialog"`, and opens the [Task log panel](#task-log-panel).
-- Every client showing the board has **Aril settings** immediately before **Log**, when present, with the same Quiet role, sizes, and `aria-haspopup="dialog"`.
+- Every client showing the board has **Aril settings** immediately before **Log**, when present. It is a link in the same Quiet role, sizes, and underline, with no `aria-haspopup`, and it opens the [Aril section of Settings](settings.md#aril) for the board's repository. The Board has no Aril dialog.
 - **Queue settings** (`.taskQueueSettingsAction`) is last in the strip, in any client. It is the [Quiet](../../../DESIGN.md#buttons) role, 32px high, 12px/500 ink, underlined.
 - It is 44px high on phone and coarse pointers.
 - It has `aria-haspopup="dialog"` and opens the [Queue settings panel](#queue-settings-panel).
@@ -591,11 +591,13 @@ Each row below the tags shows only when it is set, in this order:
 - **When the queue blocks** holds a two-item list and one closing line. The state words Stalled and Blocked by agent carry the error color. The closing line says that Needs review, in amber, does not block the queue.
 - The panel reads only what the board already serves. Without the desktop app or a paired device, it is read-only.
 
-### Aril settings panel
+### Aril settings section
 
-- **Aril settings** opens the Queue settings frame, titled **Aril settings**.
-- Focus starts on **Close** and returns to **Aril settings** when the panel closes.
-- **Cancel**, **Close**, Escape, and a click outside close the panel.
+- The section lives in Settings (`app/settings/ArilSettings.tsx`); its place, repository choice, and states are in [Settings design](settings.md#aril). It was the Queue settings side panel opened from the Board until 2026-10-29.
+- Its body keeps the Queue settings content without the side panel's frame (`.taskQueueSettings.arilSettingsBody`): the same sections, rows, fields, and button roles, in a column of at most 560px.
+- It has no heading bar, **Close**, **Cancel**, or Escape. The footer holds **Discard changes** (Quiet, unavailable until a field changed) and **Save** (Primary).
+- **Discard changes** puts every field back to the saved settings.
+- When the saved settings change under an open draft, a field the owner has not touched follows the saved value and a field the owner changed keeps the owner's value.
 - The sections are **Grant**, **Actions under a grant**, **Limits**, **Work rules**, **Reviewer**, **Paired devices**, and **Memory**.
 - Five action switches carry the caption “Aril uses these only while a grant you start is active.”
 - The **Merge method** field is a `CommandSelect` with **Repository default**, **Squash**, **Merge commit**, and **Rebase**; paired read-only clients see its saved value as text.
@@ -630,7 +632,7 @@ Each row below the tags shows only when it is set, in this order:
 - **Add entry** is unavailable when memory has 100 entries.
 - A failed memory action preserves the draft and shows “Memory could not be saved. Try again.”.
 - Read-only clients have no Save, memory edit, delete, or add actions.
-- **Effort routing** is the last section, drawn only by the desktop app: a paired device shows no heading, no state, and no field.
+- **Effort routing** is the last section, drawn only by the desktop app: a paired device shows no heading, no state, and no field. The key belongs to the app, not to the repository chosen above it.
 - Its caption reads “With a Jev key, Aril may lower the effort you chose for simple replies, never raise it. Jev sees your message and the end of Aril's previous answer.”
 - A second caption says “Key set”, “No key set”, “Checking…” while the state is read, or “This computer cannot store the key safely.” with no field.
 - The key field is a masked single-line field of at most 512 characters, labeled **Jev key**, with browser autofill off, in the panel's usual field style.

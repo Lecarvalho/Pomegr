@@ -326,7 +326,7 @@ Codex runs start as they always did. A `warm` request for Codex starts nothing, 
 
 ### Effort routing
 
-An option that is off until the owner sets a Jev key in the Aril settings. Jev is a model service the owner holds the key to. On each owner message, desktop main asks it how much effort Aril's reply needs, beside the reads of the [preparation](#preparation), and the run may use a lower effort than the owner chose in the composer. The owner's effort is a ceiling: Jev never raises it and never changes the provider or the model.
+An option that is off until the owner sets a Jev key in the Aril section of Settings, in the desktop app. Jev is a model service the owner holds the key to. On each owner message, desktop main asks it how much effort Aril's reply needs, beside the reads of the [preparation](#preparation), and the run may use a lower effort than the owner chose in the composer. The owner's effort is a ceiling: Jev never raises it and never changes the provider or the model.
 
 **The probe.** On 2026-10-29, ten runs of Claude Code 2.1.312 on `haiku` in `--input-format stream-json`, each ended by closing stdin after its `result` and deleted afterwards, asked whether a waiting run takes a new effort before its first message:
 

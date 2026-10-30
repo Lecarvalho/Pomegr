@@ -373,9 +373,10 @@ describe("task board", () => {
     render(<TaskBoardView board={board({ tasks: [task(1, { text: "<img src=x onerror=alert(1)> **bold**" })] })} />);
     expect(screen.getByText("<img src=x onerror=alert(1)> **bold**")).toBeInTheDocument();
     expect(document.querySelector("img")).toBeNull();
-    // The one control opens Queue settings, which a browser reads and cannot change.
-    expect(screen.queryAllByRole("button").map((button) => button.textContent)).toEqual(["Aril settings", "Queue settings"]);
-    expect(screen.queryAllByRole("link")).toEqual([]);
+    // The one control opens Queue settings, which a browser reads and cannot change. Aril settings are a section of Settings, reached by a link.
+    expect(screen.queryAllByRole("button").map((button) => button.textContent)).toEqual(["Queue settings"]);
+    expect(screen.queryAllByRole("link").map((link) => link.textContent)).toEqual(["Aril settings"]);
+    expect(screen.getByRole("link", { name: "Aril settings" })).toHaveAttribute("href", expect.stringMatching(/^\/settings\?section=aril&repository=repo-[a-f0-9]{24}$/u));
     expect(document.querySelector("[draggable]")).toBeNull();
   });
 

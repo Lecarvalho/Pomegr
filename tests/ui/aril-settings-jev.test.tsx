@@ -3,10 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArilSettings, TaskBoard } from "../../shared/task-contract";
 import { BOARD_RUNNING } from "../../app/components/design-system/DesignSystemTaskSampleData";
-import { TaskBoardView } from "../../app/components/tasks/TaskBoardView";
+import { ArilSettingsSection } from "../../app/settings/ArilSettings";
 
-const { refresh, access } = vi.hoisted(() => ({ refresh: vi.fn(async () => {}), access: { mode: "local" } }));
-vi.mock("../../app/tasks-store", () => ({ useTasks: () => ({ refresh }) }));
+const { refresh, access, current } = vi.hoisted(() => ({ refresh: vi.fn(async () => {}), access: { mode: "local" }, current: { board: null as unknown as TaskBoard } }));
+vi.mock("../../app/tasks-store", () => ({ useTasks: () => ({ board: current.board, refresh }) }));
+vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: { repositories: [{ id: current.board.repositoryId, displayName: "Pomegr" }] }, loading: false }) }));
 vi.mock("../../app/hooks/ClientAccessContext", () => ({ useClientAccess: () => access, clientAccessMode: () => access.mode }));
 
 const SECRET = "jev-secret-key-0123456789";
@@ -38,9 +39,9 @@ beforeEach(() => {
 afterEach(() => { cleanup(); setBridge(undefined); vi.clearAllMocks(); });
 
 async function open() {
-  render(<TaskBoardView board={board} readTaskLog={async () => ({ ok: false })} />);
-  await userEvent.click(screen.getByRole("button", { name: "Aril settings" }));
-  return screen.getByRole("dialog");
+  current.board = board;
+  render(<ArilSettingsSection />);
+  return screen.getByRole("region", { name: "Aril" });
 }
 const field = (dialog: HTMLElement) => within(dialog).getByLabelText("Jev key") as HTMLInputElement;
 
@@ -104,7 +105,7 @@ describe("Aril settings: effort routing key", () => {
   it("is not drawn on a paired device, which has no bridge to the key, nor where the bridge is missing", async () => {
     access.mode = "lan"; board.aril!.settings.pairedDevices = true; setBridge(undefined);
     const dialog = await open();
-    expect(within(dialog).getByRole("heading", { name: "Aril settings" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "Aril", level: 2 })).toBeInTheDocument();
     expect(within(dialog).queryByRole("heading", { name: "Effort routing" })).toBeNull();
     expect(within(dialog).queryByText(/Jev/u)).toBeNull();
     expect(agentChatJev).not.toHaveBeenCalled();

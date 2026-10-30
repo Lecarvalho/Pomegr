@@ -3,11 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArilGrant, ArilSettings, TaskBoard } from "../../shared/task-contract";
 import { BOARD_RUNNING } from "../../app/components/design-system/DesignSystemTaskSampleData";
-import { TaskBoardView } from "../../app/components/tasks/TaskBoardView";
+import { ArilSettingsSection } from "../../app/settings/ArilSettings";
 import { timeOfDay } from "../../app/components/tasks/task-schedule";
 
-const { refresh, access } = vi.hoisted(() => ({ refresh: vi.fn(async () => {}), access: { mode: "local" } }));
-vi.mock("../../app/tasks-store", () => ({ useTasks: () => ({ refresh }) }));
+const { refresh, access, current } = vi.hoisted(() => ({ refresh: vi.fn(async () => {}), access: { mode: "local" }, current: { board: null as unknown as TaskBoard, boards: {} as Record<string, TaskBoard>, names: null as Record<string, string> | null } }));
+vi.mock("../../app/tasks-store", () => ({ useTasks: (id: string) => ({ board: current.boards[id] ?? current.board, refresh }) }));
+vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: { repositories: Object.entries(current.names ?? { [current.board.repositoryId]: "Pomegr" }).map(([id, displayName]) => ({ id, displayName })) }, loading: false }) }));
 vi.mock("../../app/hooks/ClientAccessContext", () => ({ useClientAccess: () => access, clientAccessMode: () => access.mode }));
 const defaults = (): ArilSettings => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false, markDone: false },
@@ -51,7 +52,7 @@ describe("Aril grant controls", () => {
     expect(screen.queryByRole("button", { name: "Start grant" })).toBeNull();
 
     board.aril!.settings.workRules = [{ kind: "plan", value: "docs/plans/next.md" }];
-    view.rerender(<TaskBoardView board={board} readTaskLog={async () => ({ ok: false })} />);
+    again(view);
     expect(screen.getByText("Allow starting tasks to use Write tasks from plans.")).toHaveClass("taskGatesCaption");
     expect(screen.queryByRole("button", { name: "Start grant" })).toBeNull();
   });
@@ -65,7 +66,7 @@ describe("Aril grant controls", () => {
     await userEvent.click(start()); expect(taskAction).not.toHaveBeenCalled();
     const confirm = screen.getByText(`Aril will start sessions without asking until ${clockTime(Date.now() + 7200000)} or until you stop it.`).closest("section")!;
     await userEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
-    expect(screen.getByRole("dialog")).toBeInTheDocument(); expect(screen.queryByText(/Aril will start sessions/)).toBeNull();
+    expect(panel()).toBeInTheDocument(); expect(screen.queryByText(/Aril will start sessions/)).toBeNull();
     await userEvent.click(start()); await userEvent.click(start());
     expect(taskAction).toHaveBeenCalledExactlyOnceWith(board.repositoryId, "grant_start", {});
     expect(refresh).toHaveBeenCalled(); vi.restoreAllMocks();
@@ -78,19 +79,17 @@ describe("Aril grant controls", () => {
     await userEvent.click(start()); expect(taskAction).not.toHaveBeenCalled();
     expect(screen.getByText(/Starts tasks and reviews that/)).toBeInTheDocument();
   });
-  it("displays snapshotted counts, stops without confirmation, and updates the strip from the board", async () => {
+  it("displays snapshotted counts, stops without confirmation, and updates from the board", async () => {
     ready(); const grant = active(); board.aril!.grant = grant; board.aril!.settings.limits.tasks = 10;
     const view = await open();
     const summary = screen.getByText(/Active until/);
     expect(summary).toHaveTextContent(`Active until ${clockTime(grant.endsAt)} · 2 of 5 tasks used`);
     expect(summary.querySelectorAll(".taskCapacityValue")).toHaveLength(3);
-    expect(action().previousElementSibling).toHaveTextContent(`Aril grant until ${clockTime(grant.endsAt)}`);
-    expect(action().previousElementSibling?.tagName).toBe("SPAN");
     expect(screen.getByText("Stopping takes effect at once. Running sessions continue.")).toBeInTheDocument();
     const stop = screen.getByRole("button", { name: "Stop grant" }); expect(stop).toHaveClass("commandSecondaryAction");
     await userEvent.click(stop); expect(taskAction).toHaveBeenCalledExactlyOnceWith(board.repositoryId, "grant_stop", {});
     board = { ...board, aril: { ...board.aril!, grant: { ...grant, active: false, endedAt: Date.now(), endReason: "stopped" } } };
-    view.rerender(<TaskBoardView board={board} />);
+    again(view);
     expect(screen.queryByText(/Aril grant until/)).toBeNull(); expect(screen.queryByRole("button", { name: "Stop grant" })).toBeNull();
   });
   it.each([["stopped", "you stopped it"], ["expired", "its time ran out"], ["tasks_used", "it used all its tasks"], ["start_failed", "a start failed"], ["app_restart", "the app restarted"]] as const)("shows the last end reason %s", async (endReason, words) => {
@@ -103,7 +102,7 @@ describe("Aril grant controls", () => {
     const fetcher = vi.fn(async () => ({ json: async () => ({ ok: true }) })); vi.stubGlobal("fetch", fetcher);
     const view = await open(); await userEvent.click(screen.getByRole("button", { name: "Stop grant" }));
     expect(fetcher).toHaveBeenCalledWith("/api/tasks/action", expect.objectContaining({ body: JSON.stringify({ repositoryId: board.repositoryId, action: "grant_stop", payload: {} }) }));
-    board = { ...board, aril: { ...board.aril!, grant: null } }; view.rerender(<TaskBoardView board={board} />);
+    board = { ...board, aril: { ...board.aril!, grant: null } }; again(view);
     expect(screen.queryByRole("button", { name: "Start grant" })).toBeNull();
   });
   it("allows a paired start only with saved paired permission", async () => {
@@ -124,18 +123,20 @@ const taskAction = vi.fn<(repository: string, action: string, payload: unknown) 
 const setBridge = (value: unknown) => { (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = value; };
 beforeEach(() => {
   board = { ...BOARD_RUNNING, aril: { settings: defaults(), memory: [] } };
+  current.names = null; current.boards = {}; window.localStorage.clear();
   access.mode = "local"; setBridge({ taskAction }); taskAction.mockResolvedValue({ ok: true });
 });
 afterEach(() => { setBridge(undefined); vi.clearAllMocks(); vi.unstubAllGlobals(); });
-const action = () => screen.getByRole("button", { name: "Aril settings" });
+const panel = () => screen.getByRole("region", { name: "Aril" });
 const save = () => screen.getByRole("button", { name: "Save" });
 async function open() {
-  const view = render(<TaskBoardView board={board} readTaskLog={async () => ({ ok: false })} />);
-  await userEvent.click(action());
-  return view;
+  current.board = board;
+  return render(<ArilSettingsSection />);
 }
+// The board the store serves changed: the section reads it again.
+const again = (view: ReturnType<typeof render>) => { current.board = board; view.rerender(<ArilSettingsSection />); };
 async function choose(label: string, option: string) {
-  await userEvent.click(within(screen.getByRole("dialog")).getByRole("combobox", { name: label }));
+  await userEvent.click(within(panel()).getByRole("combobox", { name: label }));
   await userEvent.click(screen.getByRole("option", { name: option }));
 }
 
@@ -150,8 +151,7 @@ describe("Aril settings panel", () => {
     expect(taskAction).toHaveBeenLastCalledWith(board.repositoryId, "aril_settings_set", { settings: { mergeMethod: "squash" } });
     for (const [label, method] of [["Merge commit", "merge"], ["Rebase", "rebase"]] as const) {
       board = { ...board, aril: { ...board.aril!, settings: { ...board.aril!.settings, mergeMethod: method === "merge" ? "squash" : "merge" } } };
-      view.rerender(<TaskBoardView board={board} />);
-      await userEvent.click(action());
+      again(view);
       await choose("Merge method", label);
       await userEvent.click(save());
       expect(taskAction).toHaveBeenLastCalledWith(board.repositoryId, "aril_settings_set", { settings: { mergeMethod: method } });
@@ -174,7 +174,7 @@ describe("Aril settings panel", () => {
   });
   it("offers merge mode and branch deletion under Actions and saves each choice", async () => {
     await open();
-    const dialog = screen.getByRole("dialog");
+    const dialog = panel();
     expect(screen.getByRole("combobox", { name: "Merge mode" })).toHaveTextContent("Not set");
     expect(screen.getByRole("combobox", { name: "Delete branch after merge" })).toHaveTextContent("Repository default");
     const names = within(dialog).getAllByRole("combobox").map((box) => box.getAttribute("aria-label"));
@@ -209,31 +209,96 @@ describe("Aril settings panel", () => {
     expect(screen.getByText("Choose how a grant merges first.")).toHaveClass("taskGatesCaption");
     expect(screen.queryByRole("button", { name: "Start grant" })).toBeNull();
     board.aril!.settings.mergeMode = "direct";
-    view.rerender(<TaskBoardView board={board} readTaskLog={async () => ({ ok: false })} />);
+    again(view);
     expect(screen.queryByText("Choose how a grant merges first.")).toBeNull();
     expect(start()).toBeInTheDocument();
   });
-  it("opens the Queue settings frame before Log, renders defaults and returns focus on Cancel and Escape", async () => {
+  it("renders the section with its defaults, the repository, and Discard changes", async () => {
     await open();
-    expect(action()).toHaveClass("commandQuietAction", "taskQueueSettingsAction");
-    expect(action()).toHaveAttribute("aria-haspopup", "dialog");
-    expect(action().nextElementSibling).toHaveTextContent("Log");
-    const dialog = screen.getByRole("dialog", { name: "Aril settings" });
-    expect(dialog).toHaveClass("taskQueueSettingsScrim");
-    expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
-    expect(within(dialog).getAllByRole("switch")).toHaveLength(9);
-    for (const control of within(dialog).getAllByRole("switch")) expect((control as HTMLInputElement).checked).toBe(control === within(dialog).getByRole("switch", { name: "Send follow-ups" }));
+    expect(within(panel()).getByRole("heading", { name: "Aril", level: 2 })).toBeInTheDocument();
+    expect(within(panel()).getByText("Pomegr")).toHaveClass("commandMonoValue");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+    expect(panel().querySelector(".arilSettingsBody")).toHaveClass("taskQueueSettings");
+    const body = panel();
+    expect(within(body).getAllByRole("switch")).toHaveLength(9);
+    for (const control of within(body).getAllByRole("switch")) expect((control as HTMLInputElement).checked).toBe(control === within(body).getByRole("switch", { name: "Send follow-ups" }));
     for (const label of ["Hours", "Tasks", "Tasks at a time", "Send-backs per task", "Usage limit %"]) {
       expect(screen.getByRole("combobox", { name: label })).toHaveTextContent("Not settled: Aril will ask");
     }
     expect(screen.getByText("0 of 100")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(action()).toHaveFocus();
-    await userEvent.click(action());
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
-    expect(screen.queryByRole("dialog")).toBeNull(); expect(action()).toHaveFocus();
+    const discard = screen.getByRole("button", { name: "Discard changes" });
+    expect(discard).toBeDisabled();
+    expect(save()).toBeDisabled();
+    await userEvent.click(screen.getByRole("switch", { name: "Send follow-ups" }));
+    expect(discard).toBeEnabled(); expect(save()).toBeEnabled();
+    await userEvent.click(discard);
+    expect(screen.getByRole("switch", { name: "Send follow-ups" })).toBeChecked();
+    expect(discard).toBeDisabled(); expect(save()).toBeDisabled();
   });
-
+  it("is replaced by the saved settings after a save, so nothing stays unsaved, and keeps an edit the owner is making when the board moves", async () => {
+    const view = await open();
+    await userEvent.click(screen.getByRole("switch", { name: "Send follow-ups" }));
+    await userEvent.type(screen.getByLabelText("Reviewer model"), "gpt-5");
+    await userEvent.click(save());
+    expect(taskAction).toHaveBeenLastCalledWith(board.repositoryId, "aril_settings_set", { settings: { followUps: false, reviewer: { provider: null, model: "gpt-5", differentFromBuilder: false } } });
+    // The board is read again with the saved values: the draft is the saved settings and Save is idle.
+    board = { ...board, aril: { ...board.aril!, settings: { ...board.aril!.settings, followUps: false, reviewer: { provider: null, model: "gpt-5", differentFromBuilder: false } } } };
+    again(view);
+    expect(screen.getByRole("switch", { name: "Send follow-ups" })).not.toBeChecked();
+    expect(screen.getByLabelText("Reviewer model")).toHaveValue("gpt-5");
+    expect(save()).toBeDisabled();
+    // The owner starts another edit, and the saved settings change elsewhere (Aril applied a proposal): the touched field stays the owner's, the rest follows.
+    await userEvent.click(screen.getByRole("switch", { name: "Send follow-ups" }));
+    board = { ...board, aril: { ...board.aril!, settings: { ...board.aril!.settings, limits: { ...board.aril!.settings.limits, hours: 3 } } } };
+    again(view);
+    expect(screen.getByRole("combobox", { name: "Hours" })).toHaveTextContent("3");
+    expect(screen.getByRole("switch", { name: "Send follow-ups" })).toBeChecked();
+    await userEvent.click(save());
+    expect(taskAction).toHaveBeenLastCalledWith(board.repositoryId, "aril_settings_set", { settings: { followUps: true } });
+  });
+  it("chooses the repository the settings belong to, reads each one's own board, remembers the choice, and opens at the one a link names", async () => {
+    const other = "repo-bbbbbbbbbbbbbbbbbbbbbbbb";
+    const second: TaskBoard = { ...BOARD_RUNNING, repositoryId: other, aril: { settings: { ...defaults(), limits: { ...defaults().limits, hours: 7 } }, memory: [{ id: 1, text: "Second repository habit", createdAt: 0, updatedAt: 0 }] } };
+    current.names = { [board.repositoryId]: "Pomegr", [other]: "Clapline" };
+    current.boards = { [board.repositoryId]: board, [other]: second };
+    const view = await open();
+    const select = screen.getByRole("combobox", { name: "Repository" });
+    expect(select).toHaveTextContent("Pomegr");
+    expect(screen.getByText("0 of 100")).toBeInTheDocument();
+    await userEvent.click(select);
+    await userEvent.click(screen.getByRole("option", { name: "Clapline" }));
+    expect(screen.getByRole("combobox", { name: "Repository" })).toHaveTextContent("Clapline");
+    expect(screen.getByRole("combobox", { name: "Hours" })).toHaveTextContent("7");
+    expect(screen.getByText("Second repository habit")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("switch", { name: "Send follow-ups" }));
+    await userEvent.click(save());
+    expect(taskAction).toHaveBeenLastCalledWith(other, "aril_settings_set", { settings: { followUps: false } });
+    expect(window.localStorage.getItem("pomegr.agentChat.repository")).toBe(other);
+    // A new section opens at the last one used, and at the one a link names before that.
+    view.unmount();
+    render(<ArilSettingsSection />);
+    expect(screen.getByRole("combobox", { name: "Repository" })).toHaveTextContent("Clapline");
+    cleanup();
+    render(<ArilSettingsSection initialRepositoryId={board.repositoryId} />);
+    expect(screen.getByRole("combobox", { name: "Repository" })).toHaveTextContent("Pomegr");
+    cleanup();
+    render(<ArilSettingsSection initialRepositoryId="repo-cccccccccccccccccccccccc" />);
+    expect(screen.getByRole("combobox", { name: "Repository" })).toHaveTextContent("Clapline");
+  });
+  it("says so when there is no repository, and when the board is not ready or has no Aril settings", async () => {
+    current.names = {};
+    const view = await open();
+    expect(screen.getByText("No repositories observed yet.")).toBeInTheDocument();
+    current.names = null;
+    board = { ...board, readiness: "loading", aril: undefined };
+    again(view);
+    expect(screen.getByText("Reading Aril settings…")).toHaveAttribute("role", "status");
+    board = { ...board, readiness: "unavailable" };
+    again(view);
+    expect(screen.getByText("Aril settings are unavailable.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
   it("saves only changed top-level fields, with complete nested values and an explicit unset limit", async () => {
     board.aril!.settings.limits.hours = 2;
     await open();
@@ -304,7 +369,7 @@ describe("Aril settings panel", () => {
 
   it("keeps a paired device read-only until allowed", async () => {
     access.mode = "lan"; setBridge(undefined); await open();
-    expect(screen.queryByRole("switch")).toBeNull(); expect(within(screen.getByRole("dialog")).queryByRole("combobox")).toBeNull();
+    expect(screen.queryByRole("switch")).toBeNull(); expect(within(panel()).queryByRole("combobox")).toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull(); expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     expect(screen.getByText("Paired devices cannot change Aril settings and memory.")).toBeInTheDocument();
     expect(taskAction).not.toHaveBeenCalled();
@@ -314,9 +379,9 @@ describe("Aril settings panel", () => {
     access.mode = "lan"; setBridge(undefined);
     const view = await open();
     board = { ...board, aril: { ...board.aril!, settings: { ...defaults(), limits: { ...defaults().limits, hours: 12 }, reviewer: { provider: "codex", model: "gpt-5", differentFromBuilder: true } } } };
-    view.rerender(<TaskBoardView board={board} />);
-    expect(within(screen.getByRole("dialog")).getByText("12")).toBeInTheDocument();
-    expect(within(screen.getByRole("dialog")).getByText("gpt-5")).toBeInTheDocument();
+    again(view);
+    expect(within(panel()).getByText("12")).toBeInTheDocument();
+    expect(within(panel()).getByText("gpt-5")).toBeInTheDocument();
   });
 
   it("sends paired settings through POST without exposing or sending the permission switch", async () => {
@@ -351,7 +416,7 @@ describe("Aril settings panel", () => {
     await userEvent.click(screen.getByRole("switch", { name: "Start tasks" }));
     refresh.mockImplementationOnce(async () => {
       board = { ...board, aril: { ...board.aril!, memory: [{ id: 1, text: "Run checks", createdAt: 1, updatedAt: 1 }] } };
-      view.rerender(<TaskBoardView board={board} />);
+      again(view);
     });
     fireEvent.change(screen.getByRole("textbox", { name: "Add entry" }), { target: { value: "Run checks" } });
     await userEvent.click(screen.getByRole("button", { name: "Add entry" }));
@@ -385,7 +450,7 @@ describe("Aril settings panel", () => {
       { repositoryId: board.repositoryId, action: "aril_memory_remove", payload: { id: 1 } },
     ]);
     board = { ...board, aril: { ...board.aril!, settings: { ...board.aril!.settings, pairedDevices: false } } };
-    view.rerender(<TaskBoardView board={board} />);
+    again(view);
     expect(screen.queryByRole("textbox")).toBeNull(); expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull(); expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
   });

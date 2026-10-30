@@ -1,0 +1,12 @@
+/* Settings, Aril section. The body is the Queue settings content (its sections and rows) without the side panel's frame. Tokens only. */
+.arilSettings > header h2 { margin: 0; font: 650 var(--text-base)/1.3 var(--font-ui); }
+.arilSettings > header p { margin: 6px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
+.arilSettingsRepository { margin-top: var(--space-4); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
+.arilSettingsRepository .commandSettingRow { padding: 14px 16px; border-top: 0; }
+.arilSettingsRepository .commandMonoValue { overflow-wrap: anywhere; }
+.arilSettingsNote { margin: var(--space-4) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
+.taskQueueSettings.arilSettingsBody { flex: 1 1 auto; max-width: 560px; margin-top: var(--space-4); padding: 0; overflow: visible; border-left: 0; background: transparent; }
+
+@media (max-width: 760px) {
+  .arilSettingsRepository .commandSettingRow { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+}

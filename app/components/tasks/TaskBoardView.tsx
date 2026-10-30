@@ -3,8 +3,7 @@
 import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Task, TaskBoard } from "../../../shared/task-contract";
-import { CapacityStrip } from "./CapacityStrip";
-import { ArilSettingsPanel } from "./ArilSettingsPanel";
+import { CapacityStrip, arilSettingsHref } from "./CapacityStrip";
 import { TaskLogDialog } from "./TaskLogPanel";
 import type { TaskLogAnswer } from "./task-desktop";
 import { ScorecardDialog } from "./ScorecardPanel";
@@ -71,8 +70,6 @@ function ReadyBoard({ board, readTaskLog, readScorecard, onOpenTask, edits, newT
   const [announcement, setAnnouncement] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsTrigger = useRef<HTMLButtonElement>(null);
-  const [arilOpen, setArilOpen] = useState(false);
-  const arilTrigger = useRef<HTMLButtonElement>(null);
   const [logOpen, setLogOpen] = useState(false);
   const logTrigger = useRef<HTMLButtonElement>(null);
   const [scorecardOpen, setScorecardOpen] = useState(false);
@@ -177,13 +174,12 @@ function ReadyBoard({ board, readTaskLog, readScorecard, onOpenTask, edits, newT
     {edits?.failure && <p className="newTaskError taskBoardError" role="alert">{edits.failure}</p>}
     {edits?.doneAsk && <TaskDoneSessionsAsk ask={edits.doneAsk} className="taskBoardConfirm" />}
     <CapacityStrip queue={board.queue} grant={board.aril?.grant} settingsRef={settingsTrigger} onOpenSettings={() => setSettingsOpen(true)}
-      arilRef={arilTrigger} onOpenAril={() => setArilOpen(true)}
+      arilHref={arilSettingsHref(board.repositoryId)}
       {...(readTaskLog ? { logRef: logTrigger, onOpenLog: () => setLogOpen(true) } : {})}
       {...(readScorecard ? { scorecardRef: scorecardTrigger, onOpenScorecard: () => setScorecardOpen(true) } : {})} />
     {readTaskLog && logOpen && <TaskLogDialog readTaskLog={readTaskLog} returnFocus={logTrigger} onClose={() => setLogOpen(false)} />}
     {readScorecard && scorecardOpen && <ScorecardDialog readScorecard={readScorecard} returnFocus={scorecardTrigger} onClose={() => setScorecardOpen(false)} />}
     {settingsOpen && <QueueSettingsPanel queue={board.queue} edits={edits} returnFocus={settingsTrigger} onClose={() => setSettingsOpen(false)} />}
-    {arilOpen && <ArilSettingsPanel board={board} returnFocus={arilTrigger} onClose={() => setArilOpen(false)} />}
     {board.features.length > 0 && <FeatureFilter board={board} filter={filter} onFilter={setChosenFilter} edits={edits} entry={features} />}
     {columns.length > 0 && <div ref={scroller} className="taskBoardScroller" role="region" aria-label="Task board" tabIndex={0} aria-busy={edits?.busy || undefined}>
       <div className="taskBoardGrid" style={{ "--task-columns": columns.length } as CSSProperties}>

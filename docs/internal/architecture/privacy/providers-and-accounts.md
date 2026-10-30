@@ -204,7 +204,7 @@ The owner may set a Jev key so that Aril's chat can ask Jev, a third-party model
 - Desktop main stores the key in one file under the desktop data root (`jev-key-v1.bin`), encrypted with Electron's `safeStorage`, which uses the operating system's store.
 - Where the operating system offers no encryption, or only a weak backend, nothing is stored. The option stays off, and the key is never written as plain text.
 - The key is also held in desktop main's memory, once read, for the call below.
-- The owner removes it in the Aril settings, which deletes the file and the copy in memory.
+- The owner removes it in the Aril section of Settings, which deletes the file and the copy in memory.
 
 **Who can set it, remove it, or ask about it:**
 
