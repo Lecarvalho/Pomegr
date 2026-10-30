@@ -9,6 +9,7 @@ import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { CHAT_IMAGE_ID, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGES_PER_CONVERSATION, conversationImages, createAgentChatImages } from "./agent-chat-images.mjs";
 import { createGrantFollowUps } from "./agent-chat-grant-follow-up.mjs";
 import { createTaskBridge } from "./agent-chat-task-bridge.mjs";
+import { createGithubKeeper, prefetchGithubSettings } from "./agent-chat-github.mjs";
 import { createTurnPreparation } from "./agent-chat-prepare.mjs";
 import { agentChatMcpServer, prepareInstructionsFile } from "./agent-chat-provider-files.mjs";
 import { extractChoices, shownAnswer } from "./agent-chat-choices.mjs";
@@ -108,8 +109,9 @@ export function createAgentChat(options = {}) {
   const worktrees = options.worktrees || createTaskWorktrees({ root: options.dataRoot ? path.join(options.dataRoot, TASK_WORKTREE_DIRECTORY) : undefined, environment: sourceEnvironment, platform });
   // The facts of those worktrees that a turn reads, kept between turns: a turn never waits on Git or on a folder walk, and a removal never reads them.
   const worktreeInventory = options.worktreeInventory || createWorktreeInventory({ worktrees });
-  // The repository's own GitHub merge settings, so Aril proposes merge settings that fit them: `read(repositoryId, root)`.
-  const repositoryGithub = typeof options.repositoryGithub?.read === "function" ? options.repositoryGithub : null;
+  // The repository's own GitHub merge settings, so Aril proposes merge settings that fit them: `read(repositoryId, root)`. The keeper reads them
+  // again in the background before the reader's 30 minutes end, for the repositories in use, so a turn does not wait for `gh`.
+  const repositoryGithub = typeof options.repositoryGithub?.read === "function" ? createGithubKeeper({ ...options.githubKeeper, github: options.repositoryGithub }) : null;
   const mcpServer = options.mcpServer === undefined ? agentChatMcpServer({ executable: options.executable, unpackedRoot: options.unpackedRoot, fileExists }) : options.mcpServer;
   const store = options.store || (typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot)
     ? createAgentChatStore({ directory: path.join(options.dataRoot, AGENT_CHAT_DIRECTORY), now }) : null);
@@ -165,6 +167,8 @@ export function createAgentChat(options = {}) {
   const { readBoard, repositoryRoot } = preparation;
   // Desktop main alone asks for it, a little after it starts: the facts of every repository with a board are read before the first message.
   const worktreePrefetch = options.prefetchWorktrees ? prefetchWorktreeFacts({ inventory: worktreeInventory, readHome: () => monitor("/api/tasks?view=home", { method: "GET" }), rootOf: repositoryRoot, ...(typeof options.prefetchWorktrees === "object" ? options.prefetchWorktrees : {}) }) : null;
+  // Desktop main alone asks for it too: the repositories Aril was used for recently have their GitHub settings read before the first message.
+  const githubPrefetch = repositoryGithub && store && options.prefetchGithub ? prefetchGithubSettings({ keeper: repositoryGithub, readHome: () => monitor("/api/tasks?view=home", { method: "GET" }), rootOf: repositoryRoot, store, ...(typeof options.prefetchGithub === "object" ? options.prefetchGithub : {}) }) : null;
 
   // The chat's own MCP server reads a task of the turn's repository through a bridge that lives only while the turn runs.
   const taskReadServer = createTaskBridge({ mcpServer, monitor, current: (turn) => active === turn && !disposed });
@@ -763,7 +767,7 @@ export function createAgentChat(options = {}) {
     grantWrite,
     grantFollowUp: (request) => (disposed ? Promise.resolve(UNAVAILABLE) : grantFollowUp(request)),
     /** Ends Pomegr's own running turn; no session the owner started is touched. */
-    dispose() { disposed = true; followUps.clear(); compaction.dispose(); warm.dispose(); worktreeInventory.close?.(); worktreePrefetch?.cancel(); try { active?.stop?.(); } catch { /* already gone */ } },
+    dispose() { disposed = true; followUps.clear(); compaction.dispose(); warm.dispose(); worktreeInventory.close?.(); worktreePrefetch?.cancel(); githubPrefetch?.cancel(); repositoryGithub?.close(); try { active?.stop?.(); } catch { /* already gone */ } },
   });
 }
 

@@ -287,6 +287,7 @@ An owner-started grant is scoped and time-bound authority for the desktop runner
 
 - Desktop main reads, for each repository, `gh repo view --json squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed,autoMergeAllowed,deleteBranchOnMerge,defaultBranchRef` in the repository root with the owner's own gh login (the user-session environment, without Pomegr's runtime variables or tokens), through `execFile` and an argument array.
 - Only the five booleans and the default branch name (a valid Git branch name, else null) are kept, in memory: 30 minutes after a read, and a failed read as unknown for 5 minutes. They are never stored on disk, in the task store, or in a log.
+- One `gh` read runs for a repository at a time. A refresh reads again ahead of the expiry and stores the new facts for 30 minutes; a refresh that fails leaves the held facts as they are. The agent chat refreshes the facts of the repositories Aril is in use for (see [GitHub settings cache](agent-chat.md#repository-github-settings-cache)).
 - The grant merge reuses the same read to choose the one allowed method and to check `autoMergeAllowed`; the delete step reuses it for the default branch name. The agent chat reads the same facts for [its prompt](agent-chat.md#prompt), and Aril is told to read the repository's own rules before it proposes merge settings.
 
 
