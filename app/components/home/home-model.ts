@@ -158,16 +158,15 @@ export function needsYou(input: { home: TaskHome; names: ReadonlyMap<string, str
 
 export const HOME_RUNNING_SHOWN = 4;
 
-/** How long a session has run: the time since it started, in minutes, hours, or days. Null where the start is not known. */
-export function runningFor(createdAt: string | null | undefined, now: number): string | null {
-  const started = Date.parse(createdAt ?? "");
-  if (!Number.isFinite(started)) return null;
-  const minutes = Math.max(0, Math.floor((now - started) / 60_000));
-  if (minutes < 1) return "<1 min";
-  if (minutes < 60) return `${minutes} min`;
+/** When a session last changed: "updated just now", or "updated n min ago", "n h ago", "n d ago". Null where the time is not known. */
+export function updatedAgo(updatedAt: string | null | undefined, now: number): string | null {
+  const updated = Date.parse(updatedAt ?? "");
+  if (!Number.isFinite(updated)) return null;
+  const minutes = Math.max(0, Math.floor((now - updated) / 60_000));
+  if (minutes < 1) return "updated just now";
+  if (minutes < 60) return `updated ${minutes} min ago`;
   const hours = Math.floor(minutes / 60);
-  if (hours >= 24) return `${Math.floor(hours / 24)} d`;
-  return minutes % 60 === 0 ? `${hours} h` : `${hours} h ${minutes % 60} min`;
+  return hours < 24 ? `updated ${hours} h ago` : `updated ${Math.floor(hours / 24)} d ago`;
 }
 
 export type RunningSession = { key: string; title: string; waiting: boolean; meta: string; href: string };
@@ -198,7 +197,7 @@ export function runningSessions(sessions: readonly SessionSummary[], names: Read
     total: candidates.length, settled,
     shown: shown.map((session) => ({
       key: session.id, title: taskTitleOf(session, boards) ?? session.title, waiting: isWaiting(session), href: sessionHref(session),
-      meta: [repositoryOf(session, names), session.source, runningFor(session.createdAt, now)].filter((part): part is string => Boolean(part)).join(" · "),
+      meta: [repositoryOf(session, names), updatedAgo(session.updatedAt, now)].filter((part): part is string => Boolean(part)).join(" · "),
     })),
   };
 }

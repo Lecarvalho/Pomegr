@@ -70,7 +70,7 @@ function PinPicker({ destinations, pins, onToggle, catalogLoading }: {
   </div>;
 }
 
-/** The running sessions: a state dot, the title, the state (Working, or Waiting for you in amber), and where the session runs and for how long. */
+/** The running sessions: a state dot, the title, the state (Working, or Waiting for you in amber), its repository, and when it last changed. */
 export function HomeRunningList({ sessions }: { sessions: readonly RunningSession[] }) {
   return <ul className={styles.sessions} aria-label="Running sessions">
     {sessions.map((session) => <li key={session.key}>

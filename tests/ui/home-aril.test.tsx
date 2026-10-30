@@ -164,7 +164,7 @@ describe("the Aril line and Needs you", () => {
 });
 
 describe("Continue", () => {
-  it("shows the running sessions: a state dot, the title, the state, and where it runs and for how long; a waiting one first and in amber", async () => {
+  it("shows the running sessions: a state dot, the title, the state, its repository, and when it last changed; a waiting one first and in amber", async () => {
     homeHarness.boards = new Map([[REPO_A, { readiness: "ready", repositoryId: REPO_A, tasks: [{ id: "T-50", text: "[ui] Build the new Home\nDetails.", session: { id: "claude:task-run" } }] }]]);
     home([
       liveSession("claude:task-run", { title: "Session of the task" }),
@@ -177,9 +177,9 @@ describe("Continue", () => {
     expect(within(region).getByRole("heading", { name: /^Continue/ })).toHaveTextContent("Continue · 3 running");
     const list = within(region).getByRole("list", { name: "Running sessions" });
     expect(within(list).getAllByRole("link").map((row) => row.textContent)).toEqual([
-      "Answer meWaiting for youclapline · Claude Code · 2 min",
-      "Build the new HomeWorkingpomegr · Claude Code · 12 min",
-      "Rough overlay polishWorkingpomegr · Claude Code · 12 min",
+      "Answer meWaiting for youclapline · updated just now",
+      "Build the new HomeWorkingpomegr · updated just now",
+      "Rough overlay polishWorkingpomegr · updated 1 min ago",
     ]);
     expect(within(list).getByText("Waiting for you")).toHaveClass(/waiting/);
     expect(within(list).getAllByText("Working")[0]).not.toHaveClass(/waiting/);
@@ -193,7 +193,7 @@ describe("Continue", () => {
     home(Array.from({ length: 6 }, (_, index) => liveSession(`claude:s${index}`)));
     await settle();
     const region = screen.getByRole("region", { name: /^Continue/ });
-    expect(within(region).getAllByRole("link", { name: /Claude Code/ }).filter((row) => row.closest("ul")?.getAttribute("aria-label") === "Running sessions")).toHaveLength(4);
+    expect(within(region).getAllByRole("link", { name: /updated/ }).filter((row) => row.closest("ul")?.getAttribute("aria-label") === "Running sessions")).toHaveLength(4);
     expect(within(region).getByRole("heading", { name: /^Continue/ })).toHaveTextContent("Continue · 6 running");
   });
 

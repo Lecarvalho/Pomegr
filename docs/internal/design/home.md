@@ -156,8 +156,8 @@ The owner approved the revised design, with Needs you, the running sessions, and
 - A session is one link row: a 7px state dot, the title, the state, and where it runs.
 - The state reads “Working” in muted text, or “Waiting for you” in amber text.
 - The dot is green for a session that works and amber for a session that waits.
-- Where it runs reads “repository · provider · time”, in muted text.
-- The time is the time since the session started: “<1 min”, “n min”, “n h”, “n h n min”, or “n d”. A session with no known start has no time.
+- Its meta reads “repository · updated n min ago”, in muted text, with no provider.
+- The time is when the session last changed: “updated just now”, “updated n min ago”, “updated n h ago”, or “updated n d ago”. A session with no known change time has none.
 - A session started for a task, or assigned to it, shows the title line of that task. Any other session, a review session included, shows its own title.
 - The title line of a task is the first text after its leading tags, as the Tasks home words it.
 - The task comes from the board of the session's repository, read through the same store as the Tasks page.

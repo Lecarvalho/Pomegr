@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { homeSuggestions } from "../../app/components/agent-chat/agent-chat-presentation";
-import { HOME_LOG_BOARDS, arilLine, greetingFor, isWaiting, isWorking, logBoards, needsDetail, needsYou, runningFor, runningSessions, suggestionFacts, type HomeLogReads, type NeedsLine } from "../../app/components/home/home-model";
+import { HOME_LOG_BOARDS, arilLine, greetingFor, isWaiting, isWorking, logBoards, needsDetail, needsYou, runningSessions, updatedAgo, suggestionFacts, type HomeLogReads, type NeedsLine } from "../../app/components/home/home-model";
 import type { TaskLog } from "../../app/components/tasks/task-desktop";
 import type { SessionSummary } from "../../shared/monitor-contract";
 import type { TaskBoard, TaskHome, TaskHomeBoard } from "../../shared/task-contract";
@@ -223,18 +223,17 @@ describe("the running sessions", () => {
     expect(runningSessions([session("claude:x", { repositoryId: null })], NAMES, boards(), NOW).settled).toBe(true);
   });
 
-  it("describe where and for how long: the repository, the provider, and the time since the session started", () => {
-    const [first] = runningSessions([session("claude:a")], NAMES, boards(board(POMEGR, [])), NOW).shown;
-    expect(first.meta).toBe("pomegr · Claude Code · 12 min");
-    const [project] = runningSessions([session("codex:b", { source: "Codex", repositoryId: null, project: "Loose project", createdAt: null })], NAMES, boards(), NOW).shown;
-    expect(project.meta).toBe("Loose project · Codex");
-    expect(runningFor(new Date(NOW - 20_000).toISOString(), NOW)).toBe("<1 min");
-    expect(runningFor(new Date(NOW - 59 * 60_000).toISOString(), NOW)).toBe("59 min");
-    expect(runningFor(new Date(NOW - 60 * 60_000).toISOString(), NOW)).toBe("1 h");
-    expect(runningFor(new Date(NOW - 135 * 60_000).toISOString(), NOW)).toBe("2 h 15 min");
-    expect(runningFor(new Date(NOW - 50 * 3_600_000).toISOString(), NOW)).toBe("2 d");
-    expect(runningFor(null, NOW)).toBeNull();
-    expect(runningFor("not a date", NOW)).toBeNull();
+  it("describe where and when: the repository and when the session last changed, with no provider", () => {
+    const [first] = runningSessions([session("claude:a", { updatedAt: new Date(NOW - 3 * 60_000).toISOString() })], NAMES, boards(board(POMEGR, [])), NOW).shown;
+    expect(first.meta).toBe("pomegr · updated 3 min ago");
+    const [project] = runningSessions([session("codex:b", { source: "Codex", repositoryId: null, project: "Loose project", updatedAt: "not a date" })], NAMES, boards(), NOW).shown;
+    expect(project.meta).toBe("Loose project");
+    expect(updatedAgo(new Date(NOW - 20_000).toISOString(), NOW)).toBe("updated just now");
+    expect(updatedAgo(new Date(NOW - 59 * 60_000).toISOString(), NOW)).toBe("updated 59 min ago");
+    expect(updatedAgo(new Date(NOW - 135 * 60_000).toISOString(), NOW)).toBe("updated 2 h ago");
+    expect(updatedAgo(new Date(NOW - 50 * 3_600_000).toISOString(), NOW)).toBe("updated 2 d ago");
+    expect(updatedAgo(null, NOW)).toBeNull();
+    expect(updatedAgo("not a date", NOW)).toBeNull();
   });
 
   it("treat a session that needs input as waiting whichever field says so, and one that works as working", () => {
