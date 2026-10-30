@@ -1,17 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 vi.mock("../../app/hooks/ClientAccessContext", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../app/hooks/ClientAccessContext")>();
   return { ...actual, useClientAccess: () => ({ mode: "unknown", canCopyTranscriptPath: false, accessExpired: false, markAccessExpired() {}, async refreshAccess() {} }) };
 });
 import { AgentChatSection } from "../../app/components/design-system/DesignSystemAgentChatSample";
-
-function sectionOf(name: string) {
-  return screen.getByRole("heading", { level: 2, name }).closest("section") as HTMLElement;
-}
-function sample(root: HTMLElement, label: string) {
-  return within(root).getByText(label, { selector: ".designSystemSample > span" }).closest(".designSystemSample") as HTMLElement;
-}
+import { sample, sectionOf } from "./design-system-helpers";
 
 // The Aril chat section of the reference page: invented conversations drawn with the real panel parts.
 describe("Design-system reference page, Agent chat", { timeout: 20_000 }, () => {
@@ -153,7 +147,6 @@ describe("Design-system reference page, Agent chat", { timeout: 20_000 }, () => 
     expect(queueCard("Queue change, on, proposed")).toHaveTextContent("Pomegr may then start queued tasks by itself on the computer that runs Pomegr");
     expect(within(queueCard("Queue change, off, proposed")).getByRole("button", { name: "Turn queue off" })).toHaveClass("commandPrimaryAction");
     expect(queueCard("Queue change, off, proposed")).toHaveTextContent("No new task starts then, and running sessions continue.");
-    expect(within(queueCard("Queue change, on a paired device")).getByRole("button", { name: "Turn queue on" })).toBeEnabled();
     expect(queueCard("Queue change, turned on")).toHaveTextContent("Queue turned on.");
     expect(within(queueCard("Queue change, turned on")).queryByRole("button")).toBeNull();
     expect(queueCard("Queue change, turned on and held").querySelector(".agentChatOpResult")).toHaveClass("is-muted");

@@ -282,9 +282,8 @@ export function AgentChatSection() {
       <Card label="Session start, failed" shown={start("pending", [{ ok: false, error: "not_started", start: "plugin_missing" }])} />
       <Card label="Session start, launched" note="Only a launch the desktop confirmed settles the card." shown={start("applied", [{ ok: true, start: "started" }])} />
       <Card label="Session start, on a paired device" note="A phone cannot apply a start from the chat, so the card has no Primary." shown={start("pending")} startHere={false} />
-      <Card label="Queue change, on, proposed" note="A queue change is its own card with one row. The line under the actions says that Pomegr may then start tasks by itself." shown={queue(true, "pending")} />
+      <Card label="Queue change, on, proposed" note="A queue change is its own card with one row. The line under the actions says that Pomegr may then start tasks by itself. A phone can apply a queue change too, so the card keeps its Primary there." shown={queue(true, "pending")} />
       <Card label="Queue change, off, proposed" shown={queue(false, "pending")} />
-      <Card label="Queue change, on a paired device" note="A phone can apply a queue change, so the card keeps its Primary." shown={queue(true, "pending")} startHere={false} />
       <Card label="Queue change, turned on" shown={queue(true, "applied", [{ ok: true, queue: "on" }])} />
       <Card label="Queue change, turned on and held" note="The queue is on, and a stalled or blocked task holds it, so the result is muted." shown={queue(true, "applied", [{ ok: true, queue: "blocked" }])} />
       <Card label="Queue change, turned off" shown={queue(false, "applied", [{ ok: true, queue: "off" }])} />

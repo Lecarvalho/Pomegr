@@ -90,7 +90,7 @@ This page covers how the repository surfaces look and how the user operates them
 - The tab uses one section per provider.
 - Codex has an explicit not-yet-available state.
 - A revision select appears when multiple saved revisions exist.
-- Each section shows four bounded evidence facts and a category grid.
+- Each section shows four bounded evidence facts and the context allocation breakdown.
 - Listed items are expandable.
 - The section offers revision comparison.
 - The capture action and its inline confirmation reuse the existing button roles and the native confirmation boundary.
