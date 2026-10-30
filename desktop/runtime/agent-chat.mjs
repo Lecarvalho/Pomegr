@@ -120,7 +120,7 @@ export function createAgentChat(options = {}) {
   const summaries = options.summaries || (typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot)
     ? createAgentChatSummaries({ directory: path.join(options.dataRoot, AGENT_CHAT_DIRECTORY) }) : null);
   const jevKey = options.jevKey || (typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot) ? createJevKey({ file: path.join(options.dataRoot, JEV_KEY_FILE), safeStorage: options.safeStorage }) : null);
-  const jev = createJevRouting({ key: jevKey, fetch: options.jevFetch, clock, timeoutMs: options.jevTimeoutMs });
+  const jev = createJevRouting({ key: jevKey, fetch: options.jevFetch, transport: options.jevTransport, clock, timeoutMs: options.jevTimeoutMs });
   let disposed = false;
   // One turn at a time for the whole app: `{ repositoryId, conversationId, ... }` from the moment a send is accepted.
   let active = null;
@@ -738,6 +738,7 @@ export function createAgentChat(options = {}) {
     if (!exactly(payload, named ? ["repositoryId", "provider", "model", "effort"] : ["repositoryId"]) || !REPOSITORY_ID.test(String(payload.repositoryId))) return INVALID;
     const { repositoryId, provider, model, effort } = payload;
     if (named && (!PROVIDERS.has(provider) || !(model === null || (typeof model === "string" && MODEL.test(model))) || !(effort === null || (typeof effort === "string" && EFFORTS.has(effort))))) return INVALID;
+    void jev.preconnect(); // With a Jev key, the connection to Jev opens ahead too: a name lookup and a handshake, no key and no text.
     const run = named ? { provider, model, effort } : lastRun(await store.index(repositoryId));
     if (run) await warm.request(repositoryId, { provider: run.provider, model: run.model ?? null, effort: run.effort ?? null });
     return { ok: true };

@@ -5,7 +5,8 @@
 // and goes nowhere but the `Authorization` header of that one call: never a log, a record, a prompt, the monitor, or a renderer.
 
 import { CHAT_EFFORTS } from "./agent-chat-runner.mjs";
-import { ROUTE_EFFORTS } from "./agent-chat-timing.mjs";
+import { createJevTransport } from "./agent-chat-jev-transport.mjs";
+import { ROUTE_EFFORTS, ROUTE_PHASES } from "./agent-chat-timing.mjs";
 
 export const JEV_URL = "https://api.typesafe.ai/v1/systemone";
 export const JEV_MODEL = "jev-latest";
@@ -72,19 +73,36 @@ function chosenEffort(raw) {
 }
 
 /**
- * The routing of a desktop's turns. `key.read()` answers the Jev key or null, `fetch` makes the one call, and `clock` is a monotonic clock
- * in milliseconds. `route({ text, previous, effort, images })` answers `{ effort, route }` and never rejects: `effort` is the one the
+ * The routing of a desktop's turns. `key` is the key store (`read()` answers the Jev key or null; `peek()`, when it has one, answers it
+ * without waiting once it was read), `fetch` makes the one call in place of the transport, `transport` is the one that does by default
+ * (`agent-chat-jev-transport.mjs`: a name lookup off the thread pool, a kept connection, and `preconnect`), and `clock` is a monotonic
+ * clock in milliseconds. `route({ text, previous, effort, images })` answers `{ effort, route }` and never rejects: `effort` is the one the
  * run uses, and `route` the record for the answer's timing, or null when no key is set (nothing was asked and nothing is recorded).
  * A message with images is not asked: Jev cannot see them, and a short message about a picture can need real work.
+ * With the key already read, the request is made before `route` returns, so it goes out before the turn's other reads start.
+ * `preconnect()` opens the connection ahead, only when a key is set; it sends no request, no key, and no text.
  */
-export function createJevRouting({ key, fetch: fetchImpl = globalThis.fetch, clock = () => performance.now(), timeoutMs = JEV_TIMEOUT_MS }) {
+export function createJevRouting({ key, fetch: fetchImpl = null, transport: given = null, clock = () => performance.now(), timeoutMs = JEV_TIMEOUT_MS }) {
+  let own = null;
+  const carrier = () => given ?? (fetchImpl ? null : (own ??= createJevTransport()));
+  const send = (url, init) => (fetchImpl ?? carrier().fetch)(url, init);
+
   async function ask(secret, state) {
     const controller = new AbortController();
     let timer;
-    const expired = new Promise((resolve) => { timer = setTimeout(() => { resolve({ reason: "timeout" }); controller.abort(); }, timeoutMs); timer.unref?.(); });
+    let readPhase = () => null;
+    const expired = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        let phase = null;
+        try { phase = readPhase(); } catch { /* the call is given up without saying where it waited */ }
+        resolve({ reason: "timeout", ...(ROUTE_PHASES.includes(phase) ? { phase } : {}) });
+        controller.abort();
+      }, timeoutMs);
+      timer.unref?.();
+    });
     const call = (async () => {
-      const response = await fetchImpl(JEV_URL, {
-        method: "POST", redirect: "error", cache: "no-store", signal: controller.signal,
+      const response = await send(JEV_URL, {
+        method: "POST", redirect: "error", cache: "no-store", signal: controller.signal, watch: (read) => { readPhase = read; },
         headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" }, body: jevBody(state),
       });
       if (!response.ok) return { reason: "error" };
@@ -97,19 +115,28 @@ export function createJevRouting({ key, fetch: fetchImpl = globalThis.fetch, clo
   return Object.freeze({
     async route({ text, previous = "", effort = null, images = 0 }) {
       try {
-        const secret = key ? await key.read() : null;
+        const held = key?.peek?.();
+        const secret = held !== undefined ? held : key ? await key.read() : null;
         if (!secret) return { effort, route: null };
         if (images > 0) return { effort, route: { effort, by: "owner", reason: "images" } };
         const started = clock();
         const answer = await ask(secret, jevState({ text, previous }));
         const ms = Math.max(0, Math.round(clock() - started));
-        if (!answer.choice) return { effort, route: { effort, by: "owner", reason: answer.reason, ms } };
+        if (!answer.choice) return { effort, route: { effort, by: "owner", reason: answer.reason, ms, ...(answer.phase ? { phase: answer.phase } : {}) } };
         const used = loweredEffort(effort, answer.choice);
         return used === effort ? { effort, route: { effort, by: "owner", reason: "kept", ms } } : { effort: used, route: { effort: used, by: "jev", ms } };
       } catch {
         // Whatever went wrong, the turn goes on with the owner's effort and records nothing about it.
         return { effort, route: null };
       }
+    },
+    /** Opens the connection to Jev ahead of a send. Nothing without a key; answers whether a connection is ready, and never rejects. */
+    async preconnect() {
+      try {
+        const using = carrier();
+        if (!using?.preconnect || !key || !await key.read()) return false;
+        return await using.preconnect() === true;
+      } catch { return false; }
     },
   });
 }

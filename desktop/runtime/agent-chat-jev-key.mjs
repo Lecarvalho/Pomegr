@@ -46,6 +46,8 @@ export function createJevKey({ file, safeStorage, filesystem = { mkdir, readFile
 
   return Object.freeze({
     read,
+    /** The key if it was already read, else undefined (not null: null is read and none). The routing uses it to start a call without waiting. */
+    peek: () => held,
     async state() {
       if (!encrypted()) return "unavailable";
       return await read() ? "set" : "unset";

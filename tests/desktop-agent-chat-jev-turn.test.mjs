@@ -198,3 +198,88 @@ test("no chat operation reaches the key: a paired device and the renderer's chat
   for (const operation of ["jev", "jevKey", "key", "settings", "status"]) assert.deepEqual(await h.handle(operation, { repositoryId }), { ok: false, error: "invalid" }, operation);
   assert.deepEqual(await h.chat.handle("send", { repositoryId, conversationId: null, text: "x", provider: "claude", model: null, jevKey: SECRET }, { paired: true }), { ok: false, error: "invalid" }, "a send takes no key");
 });
+
+// A transport that records what it is asked: its fetch carries the call, its preconnect carries nothing.
+function fakeTransport(body = choice("low"), behavior = {}) {
+  const log = { fetches: [], preconnects: [] };
+  return {
+    log,
+    fetch: async (url, init) => { log.fetches.push({ url, init, body: JSON.parse(init.body) }); return behavior.fetch ? behavior.fetch(init) : new Response(JSON.stringify(body), { status: 200 }); },
+    preconnect: async (...args) => { log.preconnects.push(args); if (behavior.preconnect) return behavior.preconnect(); return true; },
+  };
+}
+const settleTicks = () => new Promise((resolve) => setTimeout(resolve, 30));
+
+test("the warm request opens the connection to Jev ahead of the send, with a key, and sends nothing over it", async (context) => {
+  const transport = fakeTransport();
+  const h = await chatHarness(context, { jevKey: { read: async () => SECRET }, jevTransport: transport });
+  assert.deepEqual(await h.handle("warm", { repositoryId }), { ok: true });
+  await until(() => transport.log.preconnects.length === 1);
+  assert.deepEqual(transport.log.preconnects[0], [], "no argument: no text, no key, no run");
+  assert.deepEqual(await h.handle("warm", { repositoryId, provider: "claude", model: null, effort: "high" }), { ok: true });
+  await until(() => transport.log.preconnects.length === 2);
+  assert.equal(transport.log.fetches.length, 0, "the pre-connect made no call");
+  // A paired device's warm request opens it too: it is the same bounded request, and what it opens carries nothing.
+  assert.deepEqual(await h.chat.handle("warm", { repositoryId }, { paired: true }), { ok: true });
+  await until(() => transport.log.preconnects.length === 3);
+  // A request that is refused opens nothing.
+  assert.deepEqual(await h.handle("warm", { repositoryId, extra: 1 }), { ok: false, error: "invalid" });
+  assert.deepEqual(await h.handle("warm", { repositoryId, provider: "claude" }), { ok: false, error: "invalid" });
+  await settleTicks();
+  assert.equal(transport.log.preconnects.length, 3);
+  assert.equal(JSON.stringify(transport.log).includes(SECRET), false);
+});
+
+test("without a key nothing opens: no key store, a store with no key, or a key that cannot be read", async (context) => {
+  for (const jevKey of [undefined, { read: async () => null }, { read: async () => { throw new Error("unreadable"); } }]) {
+    const transport = fakeTransport();
+    const h = await chatHarness(context, { ...(jevKey ? { jevKey } : {}), jevTransport: transport });
+    assert.deepEqual(await h.handle("warm", { repositoryId }), { ok: true });
+    await settleTicks();
+    assert.equal(transport.log.preconnects.length, 0);
+    const sent = await send(h, { text: "thanks", effort: "high" });
+    assert.equal(sent.ok, true);
+    assert.equal(transport.log.fetches.length, 0);
+    assert.equal(h.runs[0].options.effort, "high");
+  }
+});
+
+test("a pre-connect that fails or never ends changes nothing for the warm request or the send", async (context) => {
+  for (const preconnect of [async () => { throw new Error("handshake failed"); }, async () => false, () => new Promise(() => {})]) {
+    const transport = fakeTransport(choice("low"), { preconnect });
+    const h = await chatHarness(context, { jevKey: { read: async () => SECRET }, jevTransport: transport });
+    assert.deepEqual(await h.handle("warm", { repositoryId }), { ok: true });
+    await until(() => transport.log.preconnects.length === 1);
+    const sent = await send(h, { text: "thanks", effort: "high" });
+    assert.equal(sent.ok, true);
+    assert.equal(h.runs[0].options.effort, "low", "the send still asked and still lowered the effort");
+  }
+  // A fetch given in place of the transport (the tests' own) has no pre-connect to open.
+  const jev = fakeJev();
+  const h = await chatHarness(context, withKey(jev));
+  assert.deepEqual(await h.handle("warm", { repositoryId }), { ok: true });
+  await settleTicks();
+  assert.equal(jev.calls.length, 0);
+});
+
+test("the turn's call goes through the transport, keeps its timeout, and records where a call that did not answer was waiting", async (context) => {
+  const transport = fakeTransport(choice("low"));
+  const h = await chatHarness(context, { jevKey: { read: async () => SECRET }, jevTransport: transport });
+  const sent = await send(h, { text: "thanks", effort: "high" });
+  assert.equal(sent.ok, true);
+  assert.equal(transport.log.fetches.length, 1);
+  assert.equal(transport.log.fetches[0].init.headers.authorization, `Bearer ${SECRET}`);
+  assert.equal(h.runs[0].options.effort, "low");
+
+  const hanging = fakeTransport(choice("low"), { fetch: (init) => { init.watch(() => "connect"); return new Promise(() => {}); } });
+  const slow = await chatHarness(context, { jevKey: { read: async () => SECRET }, jevTransport: hanging, jevTimeoutMs: 40 });
+  const started = performance.now();
+  const sentSlow = await send(slow, { text: "thanks", effort: "high" });
+  assert.equal(sentSlow.ok, true);
+  assert.ok(performance.now() - started < 2_000, "the timeout still bounds the wait");
+  assert.equal(slow.runs[0].options.effort, "high");
+  const answer = await answerOf(slow, sentSlow);
+  assert.equal(answer.timing.route.reason, "timeout");
+  assert.equal(answer.timing.route.phase, "connect");
+  assert.equal(hanging.log.fetches.length, 1, "no retry");
+});

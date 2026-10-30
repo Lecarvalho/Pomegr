@@ -20,6 +20,8 @@ export const PREPARE_STEPS = Object.freeze(["board", "root", "runs", "taskLog", 
 // The effort levels Jev chooses between, and why the run kept the owner's effort when Jev did not lower it. Fixed words: no error text.
 export const ROUTE_EFFORTS = Object.freeze(["low", "medium", "high"]);
 export const ROUTE_REASONS = Object.freeze(["kept", "timeout", "error", "invalid", "images"]);
+// Where the call to Jev waited when it timed out: in the name lookup, in the connection, or for the answer. Only a `timeout` carries one.
+export const ROUTE_PHASES = Object.freeze(["dns", "connect", "response"]);
 
 const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const whole = (value, max) => Number.isSafeInteger(value) && value >= 0 && value <= max;
@@ -40,7 +42,8 @@ export function normalizePrepare(value) {
 
 /**
  * A route inside the contract, or null: `{ effort, by: "jev", ms }` when Jev lowered the owner's effort, else `{ effort, by: "owner", reason,
- * ms? }`, where `effort` is the owner's (null for the provider's own), `reason` a fixed word, and `ms` the time Jev took or was waited for,
+ * ms?, phase? }`, where `effort` is the owner's (null for the provider's own), `reason` a fixed word, `phase` (a `timeout` only) where the call
+ * waited, and `ms` the time Jev took or was waited for,
  * absent when it was not asked. Whole milliseconds only; no text.
  */
 export function normalizeRoute(value) {
@@ -49,9 +52,11 @@ export function normalizeRoute(value) {
     return sameKeys(value, ["effort", "by", "ms"]) && ROUTE_EFFORTS.includes(value.effort) && whole(value.ms, TIMING_MAX_MS) ? { effort: value.effort, by: "jev", ms: value.ms } : null;
   }
   const withMs = Object.hasOwn(value, "ms");
-  if (value.by !== "owner" || !sameKeys(value, ["effort", "by", "reason", ...(withMs ? ["ms"] : [])]) || !(value.effort === null || CHAT_EFFORTS.includes(value.effort))
-    || !ROUTE_REASONS.includes(value.reason) || (withMs && !whole(value.ms, TIMING_MAX_MS))) return null;
-  return { effort: value.effort, by: "owner", reason: value.reason, ...(withMs ? { ms: value.ms } : {}) };
+  const withPhase = Object.hasOwn(value, "phase");
+  if (value.by !== "owner" || !sameKeys(value, ["effort", "by", "reason", ...(withMs ? ["ms"] : []), ...(withPhase ? ["phase"] : [])]) || !(value.effort === null || CHAT_EFFORTS.includes(value.effort))
+    || !ROUTE_REASONS.includes(value.reason) || (withMs && !whole(value.ms, TIMING_MAX_MS))
+    || (withPhase && (value.reason !== "timeout" || !ROUTE_PHASES.includes(value.phase)))) return null;
+  return { effort: value.effort, by: "owner", reason: value.reason, ...(withMs ? { ms: value.ms } : {}), ...(withPhase ? { phase: value.phase } : {}) };
 }
 
 /**

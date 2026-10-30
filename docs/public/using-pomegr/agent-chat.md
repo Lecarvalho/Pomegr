@@ -166,7 +166,8 @@ the provider or the model. If Jev does not answer within 1.5 seconds, or fails, 
 Pomegr stores the key encrypted by your operating system, on your computer only. A paired phone
 cannot set, see, or read it. Jev receives your message and the last 2,000 characters of Aril's
 previous answer, and nothing else; it receives no board, task text, image, or file path. A message
-with an image is not sent to Jev. Hover the time of an answer to see the effort it used, such as
+with an image is not sent to Jev. When you click into the message field, Pomegr also connects to Jev ahead of time so
+the answer is quick; that connection carries no message, no key, and no text. Hover the time of an answer to see the effort it used, such as
 "Effort low, chosen by Jev in 0.4s". Select **Remove key** to turn this off.
 
 ## Apply a proposal

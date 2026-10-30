@@ -218,6 +218,9 @@ describe("the time of a measured answer", () => {
     expect(routeLine(JEV)).toBe("Effort low, chosen by Jev in 0.4s");
     expect(routeLine({ ...TIMING, route: { effort: "high", by: "owner", reason: "kept", ms: 380 } })).toBe("Effort high, your choice (Jev agreed in 0.4s)");
     expect(routeLine({ ...TIMING, route: { effort: "high", by: "owner", reason: "timeout", ms: 1500 } })).toBe("Effort high, your choice (Jev did not answer in time)");
+    expect(routeLine({ ...TIMING, route: { effort: "high", by: "owner", reason: "timeout", ms: 1500, phase: "dns" } })).toBe("Effort high, your choice (Jev did not answer in time, looking up its address)");
+    expect(routeLine({ ...TIMING, route: { effort: "high", by: "owner", reason: "timeout", ms: 1500, phase: "connect" } })).toBe("Effort high, your choice (Jev did not answer in time, connecting)");
+    expect(routeLine({ ...TIMING, route: { effort: "high", by: "owner", reason: "timeout", ms: 1500, phase: "response" } })).toBe("Effort high, your choice (Jev did not answer in time, waiting for its answer)");
     expect(routeLine({ ...TIMING, route: { effort: "medium", by: "owner", reason: "error", ms: 30 } })).toBe("Effort medium, your choice (Jev was not reachable)");
     expect(routeLine({ ...TIMING, route: { effort: null, by: "owner", reason: "invalid", ms: 30 } })).toBe("Effort default, your choice (Jev's answer was not usable)");
     expect(routeLine({ ...TIMING, route: { effort: "high", by: "owner", reason: "images" } })).toBe("Effort high, your choice (a message with images is not sent to Jev)");
@@ -231,10 +234,11 @@ describe("the time of a measured answer", () => {
     expect(parseTiming({ ...TIMING, route: jev })).toEqual({ ...TIMING, route: jev });
     const owner = { effort: "high", by: "owner", reason: "timeout", ms: 1500 };
     expect(parseTiming({ ...TIMING, route: owner })!.route).toEqual(owner);
+    expect(parseTiming({ ...TIMING, route: { ...owner, phase: "connect" } })!.route).toEqual({ ...owner, phase: "connect" });
     expect(parseTiming({ ...TIMING, route: { effort: null, by: "owner", reason: "images" } })!.route).toEqual({ effort: null, by: "owner", reason: "images" });
     expect(Object.hasOwn(parseTiming(TIMING)!, "route")).toBe(false);
     for (const bad of [null, "low", [], {}, { ...jev, effort: "xhigh" }, { ...jev, ms: undefined }, { ...jev, ms: -1 }, { ...jev, ms: "5" }, { ...owner, reason: "the API said no" }, { ...owner, effort: "max" },
-      { ...owner, ms: 1.5 }, { by: "someone", effort: "low", ms: 1 }]) {
+      { ...owner, ms: 1.5 }, { by: "someone", effort: "low", ms: 1 }, { ...owner, phase: "tls" }, { ...owner, reason: "error", phase: "dns" }]) {
       const timing = parseTiming({ ...TIMING, route: bad });
       expect(timing, JSON.stringify(bad)).toEqual(TIMING);
       expect(Object.hasOwn(timing!, "route")).toBe(false);

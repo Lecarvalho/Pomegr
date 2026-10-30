@@ -133,7 +133,10 @@ export type AgentChatPrepare = { total: number } & Partial<Record<AgentChatPrepa
 // waited for, absent when it was not asked. Numbers and fixed words only.
 export const AGENT_CHAT_ROUTE_REASONS = ["kept", "timeout", "error", "invalid", "images"] as const;
 export type AgentChatRouteReason = (typeof AGENT_CHAT_ROUTE_REASONS)[number];
-export type AgentChatRoute = { by: "jev"; effort: "low" | "medium" | "high"; ms: number } | { by: "owner"; effort: TaskEffort | null; reason: AgentChatRouteReason; ms?: number };
+// Where a call that timed out was waiting: for the name lookup, the connection, or the answer. Only a `timeout` carries one.
+export const AGENT_CHAT_ROUTE_PHASES = ["dns", "connect", "response"] as const;
+export type AgentChatRoutePhase = (typeof AGENT_CHAT_ROUTE_PHASES)[number];
+export type AgentChatRoute = { by: "jev"; effort: "low" | "medium" | "high"; ms: number } | { by: "owner"; effort: TaskEffort | null; reason: AgentChatRouteReason; ms?: number; phase?: AgentChatRoutePhase };
 
 // How long one owner-message turn took, in milliseconds from the start of the provider process, how large its prompt was, in
 // characters for each part, and how long its preparation took. Numbers only. `eventMs` and `textMs` are null when the run ended before

@@ -2,7 +2,7 @@ import {
   AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_MESSAGE_ID_PATTERN,
   type AgentChatActivity, type AgentChatBoardOperation, type AgentChatError, type AgentChatMessage,
   type AgentChatOperationResult, type AgentChatProposal, type AgentChatProposalState, type AgentChatProvider, type AgentChatQueueResult, type AgentChatStartFailure,
-  type AgentChatPrepareStep, type AgentChatRouteReason, type AgentChatTiming, type AgentChatTurnStatus,
+  type AgentChatPrepareStep, type AgentChatRoutePhase, type AgentChatRouteReason, type AgentChatTiming, type AgentChatTurnStatus,
 } from "../../../shared/agent-chat-contract";
 import { plainTaskText, type Task, type TaskEffort } from "../../../shared/task-contract";
 import { repositoryRouteId } from "../repositories/repository-route";
@@ -130,6 +130,8 @@ export function prepareLine(timing: AgentChatTiming | undefined | null): string 
 }
 
 // What the tooltip says when the run kept the owner's effort although a Jev key was set. Chosen by a fixed reason, never by error text.
+// Where a call that timed out was waiting, in fixed words.
+const ROUTE_PHASES: Record<AgentChatRoutePhase, string> = { dns: "looking up its address", connect: "connecting", response: "waiting for its answer" };
 const ROUTE_KEPT: Record<AgentChatRouteReason, string> = {
   kept: "Jev agreed", timeout: "Jev did not answer in time", error: "Jev was not reachable", invalid: "Jev's answer was not usable", images: "a message with images is not sent to Jev",
 };
@@ -143,7 +145,8 @@ export function routeLine(timing: AgentChatTiming | undefined | null): string | 
   if (!route) return null;
   if (route.by === "jev") return `Effort ${route.effort}, chosen by Jev in ${seconds(route.ms)}`;
   const time = route.ms === undefined ? "" : ` in ${seconds(route.ms)}`;
-  return `Effort ${route.effort ?? "default"}, your choice (${ROUTE_KEPT[route.reason]}${route.reason === "kept" ? time : ""})`;
+  const phase = route.reason === "timeout" && route.phase ? `, ${ROUTE_PHASES[route.phase]}` : "";
+  return `Effort ${route.effort ?? "default"}, your choice (${ROUTE_KEPT[route.reason]}${route.reason === "kept" ? time : phase})`;
 }
 
 /** The tooltip of an answer's time: the whole local date and time, and under it what the answer's timing says: its effort routing, its preparation, then its run. */

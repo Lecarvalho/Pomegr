@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
-  AGENT_CHAT_ACTIVITIES, AGENT_CHAT_BOARD_OPERATIONS, AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_ERRORS, AGENT_CHAT_IMAGE_ID_PATTERN, AGENT_CHAT_MESSAGE_ID_PATTERN, AGENT_CHAT_PREPARE_STEPS, AGENT_CHAT_PROPOSAL_ID_PATTERN, AGENT_CHAT_ROUTE_REASONS,
+  AGENT_CHAT_ACTIVITIES, AGENT_CHAT_BOARD_OPERATIONS, AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_ERRORS, AGENT_CHAT_IMAGE_ID_PATTERN, AGENT_CHAT_MESSAGE_ID_PATTERN, AGENT_CHAT_PREPARE_STEPS, AGENT_CHAT_PROPOSAL_ID_PATTERN, AGENT_CHAT_ROUTE_PHASES, AGENT_CHAT_ROUTE_REASONS,
   AGENT_CHAT_PROPOSAL_STATES, AGENT_CHAT_QUEUE_RESULTS, AGENT_CHAT_START_FAILURES, AGENT_CHAT_TURN_STATUSES, AGENT_CHAT_WORKTREE_RESULTS,
   type AgentChatActionFailure, type AgentChatActivity, type AgentChatAgentMessage, type AgentChatBoardOperation, type AgentChatChoices, type AgentChatConversation, type AgentChatConversationSummary,
   type AgentChatDoneResult, type AgentChatError, type AgentChatImage, type AgentChatListResult, type AgentChatMessage, type AgentChatOperationName, type AgentChatOperationResult, type AgentChatPrepare,
-  type AgentChatProposal, type AgentChatProvider, type AgentChatReadResult, type AgentChatRoute, type AgentChatRouteReason, type AgentChatSearchMatch, type AgentChatSearchResult, type AgentChatSendResult, type AgentChatThreadMessage,
+  type AgentChatProposal, type AgentChatProvider, type AgentChatReadResult, type AgentChatRoute, type AgentChatRoutePhase, type AgentChatRouteReason, type AgentChatSearchMatch, type AgentChatSearchResult, type AgentChatSendResult, type AgentChatThreadMessage,
   type AgentChatThreadResult, type AgentChatThreadRun, type AgentChatThreadSummary, type AgentChatTiming, type AgentChatTurn,
 } from "../shared/agent-chat-contract";
 import { TASK_EFFORTS, TASK_IMAGE_TYPES, type TaskEffort } from "../shared/task-contract";
@@ -178,8 +178,9 @@ function parseRoute(value: unknown): AgentChatRoute | null {
   const timed = ms === undefined || wholeNumber(ms, AGENT_CHAT_BOUNDS.timingMs);
   if (route.by === "jev") return (route.effort === "low" || route.effort === "medium" || route.effort === "high") && wholeNumber(ms, AGENT_CHAT_BOUNDS.timingMs) ? { by: "jev", effort: route.effort, ms } : null;
   const effort = route.effort === null || (TASK_EFFORTS as readonly string[]).includes(route.effort as string) ? route.effort as TaskEffort | null : undefined;
-  if (route.by !== "owner" || effort === undefined || !(AGENT_CHAT_ROUTE_REASONS as readonly string[]).includes(route.reason as string) || !timed) return null;
-  return { by: "owner", effort, reason: route.reason as AgentChatRouteReason, ...(typeof ms === "number" ? { ms } : {}) };
+  const phased = route.phase === undefined || (route.reason === "timeout" && (AGENT_CHAT_ROUTE_PHASES as readonly string[]).includes(route.phase as string));
+  if (route.by !== "owner" || effort === undefined || !(AGENT_CHAT_ROUTE_REASONS as readonly string[]).includes(route.reason as string) || !timed || !phased) return null;
+  return { by: "owner", effort, reason: route.reason as AgentChatRouteReason, ...(typeof ms === "number" ? { ms } : {}), ...(route.phase !== undefined ? { phase: route.phase as AgentChatRoutePhase } : {}) };
 }
 
 /** How long a turn took, how large its prompt was, and how long its preparation took: whole numbers inside their bounds, or nothing. A timing outside the contract is not drawn, and a preparation outside it is left out; the message keeps its text. */

@@ -184,3 +184,64 @@ test("a route is whole milliseconds and fixed words; a timing carries it and dro
   assert.deepEqual(timingOf({ eventMs: 1, textMs: 2, doneMs: 3 }, { board: 2, instructions: 1, taskLog: 3, conversation: 4, message: 5, other: 6 }, null, route).route, route);
   assert.equal(Object.hasOwn(timingOf({ eventMs: 1, textMs: 2, doneMs: 3 }, {}, null, null), "route"), false);
 });
+
+test("with the key already read, the request goes out before route returns, ahead of the turn's other reads", async () => {
+  const { fetch, calls } = fakeFetch(respond(answer("low")));
+  const read = { peek: () => SECRET, read: async () => { throw new Error("The read must not be waited for."); } };
+  const pending = createJevRouting({ key: read, fetch, timeoutMs: 50 }).route({ text: "thanks", effort: "high" });
+  assert.equal(calls.length, 1, "the request was made in the same turn of the event loop as the call");
+  assert.equal((await pending).effort, "low");
+  // A key that was not read yet is waited for, and a key store without a peek is read.
+  const late = fakeFetch(respond(answer("low")));
+  const unread = createJevRouting({ key: { peek: () => undefined, read: async () => SECRET }, fetch: late.fetch, timeoutMs: 50 }).route({ text: "thanks", effort: "high" });
+  assert.equal(late.calls.length, 0);
+  assert.equal((await unread).effort, "low");
+  assert.equal(late.calls.length, 1);
+  // A key store that peeked "none" asks nothing.
+  const none = fakeFetch(respond(answer("low")));
+  assert.deepEqual(await createJevRouting({ key: { peek: () => null, read: async () => SECRET }, fetch: none.fetch }).route({ text: "x", effort: "high" }), { effort: "high", route: null });
+  assert.equal(none.calls.length, 0);
+});
+
+test("a timeout names the phase the call waited in, with a fixed word, and nothing else carries one", async () => {
+  for (const phase of ["dns", "connect", "response"]) {
+    const waiting = fakeFetch((_url, init) => { init.watch(() => phase); return new Promise(() => {}); });
+    const result = await routing(waiting.fetch, { timeoutMs: 30 }).route({ text: "thanks", effort: "high" });
+    assert.deepEqual(result, { effort: "high", route: { effort: "high", by: "owner", reason: "timeout", ms: result.route.ms, phase } });
+    assert.deepEqual(normalizeRoute(result.route), result.route);
+  }
+  // A reader that says something else, or throws, or none at all, is a timeout without a phase.
+  for (const reader of [() => "tls-version", () => null, () => 5, () => { throw new Error("secret"); }]) {
+    const waiting = fakeFetch((_url, init) => { init.watch(reader); return new Promise(() => {}); });
+    const result = await routing(waiting.fetch, { timeoutMs: 30 }).route({ text: "thanks", effort: "high" });
+    assert.equal(result.route.reason, "timeout");
+    assert.equal(Object.hasOwn(result.route, "phase"), false);
+  }
+  assert.equal(Object.hasOwn((await routing(fakeFetch(() => new Promise(() => {})).fetch, { timeoutMs: 30 }).route({ text: "x", effort: "high" })).route, "phase"), false);
+  const refused = await routing(fakeFetch((_url, init) => { init.watch(() => "dns"); return new Response("no", { status: 401 }); }).fetch).route({ text: "x", effort: "high" });
+  assert.equal(Object.hasOwn(refused.route, "phase"), false, "only a timeout names a phase");
+  for (const bad of [{ phase: "tls" }, { phase: null }, { reason: "error", phase: "dns" }, { reason: "kept", phase: "dns" }]) {
+    assert.equal(normalizeRoute({ effort: "high", by: "owner", reason: "timeout", ms: 5, ...bad }), null, JSON.stringify(bad));
+  }
+  assert.deepEqual(normalizeRoute({ effort: null, by: "owner", reason: "timeout", phase: "connect" }), { effort: null, by: "owner", reason: "timeout", phase: "connect" });
+});
+
+test("the default call goes through the transport; the fetch given replaces it, and a pre-connect needs a key and a transport that can", async () => {
+  const sent = [];
+  const transport = { opened: 0, fetch: async (url, init) => { sent.push([url, init.method]); return new Response(JSON.stringify(answer("low")), { status: 200 }); }, preconnect: async function () { transport.opened += 1; return true; } };
+  const keyed_ = createJevRouting({ key: keyed, transport, timeoutMs: 50 });
+  assert.equal((await keyed_.route({ text: "thanks", effort: "high" })).effort, "low");
+  assert.deepEqual(sent, [[JEV_URL, "POST"]]);
+  assert.equal(await keyed_.preconnect(), true);
+  assert.equal(transport.opened, 1, "one pre-connect, with no argument and no call of the transport's fetch");
+  assert.equal(sent.length, 1);
+  // No key, an unreadable key, no key store: nothing opens.
+  for (const key of [null, undefined, { read: async () => null }, { read: async () => { throw new Error("unreadable"); } }]) {
+    assert.equal(await createJevRouting({ key, transport }).preconnect(), false);
+  }
+  assert.equal(transport.opened, 1);
+  // A transport that cannot pre-connect, or fails to, and a fetch given in its place (as the tests do): false, never a rejection.
+  assert.equal(await createJevRouting({ key: keyed, transport: { fetch: transport.fetch } }).preconnect(), false);
+  assert.equal(await createJevRouting({ key: keyed, transport: { fetch: transport.fetch, preconnect: async () => { throw new Error("handshake"); } } }).preconnect(), false);
+  assert.equal(await createJevRouting({ key: keyed, fetch: fakeFetch(respond(answer("low"))).fetch }).preconnect(), false);
+});
