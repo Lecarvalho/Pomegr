@@ -145,7 +145,7 @@ const WITH_IMAGES = thread([
   agent("m-2", "I would create one task with the first image and attach the second to T-12.", { proposal: IMAGE_PROPOSAL }),
 ]);
 
-function SampleComposer({ initial = "", ...rest }: { initial?: string; repositories?: boolean; noModels?: boolean; effort?: TaskEffort; running?: boolean; error?: string | null; busy?: boolean; disabled?: boolean; images?: string[]; imageUrls?: Map<string, string>; uploading?: boolean; imageError?: string | null }) {
+export function SampleComposer({ initial = "", ...rest }: { initial?: string; repositories?: boolean; noModels?: boolean; effort?: TaskEffort; running?: boolean; error?: string | null; busy?: boolean; disabled?: boolean; images?: string[]; imageUrls?: Map<string, string>; uploading?: boolean; imageError?: string | null }) {
   const [value, setValue] = useState(initial);
   return <AgentChatComposer value={value} onChange={setValue} onSend={noop} onStop={noop} modelOptions={rest.noModels ? BARE_OPTIONS : MODEL_OPTIONS} modelValue={chatModelValue(rest.noModels ? BARE_RUN : SAMPLE_RUN)} onModelChange={noop} effort={rest.effort ?? SAMPLE_RUN.effort} onEffortChange={noop}
     repositories={rest.repositories ? REPOSITORIES : undefined} repositoryId={REPOSITORIES[0].value} onRepositoryChange={noop}

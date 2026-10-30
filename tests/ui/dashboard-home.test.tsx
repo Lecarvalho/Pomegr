@@ -36,12 +36,13 @@ describe("personal Home", () => {
     const user = userEvent.setup();
     const view = home();
     const update = screen.getByRole("complementary", { name: "What’s new" });
-    expect(within(update).getByRole("heading", { name: "Let Aril run your backlog" })).toBeInTheDocument();
+    expect(within(update).getByRole("button", { name: /Let Aril run your backlog/ })).toBeInTheDocument();
     expect(within(update).queryByRole("link")).not.toBeInTheDocument();
-    const navigation = screen.getByRole("region", { name: "Sessions" });
-    expect(update.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The What's new line is part of the status line at the foot of Home, after Continue.
+    const navigation = screen.getByRole("region", { name: "Continue" });
+    expect(navigation.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Dismiss this update" }));
-    expect(screen.queryByRole("heading", { name: "What’s new" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "What’s new" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Browse sessions" })).toHaveFocus();
     expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({
       version: 1, pins: [{ kind: "session", id: sessions[0].id }],
@@ -57,14 +58,14 @@ describe("personal Home", () => {
       }));
       window.dispatchEvent(new StorageEvent("storage", { key: HOME_PREFERENCES_STORAGE_KEY }));
     });
-    expect(screen.getByRole("heading", { name: "What’s new" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "What’s new" })).toBeInTheDocument();
   });
 
   it("opens the update in a dialog that Close and Got it both close, keeping the card", async () => {
     const user = userEvent.setup();
     home();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    const trigger = screen.getByRole("button", { name: "See what’s new" });
+    const trigger = screen.getByRole("button", { name: /What’s new.*Let Aril run your backlog/ });
     await user.click(trigger);
     const dialog = screen.getByRole("dialog", { name: "Let Aril run your backlog" });
     expect(within(dialog).getAllByRole("listitem")).toHaveLength(3);
@@ -76,7 +77,7 @@ describe("personal Home", () => {
     await user.click(screen.getByRole("button", { name: "Got it" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
-    expect(screen.getByRole("heading", { name: "What’s new" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "What’s new" })).toBeInTheDocument();
     expect(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY) ?? "").not.toContain("dismissedUpdateId");
   });
 
@@ -93,27 +94,32 @@ describe("personal Home", () => {
     view.unmount();
     home();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "See what’s new" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /What’s new.*Let Aril run your backlog/ })).toBeInTheDocument();
   });
 
-  it("offers navigation with a compact local provider-status exception", async () => {
+  it("is one column: a greeting, Continue, and a status line, with no guides, roadmap, or session metrics", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Local test monitor unavailable"));
     const { container } = home();
-    expect(screen.getByRole("heading", { name: "Welcome to Pomegr" })).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "Sessions" })).getByRole("heading", { name: "Pinned destinations", level: 3 })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "What’s new" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Choose a session" })).toHaveAttribute("href", "/sessions");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^Good (morning|afternoon|evening)$/);
+    expect(within(screen.getByRole("region", { name: "Continue" })).getByRole("heading", { name: "Pinned destinations", level: 3 })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "What’s new" })).toBeInTheDocument();
+    for (const name of ["Choose a session", "Inspect a session", "Session coach", "On the horizon", "Understand your sessions"]) {
+      expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText(/Coming soon/)).not.toBeInTheDocument();
     for (const name of ["Usage & activity", "Active now", "Open · Idle", "All-agent context", "Active agents"]) expect(screen.queryByText(name)).not.toBeInTheDocument();
     expect(container.querySelector("progress")).not.toBeInTheDocument();
     expect(screen.queryByText("12,345")).not.toBeInTheDocument();
     expect(screen.queryByText("Build Home")).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Session coach" })).toHaveTextContent("Coming soon");
-    expect(screen.getByRole("region", { name: "Session coach" })).toHaveTextContent("opt-in");
-    expect(within(screen.getByRole("region", { name: "Session coach" })).queryByRole("button")).not.toBeInTheDocument();
-    expect(within(screen.getByRole("complementary", { name: "Provider status" })).getByRole("heading", { name: "Provider status", level: 2 })).toBeInTheDocument();
+    // Where the client is not known to reach the chat, nothing of Aril is drawn: no line, no Needs you, no composer.
+    expect(screen.queryByRole("textbox", { name: "Message Aril" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/task logs/)).not.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Provider service status" })).toHaveTextContent("Provider status");
     await act(async () => { window.dispatchEvent(new Event("focus")); document.dispatchEvent(new Event("visibilitychange")); });
     expect(fetchMock).toHaveBeenCalled();
-    for (const [input] of fetchMock.mock.calls) expect(String(input)).toMatch(/^\/api\/provider-status(?:\?revision=\d+)?$/);
+    // Home reads the provider status, the Tasks home, and the repository inventory, and nothing else.
+    for (const [input] of fetchMock.mock.calls) expect(String(input)).toMatch(/^\/api\/(?:provider-status(?:\?revision=\d+)?|tasks\?view=home|repositories(?:\?.*)?)$/);
   });
 
   it("pins a selected session, persists only its identity, and can unpin it", async () => {
@@ -145,7 +151,7 @@ describe("personal Home", () => {
   it("keeps views pinnable without a catalog and does not claim no sessions while loading", async () => {
     const user = userEvent.setup();
     home([], { loading: true });
-    expect(screen.getByRole("heading", { name: "Session coach" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Continue" })).toBeInTheDocument();
     await user.click(screen.getByText("Add pins"));
     expect(screen.getByText("Loading destinations from the local monitor…")).toBeInTheDocument();
     chooseCommandOption(screen.getByLabelText("Destination type"), "view");

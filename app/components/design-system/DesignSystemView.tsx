@@ -47,7 +47,7 @@ import { RepositorySetupSection, RevisionEvidenceSection } from "./DesignSystemR
 import { Sample, SAMPLE_TIME, Section, sampleAgent } from "./DesignSystemKit";
 import { EventsRailSection } from "./DesignSystemEventsSample";
 import { SessionTerminalSection } from "./DesignSystemTerminalSample";
-import { HomeUpdateSection } from "./DesignSystemHomeUpdateSample";
+import { HomeSection, HomeUpdateSection } from "./DesignSystemHomeUpdateSample";
 import { TaskFieldsSection } from "./DesignSystemTaskFieldsSample";
 import { TaskBoardSection } from "./DesignSystemTaskBoardSample";
 import { TaskPlanSection } from "./DesignSystemTaskPlanSample";
@@ -95,6 +95,7 @@ export function DesignSystemView() {
     <PanelsSection />
     <EventsRailSection />
     <SessionTerminalSection />
+    <HomeSection />
     <HomeUpdateSection />
     <TaskFieldsSection />
     <TaskBoardSection />

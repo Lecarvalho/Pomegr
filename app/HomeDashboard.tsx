@@ -1,100 +1,66 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
-import type { SessionSummary } from "../shared/monitor-contract";
-import { encodeSessionRoute } from "../shared/session-route.mjs";
-import { CommandIcon, type CommandIconName } from "./components/command-center/CommandIcon";
-import { CommandPageHeader, CommandSelect, type CommandSelectOption } from "./components/command-center/CommandPage";
-import { useSessionCatalog } from "./hooks/SessionCatalogContext";
-import { useProviderStatus } from "./provider-status-client";
+import { useMemo, useRef, useSyncExternalStore } from "react";
+import { useAgentChatAvailability } from "./agent-chat-client";
+import { CommandPageHeader } from "./components/command-center/CommandPage";
 import { ProviderStatusArea } from "./components/ProviderStatus";
+import { homeSuggestions } from "./components/agent-chat/agent-chat-presentation";
+import { HomeAril } from "./components/home/HomeAril";
+import { HomeArilLine } from "./components/home/HomeArilLine";
+import { HomeContinue } from "./components/home/HomeContinue";
+import { HomeNeedsYou } from "./components/home/HomeNeedsYou";
 import { HomeUpdateCard } from "./components/home/HomeUpdateCard";
 import { HomeUpdateIllustration } from "./components/home/HomeUpdateIllustration";
-import { HOME_PIN_LIMIT, normalizeHomePin, useHomePreferences, type HomePin } from "./hooks/useHomePreferences";
+import { arilLine, greetingFor, needsYou, suggestionFacts } from "./components/home/home-model";
+import { useHomeLogs } from "./components/home/useHomeLogs";
+import { useHomePreferences } from "./hooks/useHomePreferences";
+import { useProviderStatus } from "./provider-status-client";
+import { useRepositoryInventory } from "./repository-inventory-client";
+import { useTaskHome } from "./tasks-home-store";
 import styles from "./HomeDashboard.module.css";
 
-/** Approved Home direction. */
+/** Approved Home direction (docs/internal/design/home.md). */
 
-type Destination = HomePin & { title: string; detail: string; href: string; icon: CommandIconName };
-const VIEWS: Destination[] = [
-  { kind: "view", id: "sessions", title: "Sessions", detail: "Live and historical sessions", href: "/sessions", icon: "sessions" },
-  { kind: "view", id: "agents", title: "Models & delegation", detail: "Model, role, and work analysis", href: "/agents", icon: "agents" },
-  { kind: "view", id: "usage-limits", title: "Usage limits", detail: "Provider account windows", href: "/usage-limits", icon: "limits" },
-  { kind: "view", id: "repositories", title: "Repositories", detail: "Observed projects", href: "/repositories", icon: "repositories" },
-];
-const DESTINATION_KINDS: CommandSelectOption<HomePin["kind"]>[] = [{ value: "session", label: "Sessions" }, { value: "project", label: "Projects" }, { value: "view", label: "Views" }];
-const samePin = (left: HomePin, right: HomePin) => left.kind === right.kind && left.id === right.id;
-
-function sessionDestination(session: SessionSummary): Destination | null {
-  try {
-    return { kind: "session", id: session.id, title: session.title, detail: `${session.project} · ${session.source}`, href: `/sessions/${encodeSessionRoute(session.id)}`, icon: "session" };
-  } catch { return null; }
-}
-
-function destinationsFor(sessions: SessionSummary[]): Destination[] {
-  const projects = [...new Set(sessions.map((session) => session.project))]
-    .filter((project) => normalizeHomePin({ kind: "project", id: project }) !== null)
-    .sort((left, right) => left.localeCompare(right));
-  return [
-    ...VIEWS,
-    ...projects.map((project): Destination => ({ kind: "project", id: project, title: project, detail: "Project sessions", href: `/sessions?project=${encodeURIComponent(project)}`, icon: "repositories" })),
-    ...sessions.flatMap((session) => { const destination = sessionDestination(session); return destination ? [destination] : []; }),
-  ];
-}
-
-function PinPicker({ destinations, pins, onToggle, catalogLoading }: {
-  destinations: Destination[];
-  pins: HomePin[];
-  onToggle: (pin: HomePin) => void;
-  catalogLoading: boolean;
-}) {
-  const [kind, setKind] = useState<HomePin["kind"]>("session");
-  const [query, setQuery] = useState("");
-  const [announcement, setAnnouncement] = useState("");
-  const matches = destinations.filter((destination) => destination.kind === kind && `${destination.title} ${destination.detail}`.toLowerCase().includes(query.trim().toLowerCase()));
-  return <div className={styles.picker}>
-    <div className={styles.pickerFilters}>
-      <label>Destination type<CommandSelect value={kind} onChange={(value) => { setKind(value); setQuery(""); }} options={DESTINATION_KINDS} /></label>
-      <label>Find a destination<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search names" /></label>
-    </div>
-    <ul className={styles.pickerResults} aria-label="Destinations to pin">
-      {matches.slice(0, 20).map((destination) => {
-        const pinned = pins.some((pin) => samePin(pin, destination));
-        return <li key={`${destination.kind}:${destination.id}`}><button type="button" aria-pressed={pinned} aria-label={`Pin ${destination.title}`} disabled={!pinned && pins.length >= HOME_PIN_LIMIT} onClick={() => { onToggle(destination); setAnnouncement(pinned ? "Destination removed from Home." : "Destination pinned to Home."); }}>
-          <span><strong>{destination.title}</strong><small>{destination.detail}</small></span><span>{pinned ? "Pinned" : "Pin"}<CommandIcon name="pin" size="small" /></span>
-        </button></li>;
-      })}
-    </ul>
-    {!matches.length && <p className={styles.pickerHint}>{catalogLoading && kind !== "view" ? "Loading destinations from the local monitor…" : "No matching destinations."}</p>}
-    {matches.length > 20 && <p className={styles.pickerHint}>Showing the first 20 matches. Search to narrow the list.</p>}
-    <p className={styles.pickerHint}>{pins.length >= HOME_PIN_LIMIT ? "All six pins are in use. Remove one to add another." : "Choose up to six destinations. Your pins stay in this browser."}</p>
-    <span className="srOnly" role="status">{announcement}</span>
-  </div>;
-}
+const subscribeNever = () => () => {};
+// The owner's local hour is known only on the client. Until then the title is empty, so it is never drawn with another word first.
+const useGreeting = () => useSyncExternalStore(subscribeNever, () => greetingFor(new Date().getHours()), () => "");
 
 export function HomeDashboard() {
-  const { sessions, loading, connected, readiness } = useSessionCatalog();
   const providerStatus = useProviderStatus();
-  const { pins, lastViewedSessionId, ready, persistent, togglePin, updateDismissed, dismissUpdate, updateSeen, markUpdateSeen } = useHomePreferences();
-  const destinations = useMemo(() => destinationsFor(sessions), [sessions]);
-  const lastViewed = destinations.find((destination) => destination.kind === "session" && destination.id === lastViewedSessionId);
+  const preferences = useHomePreferences();
+  const { ready, updateDismissed, dismissUpdate, updateSeen, markUpdateSeen } = preferences;
+  const greeting = useGreeting();
+  const home = useTaskHome();
+  const { snapshot: inventory } = useRepositoryInventory();
+  // Where the chat can be reached is decided before anything of Aril is drawn: the task log and the composer need it.
+  const availability = useAgentChatAvailability();
+  const aril = availability === "desktop" || availability === "paired";
+  const logs = useHomeLogs(home, aril);
   const browseRef = useRef<HTMLAnchorElement>(null);
-  const pickerRef = useRef<HTMLDetailsElement>(null);
-  const pickerSummaryRef = useRef<HTMLElement>(null);
-  const catalogLoading = loading || readiness.catalog === "loading";
-  const catalogUnavailable = !connected || readiness.catalog === "unavailable";
-  const [pinAnnouncement, setPinAnnouncement] = useState("");
-  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const names = useMemo(() => new Map(inventory.repositories.map((repository) => [repository.id, repository.displayName])), [inventory.repositories]);
+  // Nothing is drawn from the boards until the client, the inventory, and the logs it reads have answered, so no row appears after another is shown.
+  const settling = availability === "pending" || inventory.readiness === "loading" || logs.reading;
+  const needs = useMemo(() => (home.readiness === "ready" && !settling ? needsYou(home, names, logs.reads) : null), [home, names, logs.reads, settling]);
+  const line = useMemo(() => (aril && home.readiness === "ready" && !logs.reading ? arilLine(logs.reads, logs.at) : null), [aril, home.readiness, logs.reading, logs.reads, logs.at]);
+  const reading = aril && (home.readiness === "loading" || logs.reading);
+  const suggestions = useMemo(() => homeSuggestions(suggestionFacts(home, needs?.total ?? 0)), [home, needs?.total]);
+
+  const meta = line !== null ? <HomeArilLine>{line}</HomeArilLine> : reading ? <HomeArilLine status>Reading the task logs…</HomeArilLine> : undefined;
 
   return <section className={`commandView commandHome ${styles.home}`} aria-labelledby="home-heading">
-    <CommandPageHeader title="Welcome to Pomegr" headingId="home-heading" meta="Understand your coding sessions. Build on what you learn." />
+    <div className={styles.column}>
+      <CommandPageHeader title={greeting} headingId="home-heading" meta={meta} />
 
-    <div className={styles.workspace}>
-      <div className={styles.sessionColumn}>
+      {needs !== null && needs.total > 0 && <HomeNeedsYou items={needs.items} total={needs.total} />}
+      {home.readiness === "unavailable" && availability !== "pending" && <p className={styles.note} role="status">Task boards are unavailable. Pomegr will retry.</p>}
+
+      <HomeContinue preferences={preferences} browseRef={browseRef} />
+
+      <div className={styles.status}>
+        <ProviderStatusArea providers={providerStatus.providers} className={styles.providerStatus} />
         {ready && !updateDismissed && <HomeUpdateCard
           title="Let Aril run your backlog"
-          summary="Under a grant, Aril starts, reviews, and merges tasks within limits you set."
           description="A grant lets Aril start the Ready tasks your work rules select and their reviews, send failed work back, merge on green CI after a passing review, and write tasks from plans you name. It stays within the hours, tasks, and usage limit you set."
           highlights={[
             "Set the limits in Aril settings, add a work rule, and select Start grant.",
@@ -106,87 +72,9 @@ export function HomeDashboard() {
           onAutoOpen={markUpdateSeen}
           onDismiss={() => { dismissUpdate(); browseRef.current?.focus(); }}
         />}
-        <section className={styles.sessions} aria-labelledby="home-sessions-heading" aria-busy={!ready || undefined}>
-          <header className={styles.sectionHeading}>
-            <div><h2 id="home-sessions-heading">Sessions</h2><p>Open recorded work or return to a saved destination.</p></div>
-            <Link ref={browseRef} className={`commandSecondaryAction ${styles.browse}`} href="/sessions">Browse sessions<CommandIcon name="arrow" size="small" /></Link>
-          </header>
-          {!ready ? <p className={styles.quiet} role="status">Loading your shortcuts…</p> : <>
-            <div className={styles.lastSession}>
-              {lastViewed ? <Link className={styles.returnLink} href={lastViewed.href} aria-label={`Open last viewed session: ${lastViewed.title}`}><CommandIcon name="session" /><span><small>Last viewed session</small><strong>{lastViewed.title}</strong><span>{lastViewed.detail}</span></span><CommandIcon name="arrow" size="small" /></Link>
-                : <p>{lastViewedSessionId ? (catalogLoading ? "Finding your last viewed session…" : "Your last viewed session is not in the current catalog. Browse sessions to find another.") : "Open a session to inspect its agents and recorded evidence. A shortcut back to it will appear here."}</p>}
-            </div>
-
-            <div className={styles.pins}>
-              <h3 id="home-pins-heading">Pinned destinations</h3>
-              {pins.length ? <ul className={styles.pinList} aria-labelledby="home-pins-heading">
-                {pins.map((pin, index) => {
-                  const destination = destinations.find((item) => samePin(item, pin));
-                  const missingTitle = pin.kind === "project" ? pin.id : "Pinned session";
-                  return <li key={`${pin.kind}:${pin.id}`}>
-                    {destination ? <Link href={destination.href} aria-label={`${destination.title} · ${destination.detail}`} className={styles.pinLink}><CommandIcon name={destination.icon} /><span><strong>{destination.title}</strong><small>{destination.detail}</small></span></Link> : <div className={styles.pinUnavailable}><CommandIcon name={pin.kind === "project" ? "repositories" : "session"} /><span><strong>{missingTitle}</strong><small>{catalogLoading ? "Loading destination…" : "Not in the current catalog"}</small></span></div>}
-                    <button className={styles.removePin} type="button" aria-label={`Unpin ${destination?.title || `${missingTitle} ${index + 1}`}`} onClick={() => { togglePin(pin); setPinAnnouncement("Destination removed from Home."); pickerSummaryRef.current?.focus(); }}><CommandIcon name="close" size="small" /></button>
-                  </li>;
-                })}
-              </ul> : <p className={styles.emptyPins}>Keep frequently used sessions, projects, and views one click away.</p>}
-              <details ref={pickerRef} className={styles.pinDisclosure} onToggle={(event) => setPickerOpen(event.currentTarget.open)}>
-                <summary ref={pickerSummaryRef}>Add pins<CommandIcon name="pin" size="small" /></summary>
-                {pickerOpen && <PinPicker destinations={destinations} pins={pins} onToggle={togglePin} catalogLoading={catalogLoading} />}
-                <button type="button" className="commandSecondaryAction" onClick={() => { if (pickerRef.current) pickerRef.current.open = false; pickerSummaryRef.current?.focus(); }}>Done</button>
-              </details>
-            </div>
-            {!persistent && <p className={styles.quiet} role="status">Browser storage is unavailable. Your Home preferences will last until this page is closed.</p>}
-            {catalogUnavailable && <p className={styles.quiet}>The local monitor is reconnecting. Saved pins are kept; some destinations may be unavailable.</p>}
-          </>}
-          <span className="srOnly" role="status">{pinAnnouncement}</span>
-        </section>
-
       </div>
 
-      <div className={styles.guideColumn}>
-        <section className={styles.guides} aria-labelledby="home-guides-heading">
-          <h2 id="home-guides-heading">Understand your sessions</h2>
-          <article>
-            <h3>Inspect context changes</h3>
-            <p>Open a session’s Context history to see recorded snapshots and compaction boundaries, when available. Select an agent to focus the timeline.</p>
-            <Link className={styles.textLink} href={lastViewed?.href || "/sessions"}>Inspect a session<CommandIcon name="arrow" size="small" /></Link>
-          </article>
-          <article className={styles.reportGuide}>
-            <h3>Download a session report</h3>
-            <p>Keep a retrospective of recorded session metadata. Open a session, then choose “Download report”.</p>
-            <Link className={styles.textLink} href="/sessions">Choose a session<CommandIcon name="arrow" size="small" /></Link>
-          </article>
-        </section>
-        <ProviderStatusArea providers={providerStatus.providers} className={styles.providerStatus} headingId="home-provider-status-heading" />
-      </div>
+      {aril && <div className={styles.composer}><HomeAril suggestions={suggestions} /></div>}
     </div>
-
-    <section className={styles.roadmap} aria-label="Session coach">
-      <header className={styles.roadmapHeading}>
-        <h2 id="home-roadmap-heading">On the horizon</h2>
-        <span className={styles.soon}>Coming soon</span>
-      </header>
-      <div className={styles.roadmapGrid}>
-        <article className={styles.coachCard} aria-labelledby="home-coach-heading">
-          <h3 id="home-coach-heading">Session coach</h3>
-          <p>Planned read-only guidance grounded in a session you choose, with links to recorded evidence.</p>
-          <p className={styles.coachQuestionsLabel}>Questions you’ll be able to explore</p>
-          <ul className={styles.coachQuestions}>
-            <li>What contributed to this context increase?</li>
-            <li>Where did this session repeat work?</li>
-            <li>What could I try differently next time?</li>
-          </ul>
-        </article>
-        <article>
-          <h3>Saved views</h3>
-          <p>Keep a preferred combination of projects, providers, and session filters ready to reopen.</p>
-        </article>
-        <article>
-          <h3>Session comparison</h3>
-          <p>Inspect two sessions side by side, from context snapshots and wall time to recorded events.</p>
-        </article>
-      </div>
-      <p className={styles.roadmapBoundary}>Suggestions will distinguish facts from interpretations. These previews are unavailable: they do not run agents, call models, transmit data, or control sessions. Sending metadata to a model will require your explicit opt-in.</p>
-    </section>
   </section>;
 }

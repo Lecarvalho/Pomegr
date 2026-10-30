@@ -1381,6 +1381,11 @@ it looks.
   is visible, and keeps the last home until a complete answer replaces it.
 - **Queue paused.** A paused queue is not an attention item: its row in Boards says
   **Paused**, and the board's banner names the task and the reason.
+- **Home.** The Home page draws this read too, in its Needs you list. Home lists a paused
+  queue as an item with the fixed pause reason, because a failed start waits for the owner.
+  Where the client can read a task log, Home also reads the log of the 12 boards that changed
+  last, once a minute, and draws counts and one detail word from it. Home adds no route and
+  stores no board value. [Home design](../design/home.md#needs-you) owns the rule.
 
 ## Start gates
 
@@ -3226,6 +3231,9 @@ fixed values.
   after the task text's leading tags, which may sit on several leading lines, and a text
   of only tags is its own title. It is still one line of at most 160 characters. No own condition,
   block reason, attention line, feature name, image, model, or session ID enters it.
+- The Home page draws that read and the task log (fixed kinds, times, and task IDs only) to the
+  same clients under the same gates. It keeps neither in browser storage, and a client that may
+  not read them gets nothing drawn ([Home design](../design/home.md#what-home-reads)).
 - A feature's description and app version live only in the task store and are served
   only by `POST /api/agent/v1/tasks/feature-get`, to an agent whose session is bound to
   that board (task T-33, 2026-10-10). This is a deliberate widening: an agent could

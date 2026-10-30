@@ -3,20 +3,18 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type Ref } from "react";
 import { useAgentChat, WARM_DEBOUNCE_MS, type AgentChatAvailability } from "../../agent-chat-client";
 import { useAgentChatSearch } from "../../agent-chat-search";
-import { useTasks } from "../../tasks-store";
-import { AGENT_CHAT_BOUNDS, type AgentChatImage, type AgentChatProvider } from "../../../shared/agent-chat-contract";
-import type { TaskEffort } from "../../../shared/task-contract";
+import type { AgentChatImage, AgentChatProvider } from "../../../shared/agent-chat-contract";
 import type { CommandSelectOption } from "../command-center/CommandSelect";
 import { DEFAULT_RUN, NO_MODELS } from "../tasks/task-fields";
 import { heldStartLine } from "../tasks/task-gates-model";
-import { useTaskModelOptions } from "../tasks/task-panel-hooks";
 import { AgentChatComposer, type AgentChatComposerHandle } from "./AgentChatComposer";
 import { AgentChatPanelFrame, AgentChatHeader } from "./AgentChatFrame";
 import { AgentChatMessages, type AgentChatLogState, type MessageTarget } from "./AgentChatMessages";
 import { AgentChatSearch } from "./AgentChatSearch";
-import { IMAGE_ADD_FAILURE_MESSAGE, IMAGE_TYPE_MESSAGE, acceptChatImageFiles, addAgentChatImage, threadImageSources, useAgentChatImageUrls } from "./agent-chat-images";
-import { errorCopy } from "./agent-chat-presentation";
-import { CHAT_DEFAULT_EFFORT, chatModelFromValue, chatModelOptions, chatModelValue, initialChatRun, resolveChatRun } from "./agent-chat-run";
+import { threadImageSources } from "./agent-chat-images";
+import { errorCopy, type AgentChatHandoff } from "./agent-chat-presentation";
+import { CHAT_DEFAULT_EFFORT, chatModelOptions, chatModelValue, initialChatRun, type ChatRun } from "./agent-chat-run";
+import { useAgentChatComposer } from "./useAgentChatComposer";
 
 type Shared = {
   open: boolean;
@@ -27,18 +25,19 @@ type Shared = {
   onClose(): void;
 };
 
-// What the owner chose over the run the thread would start on.
-type ChosenRun = { pick?: { provider: AgentChatProvider; model: string | null }; effort?: TaskEffort };
 // A message to open: a follow-up's. `nonce` changes for each opening, so the same link opens it again.
 type ChatFocus = { conversationId: string | null; messageId: string | null; nonce: number };
 
 /** One repository's chat. Mounted once for each repository (a `key`), so no message of one repository is shown under another. */
-function AgentChatBody({ repositoryId, availability, open, repositories, onRepositoryChange, expanded, onToggleExpanded, onClose, onAnswering, onAnswered, focus }: Shared & {
+function AgentChatBody({ repositoryId, availability, open, repositories, onRepositoryChange, expanded, onToggleExpanded, onClose, onAnswering, onAnswered, focus, outgoing, onOutgoingTaken }: Shared & {
   repositoryId: string;
   focus: ChatFocus | null;
   availability: Exclude<AgentChatAvailability, "pending" | "absent">;
   onAnswering(answering: boolean): void;
   onAnswered(): void;
+  /** A message the owner wrote on Home for this repository: sent once, as if typed here. */
+  outgoing: AgentChatHandoff | null;
+  onOutgoingTaken(nonce: number): void;
 }) {
   // A closed panel keeps following an answer that is being written, and asks nothing otherwise.
   const [following, setFollowing] = useState(false);
@@ -46,24 +45,16 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
   const answering = view.turn !== null || view.pendingMessage !== null;
   if (following !== answering) setFollowing(answering);
 
-  const { board, refresh } = useTasks(repositoryId);
-  const models = useTaskModelOptions(board.runModels);
+  const imageSources = useMemo(() => threadImageSources(view.messages), [view.messages]);
+  const { board, refresh, run, modelOptions, modelValue, chooseModel, chooseEffort, draft, setDraft, attached, setAttached, uploading, imageError, setImageError, imageUrls, attach, removeImage } = useAgentChatComposer(repositoryId, view.run, imageSources);
   const [searchOpen, setSearchOpen] = useState(false);
   const search = useAgentChatSearch(repositoryId, searchOpen);
   const searchId = useId();
   const searchToggle = useRef<HTMLButtonElement>(null);
-  const [draft, setDraft] = useState("");
   // When the message on its way was sent, until it reaches the stored thread with its own time.
   const [sentAt, setSentAt] = useState<string | null>(null);
-  const [chosen, setChosen] = useState<ChosenRun>({});
   const [sentProvider, setSentProvider] = useState<AgentChatProvider>(DEFAULT_RUN.provider ?? "claude");
   const [pin, setPin] = useState(0);
-  // The images of the message being written: the desktop app holds their bytes, this holds what it answered.
-  const [attached, setAttached] = useState<readonly AgentChatImage[]>([]);
-  const [uploading, setUploading] = useState(0);
-  const [imageError, setImageError] = useState<string | null>(null);
-  const imageSources = useMemo(() => threadImageSources(view.messages), [view.messages]);
-  const { urls: imageUrls, remember } = useAgentChatImageUrls(repositoryId, imageSources);
   const composer = useRef<AgentChatComposerHandle>(null);
   const wasAnswering = useRef(false);
 
@@ -94,11 +85,6 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
   }, [answering, open, onAnswering, onAnswered]);
   useEffect(() => () => onAnswering(false), [onAnswering]);
 
-  // The run starts from what the thread last ran with, else the newest known model and Medium. It is never a default.
-  const base = initialChatRun(models, view.run);
-  const run = resolveChatRun(models, { ...base, ...chosen.pick, effort: chosen.effort ?? base.effort });
-  const modelOptions = chatModelOptions(models, run);
-
   // A field that keeps its focus asks the desktop to keep a provider run ready for the next message, once for a burst of focus events and
   // with the run the composer shows by then. The thread is read first, so the run is the thread's and not the starting default.
   const [fieldFocused, setFieldFocused] = useState(false);
@@ -110,24 +96,36 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
   }, [fieldFocused, ready, warm, run.provider, run.model, run.effort]);
 
   const closeSearch = () => { setSearchOpen(false); search.setQuery(""); searchToggle.current?.focus({ preventScroll: true }); };
-  const send = async () => {
-    const text = draft.trim();
-    if (text === "") return;
+  // Sends a message with a run. A refused message stays in the field with its images, so a failed send loses nothing the owner put in.
+  const submit = async (text: string, asked: ChatRun, images: readonly AgentChatImage[]) => {
     setSearchOpen(false);
     search.setQuery("");
-    setSentProvider(run.provider);
+    setSentProvider(asked.provider);
     setSentAt(new Date().toISOString());
     setPin((current) => current + 1);
-    setDraft("");
-    const images = attached;
-    setAttached([]);
     setImageError(null);
-    // A refused message stays in the field with its images, so a failed send loses nothing the owner put in.
-    if (!await view.send(text, run.provider, run.model, run.effort, images)) {
+    if (!await view.send(text, asked.provider, asked.model, asked.effort, images)) {
       setDraft((current) => (current === "" ? text : current));
       setAttached((current) => (current.length === 0 ? images : current));
     }
   };
+  const send = async () => {
+    const text = draft.trim();
+    if (text === "") return;
+    const images = attached;
+    setDraft("");
+    setAttached([]);
+    await submit(text, run, images);
+  };
+  // A message written on Home arrives once, from the dock, with the run Home showed. It is sent as if typed here, and a draft stays.
+  const taken = useRef(0);
+  useEffect(() => {
+    if (outgoing === null || taken.current === outgoing.nonce) return;
+    taken.current = outgoing.nonce;
+    onOutgoingTaken(outgoing.nonce);
+    void submit(outgoing.text, { provider: outgoing.provider, model: outgoing.model, effort: outgoing.effort }, outgoing.images);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one send for each handoff
+  }, [outgoing]);
   // A tap on a quick reply or an option sends its label as the owner's own message, with the run the composer shows. The draft stays as it is.
   // Only a click the keyboard made keeps focus in the field: a tap on a phone should not open the keyboard.
   const choose = async (label: string, byKeyboard: boolean) => {
@@ -139,18 +137,6 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
     setPin((current) => current + 1);
     if (byKeyboard) composer.current?.focus();
     await view.send(label, run.provider, run.model, run.effort);
-  };
-  const attach = async (files: File[]) => {
-    const { accepted, message } = acceptChatImageFiles(files, attached.length + uploading);
-    setImageError(message);
-    for (const file of accepted) {
-      setUploading((current) => current + 1);
-      const answer = await addAgentChatImage(repositoryId, new Uint8Array(await file.arrayBuffer()));
-      setUploading((current) => current - 1);
-      if (!answer.ok) { setImageError(answer.error === "invalid" ? IMAGE_TYPE_MESSAGE : IMAGE_ADD_FAILURE_MESSAGE); continue; }
-      remember(answer.image.id, file);
-      setAttached((current) => (current.length < AGENT_CHAT_BOUNDS.imagesPerMessage ? [...current, answer.image] : current));
-    }
   };
   const apply = async (conversationId: string, proposalId: string) => { if (await view.apply(conversationId, proposalId)) await refresh(); };
   const heldStart = (taskId: string) => {
@@ -173,13 +159,13 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
         onLoadOlder={() => { void view.loadOlder(); }} onSuggest={suggest} onChoose={(label, byKeyboard) => { void choose(label, byKeyboard); }} onApply={(conversationId, proposalId) => { void apply(conversationId, proposalId); }} onDismiss={(conversationId, proposalId) => { void view.dismiss(conversationId, proposalId); }} />
     </div>
     <AgentChatComposer ref={composer} value={draft} onChange={setDraft} onSend={() => { void send(); }} onStop={view.stop} onFieldFocusChange={setFieldFocused}
-      modelOptions={modelOptions} modelValue={chatModelValue(run)}
+      modelOptions={modelOptions} modelValue={modelValue}
       repositories={repositories} repositoryId={repositoryId} onRepositoryChange={onRepositoryChange}
-      onModelChange={(value) => { const pick = chatModelFromValue(value); if (pick) setChosen({ ...chosen, pick }); }}
-      effort={run.effort} onEffortChange={(effort) => setChosen({ ...chosen, effort })}
+      onModelChange={chooseModel}
+      effort={run.effort} onEffortChange={chooseEffort}
       running={view.turn !== null} busy={view.pendingMessage !== null}
-      images={attached.map((image) => image.id)} imageUrls={imageUrls} uploading={uploading > 0} imageError={imageError}
-      onAttach={(files) => { void attach(files); }} onRemoveImage={(imageId) => { setImageError(null); setAttached((current) => current.filter((image) => image.id !== imageId)); }}
+      images={attached.map((image) => image.id)} imageUrls={imageUrls} uploading={uploading} imageError={imageError}
+      onAttach={(files) => { void attach(files); }} onRemoveImage={removeImage}
       error={view.error ? errorCopy(view.error, { provider: sentProvider }) : null} />
   </>;
 }
@@ -199,8 +185,11 @@ function AgentChatWithoutRepository({ loading, expanded, onToggleExpanded, onClo
   </>;
 }
 
-export function AgentChatPanel({ id, panelRef, mounted, availability, repositoryId, repositoriesLoading, repositories, open, onRepositoryChange, expanded, onToggleExpanded, onClose, onAnswering, onAnswered, focus = null }: Shared & {
+export function AgentChatPanel({ id, panelRef, mounted, availability, repositoryId, repositoriesLoading, repositories, open, onRepositoryChange, expanded, onToggleExpanded, onClose, onAnswering, onAnswered, focus = null, outgoing = null, onOutgoingTaken }: Shared & {
   focus?: ChatFocus | null;
+  /** A message written on Home, waiting for the body of its repository to send it. */
+  outgoing?: AgentChatHandoff | null;
+  onOutgoingTaken(nonce: number): void;
   id: string;
   panelRef: Ref<HTMLElement>;
   /** The body is built on the first opening and kept, so a closed panel keeps its draft and follows an answer. */
@@ -220,7 +209,8 @@ export function AgentChatPanel({ id, panelRef, mounted, availability, repository
   return <AgentChatPanelFrame id={id} panelRef={panelRef} open={open} expanded={expanded} onKeyDown={keyDown}>
     {mounted && (repositoryId !== null
       ? <AgentChatBody key={repositoryId} repositoryId={repositoryId} availability={availability} open={open} repositories={repositories}
-        onRepositoryChange={onRepositoryChange} expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} onAnswering={onAnswering} onAnswered={onAnswered} focus={focus} />
+        onRepositoryChange={onRepositoryChange} expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} onAnswering={onAnswering} onAnswered={onAnswered} focus={focus}
+        outgoing={outgoing !== null && outgoing.repositoryId === repositoryId ? outgoing : null} onOutgoingTaken={onOutgoingTaken} />
       : <AgentChatWithoutRepository loading={repositoriesLoading} expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} />)}
   </AgentChatPanelFrame>;
 }

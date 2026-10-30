@@ -167,6 +167,12 @@
 .agentChatError { color: var(--command-error); }
 .agentChatNote { color: var(--command-muted); }
 
+/* Home draws the composer in its column, with the suggestion chips above it. On Home there is no panel to sit inset from. A chip is the Quiet
+   role on the raised fill with the composer radius; it fills the message field and sends nothing. */
+.agentChatHome .agentChatComposer { margin: 0; }
+.agentChatSuggestionChip.commandQuietAction { width: auto; max-width: 100%; min-height: var(--control-compact); padding: var(--space-1) var(--space-3); border-radius: var(--composer-radius); background: var(--command-panel-2); color: var(--command-ink); white-space: normal; text-align: left; overflow-wrap: anywhere; }
+.agentChatSuggestionChip.commandQuietAction:hover:not(:disabled) { background: color-mix(in srgb, var(--command-ink) 10%, var(--command-panel-2)); }
+
 /* Images the owner sends: small pictures under a message, in a proposal row, and above the composer's row. */
 .agentChatImages { margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; }
 .agentChatImage { position: relative; display: inline-flex; }
@@ -208,7 +214,7 @@
 @media (max-width: 760px), (pointer: coarse) {
   .agentChatAttach, .agentChatImageRemove, .agentChatSend.commandIconAction { width: 44px; height: 44px; }
   .agentChatImagePicture { width: 96px; height: 96px; }
-  .agentChatLauncher, .agentChatField, .agentChatSearchField, .agentChatSearchResult, .agentChatComposer .commandSelectTrigger, .agentChatReply.commandQuietAction, .agentChatChoice.commandQuietAction { min-height: 44px; }
+  .agentChatLauncher, .agentChatField, .agentChatSearchField, .agentChatSearchResult, .agentChatSuggestionChip.commandQuietAction, .agentChatComposer .commandSelectTrigger, .agentChatReply.commandQuietAction, .agentChatChoice.commandQuietAction { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .agentChatPanel, .agentChatScrim { animation: none; }

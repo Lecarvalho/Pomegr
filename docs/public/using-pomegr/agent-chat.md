@@ -72,6 +72,11 @@ You can ask what happened while you were away. For these changes, Aril receives 
 4. Type your message and press Enter. Shift+Enter starts a new line.
 5. Select **Stop** to end an answer early. The text written so far is kept.
 
+On **Home**, the message field replaces the **Aril** button. Type there and press Enter. Pomegr
+opens the panel on that repository's conversation and sends your message with the model and
+the effort the field showed. The chips above the field put a question in the field and send
+nothing. **Open conversation** opens the panel without sending anything.
+
 Things you can ask:
 
 - "I have this feature. Create the tasks for it." Aril cuts the feature into parts and

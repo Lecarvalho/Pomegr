@@ -66,7 +66,7 @@ When two pages differ, the owner in this section is correct. Repair the other pa
 | --- | --- |
 | Tokens, button roles, chips, fields, panels, tables, shell, navigation | [DESIGN.md](../../DESIGN.md) |
 | Settings sections and the storage usage meter | [Settings design](design/settings.md) |
-| Home and the What's new card | [Home design](design/home.md) |
+| Home: the greeting, the Aril line, Needs you, Continue, the status line, the What's new line and dialog | [Home design](design/home.md) |
 | Sessions directory, session header, Overview, Events, Signals | [Sessions design](design/sessions.md) |
 | Agents panel, inspector, grid, tree, the Agents route, role tint | [Agents design](design/agents.md) |
 | Activities feed and the Requests chart | [Activities design](design/activities.md) |

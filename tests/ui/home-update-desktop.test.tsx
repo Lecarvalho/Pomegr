@@ -20,11 +20,11 @@ it("keeps the announcement seen through the desktop bridge when browser storage 
   };
   const user = userEvent.setup();
   render(<SessionCatalogProvider sessions={[]}><HomeDashboard /></SessionCatalogProvider>);
-  // Already seen in a previous launch: the card waits for the desktop answer and the dialog stays closed.
-  const trigger = await screen.findByRole("button", { name: "See what’s new" });
+  // Already seen in a previous launch: the line waits for the desktop answer and the dialog stays closed.
+  const trigger = await screen.findByRole("button", { name: /What’s new.*Let Aril run your backlog/ });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(setHomeUpdate).not.toHaveBeenCalled();
   await user.click(screen.getByRole("button", { name: "Dismiss this update" }));
   expect(setHomeUpdate).toHaveBeenCalledWith("dismissedId", HOME_UPDATE_ID);
-  expect(screen.queryByRole("button", { name: "See what’s new" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /What’s new.*Let Aril run your backlog/ })).not.toBeInTheDocument();
 });

@@ -8,7 +8,6 @@ const AUTO_OPEN_DELAY_MS = 300;
 
 type HomeUpdateCardProps = {
   title: string;
-  summary: string;
   description: string;
   highlights: string[];
   illustration?: ReactNode;
@@ -17,8 +16,8 @@ type HomeUpdateCardProps = {
   onDismiss(): void;
 };
 
-export function HomeUpdateCard({ title, summary, description, highlights, illustration, autoOpen = false, onAutoOpen, onDismiss }: HomeUpdateCardProps) {
-  const headingId = useId();
+/** The What's new line: one quiet action that names the announcement and opens its dialog, and an icon dismiss. The announcement is the dialog. */
+export function HomeUpdateCard({ title, description, highlights, illustration, autoOpen = false, onAutoOpen, onDismiss }: HomeUpdateCardProps) {
   const dialogTitleId = useId();
   const [open, setOpen] = useState(false);
   const opensByItself = useRef(autoOpen);
@@ -37,14 +36,10 @@ export function HomeUpdateCard({ title, summary, description, highlights, illust
     node.showModal();
     node.focus();
   }, []);
-  return <aside className={styles.card} aria-labelledby={headingId}>
-    {illustration && <div className={styles.thumbnail} aria-hidden="true"><div inert>{illustration}</div></div>}
-    <div className={styles.content}>
-      <h2 id={headingId} className={styles.eyebrow}>What’s new</h2>
-      <h3>{title}</h3>
-      <p>{summary}</p>
-    </div>
-    <button ref={trigger} type="button" className={`commandSecondaryAction ${styles.open}`} aria-haspopup="dialog" onClick={() => setOpen(true)}>See what’s new</button>
+  return <aside className={styles.line} aria-label="What’s new">
+    <button ref={trigger} type="button" className={`commandQuietAction ${styles.open}`} aria-haspopup="dialog" onClick={() => setOpen(true)}>
+      <span className={styles.eyebrow}>What’s new</span><span className={styles.name}>{title}</span>
+    </button>
     <button type="button" className={`commandIconAction ${styles.dismiss}`} aria-label="Dismiss this update" onClick={onDismiss}><CommandIcon name="close" /></button>
     {open && <dialog ref={showDialog} className={styles.dialog} tabIndex={-1} aria-labelledby={dialogTitleId}
       onClose={() => { setOpen(false); trigger.current?.focus(); }}
