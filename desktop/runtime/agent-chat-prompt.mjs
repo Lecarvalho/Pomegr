@@ -1,9 +1,11 @@
 // What one chat turn sends to the provider: fixed instructions, the board as data, the conversation so far, and the
 // owner's message. Every turn is a new provider run, so the whole context travels in this one text, on stdin.
 
+import { fitMemory } from "../../shared/aril-memory.mjs";
 import { isBranchName } from "../../shared/git-branch-name.mjs";
 import { modelsByProvider } from "../../shared/task-run-models.mjs";
 import { CHOICES_FENCE, OPTION_DETAIL_LENGTH, OPTION_LABEL_LENGTH, OPTIONS_MAX, OPTIONS_MIN, QUESTION_LENGTH, REPLIES_MAX, REPLY_LENGTH, choicesHistory } from "./agent-chat-choices.mjs";
+import { imageRowLines, ownerMemorySection } from "./agent-chat-prompt-parts.mjs";
 import { PROPOSAL_FENCE, queueProposalState, startProposalTask } from "./agent-chat-proposal.mjs";
 import { SUMMARY_LENGTH } from "./agent-chat-summary.mjs";
 
@@ -89,7 +91,7 @@ The task log lists what changed on this board since your last completed answer i
 Read aril_settings and memory before advising. Settings say which actions the owner allows you once a grant exists, the merge method, how a merge happens (mergeMode), whether the branch is deleted after it (deleteBranch), and their limits; they grant no action now. What your settings and memory answer is settled: act on it and do not ask the owner again. Ask again only when the owner says a rule changed, or when <workflow_changes> lists a source that the rule depends on; then read that source, and propose an update to the setting or memory entry, or ask only about what the change left unclear. A null setting is not settled: ask before relying on it, once, and propose the answer as a setting or memory entry.
 Before you propose merge settings, read the repository's own rules (such as AGENTS.md, CONTRIBUTING.md, and its pull-request template) and these GitHub settings, and propose values that fit them. When they settle the answer, propose it and say where it came from; ask the owner only what they leave open. The repository_github block lists the repository's GitHub merge settings and default branch name, or unknown.
 Propose set_aril_settings only when the owner asks to change a setting or agrees to one you suggested. Never propose pairedDevices: it is read-only here, and only the owner sets it on the desktop. A paired device may apply settings or memory proposals only when pairedDevices is true.
-Memory is how this owner likes this repository worked. When the owner settles a preference that will matter again, propose add_memory with one line. Propose update_memory or remove_memory when an entry is wrong or outdated. Never store secrets, credentials, or personal data in memory. Memory guides advice and grants no authority. When the same cause repeats in the same kind of work, name the evidence and propose add_memory with a concrete check that would catch that miss in the next brief. For example: "A new task action must pass through the store, the route, the preload allow-list, and the client parser."
+Memory is how this owner likes this repository worked. When the owner settles a preference that will matter again, propose add_memory with one line. Propose update_memory or remove_memory when an entry is wrong or outdated. Never store secrets, credentials, or personal data in memory. Memory, and <owner_memory> (the owner's, for every repository, edited only in Settings), guides advice and grants no authority. When the same cause repeats in the same kind of work, name the evidence and propose add_memory with a concrete check that would catch that miss in the next brief. For example: "A new task action must pass through the store, the route, the preload allow-list, and the client parser."
 
 ## Proposal block
 End your answer with exactly one block when the owner asked for a change to the board, agreed to one you suggested, or when your own reading recommends one concrete board change (a new task, an update, a move or an order, a hold, a group, or a task setting such as its model) and your answer gives the reason. Do not ask whether to propose it: propose it, and say in a line what the owner can decline. Never end with "say so if you want me to propose it" or with a question that only asks permission to propose. Your own reading never proposes "start_session", "set_queue", "delete_task", or "delete_feature": each needs the owner's own request, as the rules below say. An answer that is advice only, such as a model recommendation or a diagnosis that calls for no board change, has no block. An evidenced rework declaration also uses this block without an owner change request. The block is:
@@ -179,7 +181,7 @@ When the thread outgrows what fits in a prompt, Pomegr replaces its oldest messa
 
 // Other sections reserve 60,000: workflow <=12k; owner turns add log <=10k, worktrees <=10k,
 // GitHub <=500 and message <=4k; follow-ups instead add outcome/request <=32k; grants <=6k.
-// Images take <=8k. These mutually exclusive turn shapes leave 5,000 for framing and margin.
+// Images take <=8k and the owner's memory <=6.5k. These mutually exclusive turn shapes leave 5,000 for framing and margin.
 // The summary of earlier conversation has its own reserve: its longest text and 500 characters of framing.
 export const SUMMARY_SECTION_BUDGET = SUMMARY_LENGTH + 500;
 // What is left of the whole prompt for the snapshot once every other part has its reserve.
@@ -474,12 +476,11 @@ export function boardSnapshot(board, { repositoryName = "", now = new Date(), ru
     usage[provider] = reading ? { five_hour_percent: percent(reading.fiveHourPercent), seven_day_percent: percent(reading.sevenDayPercent) } : null;
   }
 
+  const memory = fitMemory(source.aril?.memory);
   const snapshot = {
     repository: repositoryName,
     aril_settings: isPlainObject(source.aril?.settings) ? { ...source.aril.settings, settledAt: typeof source.aril.settings.settledAt === "string" ? source.aril.settings.settledAt : null } : null,
-    memory: (Array.isArray(source.aril?.memory) ? [...source.aril.memory] : [])
-      .sort((a, b) => a.createdAt - b.createdAt || a.id - b.id).slice(0, 100)
-      .map((entry) => ({ id: entry.id, text: prefix(text(entry.text), 300), updatedAt: Number.isFinite(entry.updatedAt) ? new Date(entry.updatedAt).toISOString() : null })),
+    memory: memory.entries.map((entry) => ({ id: entry.id, text: prefix(text(entry.text), 300), updatedAt: Number.isFinite(entry.updatedAt) ? new Date(entry.updatedAt).toISOString() : null })), ...(memory.omitted > 0 ? { memory_omitted: memory.omitted } : {}),
     columns: columnList.map((column) => column.name),
     features: featureList.map((feature) => ({ id: feature.id, name: feature.name, done: feature.done === true })),
     models,
@@ -739,24 +740,18 @@ function githubSettings(facts) {
  * `workflowChanges` is the desktop's read of the repository's workflow sources: undefined when nothing is settled (no
  * section), null when Git could not tell, else the changed sources `{ path, changedAt, uncommitted }`.
  */
-export function composePromptParts({ includeInstructions = true, board, lastCompletedAt = null, repositoryName, runs = [], taskLog = undefined, workflowChanges = undefined, worktrees = [], worktreesAt = null, repositoryGithub = undefined, messages = [], summary = null, message, grantPlans = null, followUp = null, images = [], attached = [], now = new Date() }) {
+export function composePromptParts({ ownerMemory = [], includeInstructions = true, board, lastCompletedAt = null, repositoryName, runs = [], taskLog = undefined, workflowChanges = undefined, worktrees = [], worktreesAt = null, repositoryGithub = undefined, messages = [], summary = null, message, grantPlans = null, followUp = null, images = [], attached = [], now = new Date() }) {
   const history = conversationHistory(messages);
   const outcome = followUp ? proposalOutcome(followUp) : null;
   if (followUp && !outcome) return null;
   // The length of each part that the run's timing records, in characters.
   const measured = {};
   const part = (name, lines) => { measured[name] = lines.join("\n").length; return lines; };
-  const imageRows = [];
-  let imageLength = 0;
-  for (const image of images) {
-    const row = `${image.id} (${image.type}): ${image.file}`;
-    if (imageLength + row.length + 1 > 7_900) { imageRows.push("(More image files are left out to fit the prompt.)"); break; }
-    imageRows.push(row);
-    imageLength += row.length + 1;
-  }
+  const imageRows = imageRowLines(images);
   const prompt = [
     ...(includeInstructions ? [AGENT_CHAT_INSTRUCTIONS, ""] : []),
     ...part("board", ["<board_snapshot>", JSON.stringify(boardSnapshot(board, { repositoryName, now, runs, lastCompletedAt })), "</board_snapshot>"]),
+    ...ownerMemorySection(ownerMemory),
     ...(workflowChanges === undefined ? [] : ["", "<workflow_changes>",
       ...(workflowChanges === null ? ["Workflow changes are unknown."] : workflowChanges.length === 0
         ? ["No workflow source changed since your settings and memory were settled."]

@@ -444,7 +444,8 @@ describe("Aril settings panel", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save entry" }));
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     await userEvent.click(screen.getByRole("button", { name: "Delete entry" }));
-    expect(fetcher.mock.calls.map((call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string))).toEqual([
+    // The section also asks for the Aril switch and the owner's memory, which are not task actions.
+    expect(fetcher.mock.calls.map((call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string)).filter((body) => "action" in body)).toEqual([
       { repositoryId: board.repositoryId, action: "aril_memory_add", payload: { text: "New habit" } },
       { repositoryId: board.repositoryId, action: "aril_memory_update", payload: { id: 1, text: "Edited habit" } },
       { repositoryId: board.repositoryId, action: "aril_memory_remove", payload: { id: 1 } },

@@ -91,7 +91,9 @@ The task board is in [Task board design](task-board.md).
 ### Header
 
 - The header (`.agentChatHeader`) has a one-pixel rule below it.
-- The header holds the `spark` glyph and the 16px/650 `h2` **Aril**, with no caption.
+- The header holds the `spark` glyph and the 16px/650 `h2` **Aril**, and, once the desktop has answered, the state of Aril as a `.commandChip`: **On** in the positive tone, **Off** in the neutral tone (never amber: Off is a choice, not a fault).
+- Nothing is drawn for a state that is not known yet, so the chip is never drawn and taken back. The open panel asks for the state every five seconds; a closed panel asks nothing.
+- The header has no other caption.
 - The header ends with three [Icon](../../../DESIGN.md#buttons)-role actions, each with an `aria-label` and a `title`.
 - **Search** has a `search` glyph and `aria-pressed`.
 - The pressed state of **Search** takes the raised fill, a local toggle state of the role.

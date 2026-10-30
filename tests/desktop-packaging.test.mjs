@@ -91,7 +91,7 @@ test("the agent chat's twenty-three runtime files and its MCP worker are package
   assert.ok(WORKER_BUNDLE_FILES.includes(worker), "the MCP worker is unpacked with the other worker bundles");
   assert.deepEqual(WORKER_BUNDLE_FILES.filter((file) => file.includes("agent-chat")), [worker]);
   assert.equal(DESKTOP_RUNTIME_FILES.some((file) => file.startsWith("mcp/")), false, "the MCP sources are bundled into the worker, not packaged");
-  assert.equal(DESKTOP_RUNTIME_FILES.filter((file) => file.includes("agent-chat")).length, 24);
+  assert.equal(DESKTOP_RUNTIME_FILES.filter((file) => file.includes("agent-chat")).length, 27);
   assert.doesNotThrow(() => assertPackagedApplicationFiles([...REQUIRED_FILES]));
 });
 

@@ -45,7 +45,7 @@ export function createPreparation(clock = () => performance.now(), begun = clock
  * a turn never waits for them), `context(repositoryId, thread)` the facts from the stored thread, and `environment()` the
  * environment of the run. Every read answers null or an empty value when it cannot be read, so a turn goes on without it.
  */
-export function createTurnPreparation({ monitor, postAction, worktreeInventory, workflowReader, repositoryGithub = null, dataRoot, environment, store, summaries, clock }) {
+export function createTurnPreparation({ monitor, postAction, worktreeInventory, workflowReader, repositoryGithub = null, dataRoot, environment, store, summaries, clock, ownerMemory = null }) {
   async function readBoard(repositoryId) {
     try {
       const board = await monitor(`/api/tasks?${new URLSearchParams({ repositoryId })}`, { method: "GET" });
@@ -88,10 +88,15 @@ export function createTurnPreparation({ monitor, postAction, worktreeInventory, 
     try { return root ? await repositoryGithub.read(repositoryId, root) : null; } catch { return null; }
   }
 
-  // The time of the repository's last completed answer, and with `thread` the summary and the newest messages the prompt's history holds.
+  // The owner's memory, oldest first: the lines that guide Aril in every repository. Empty when it cannot be read, so a turn goes on without it.
+  async function readOwnerMemory() {
+    try { return ownerMemory ? await ownerMemory.read() : []; } catch { return []; }
+  }
+
+  // The time of the repository's last completed answer, the owner's memory, and with `thread` the summary and the newest messages the prompt's history holds.
   async function readContext(repositoryId, thread) {
-    const [metas, history] = await Promise.all([store.index(repositoryId), thread ? threadSince({ store, summaries, repositoryId, toWindow: true }) : null]);
-    return { lastCompletedAt: lastAnswer(metas), ...(history ? { summary: history.summary?.text ?? null, messages: history.messages } : {}) };
+    const [metas, history, memory] = await Promise.all([store.index(repositoryId), thread ? threadSince({ store, summaries, repositoryId, toWindow: true }) : null, readOwnerMemory()]);
+    return { lastCompletedAt: lastAnswer(metas), ownerMemory: memory, ...(history ? { summary: history.summary?.text ?? null, messages: history.messages } : {}) };
   }
 
   /**

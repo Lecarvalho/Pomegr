@@ -272,3 +272,17 @@ export const AGENT_CHAT_CONVERSATION_ID_PATTERN = /^chat-[0-9a-f]{12}$/u;
 export const AGENT_CHAT_PROPOSAL_ID_PATTERN = /^p-[0-9a-f]{12}$/u;
 export const AGENT_CHAT_IMAGE_ID_PATTERN = /^img-[0-9a-f]{12}$/u;
 export const AGENT_CHAT_MESSAGE_ID_PATTERN = /^m-[1-9][0-9]{0,5}$/u;
+
+// Aril's own controls, beside the chat's operations: the On/Off switch, the owner's memory, and the space each thread takes on disk.
+// The rules live in `desktop/runtime/agent-chat-aril.mjs`. None needs a repository except the flush; a paired device may read the switch and
+// the memory and may turn Aril Off, and may turn it On only when the owner allowed it on the desktop; the rest is for the desktop window.
+export type ArilControlOperationName = "aril_switch" | "aril_switch_set" | "aril_paired_on_set" | "owner_memory" | "owner_memory_add" | "owner_memory_update" | "owner_memory_remove" | "thread_space" | "thread_flush";
+export const ARIL_CONTROL_OPERATIONS: readonly ArilControlOperationName[] = ["aril_switch", "aril_switch_set", "aril_paired_on_set", "owner_memory", "owner_memory_add", "owner_memory_update", "owner_memory_remove", "thread_space", "thread_flush"];
+// `on` is the switch; `pairedOn` is whether a paired device may turn Aril On (it may always turn it Off).
+export type ArilSwitchState = { on: boolean; pairedOn: boolean };
+// One line of the owner's memory, as a repository's memory entry is: times in milliseconds since the epoch.
+export type OwnerMemoryEntry = { id: number; text: string; createdAt: number; updatedAt: number };
+// What one repository's thread takes on disk (its conversations and images) and how many messages it holds. Never a path or a text.
+export type ThreadSpace = { repositoryId: string; bytes: number; messages: number };
+// What a flush removed: messages, whole conversations among them, their images, and the bytes freed.
+export type ThreadFlushed = { messages: number; conversations: number; images: number; freed: number };

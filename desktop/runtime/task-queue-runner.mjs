@@ -93,7 +93,12 @@ function pauseReason(status) {
   return typeof status === "string" && PAUSE_REASONS.has(status) ? status : "start_failed";
 }
 
-/** Low-priority queue advance: asks the monitor, starts each answer in turn, and pauses the queue with a fixed reason on failure so a start is never retried in a loop. */
+/**
+ * Low-priority queue advance: asks the monitor, starts each answer in turn, and pauses the queue with a fixed reason on failure so a start is never retried in a loop.
+ * The grant half of it (starts, reviews, send-backs, merges, branch deletes, Mark done, and writing tasks, and the follow-up lines) acts only while Aril is On:
+ * `arilOn()` is asked before the grant is asked for steps and before every one of them, and again whenever a step asks whether it is still authorized.
+ * A runner given no `arilOn` treats Aril as Off. The owner's own queue is not Aril's and does not ask.
+ */
 export function createTaskQueueRunner(options = {}) {
   const starter = options.starter;
   const fetchImpl = options.fetch || fetch;
@@ -110,6 +115,9 @@ export function createTaskQueueRunner(options = {}) {
   let ticks = 0;
   let grantsReady = false;
   let grantWritePending = false;
+  const arilOn = typeof options.arilOn === "function" ? options.arilOn : () => false;
+  // True when the runner is gone or the owner turned Aril off: nothing of the grant starts or goes on.
+  const off = () => disposed || !arilOn();
 
   async function resetGrants() {
     if (disposed || typeof starter.startGranted !== "function" || typeof starter.startGrantedReview !== "function") return;
@@ -159,17 +167,17 @@ export function createTaskQueueRunner(options = {}) {
   }
 
   async function grantTick() {
-    if (disposed || !grantsReady) return;
+    if (off() || !grantsReady) return;
     let answer;
     try { answer = await post("grant-next", {}); } catch { return; }
     const ended = new Set();
     for (const { repositoryId, taskId } of stepsFrom(answer).filter((step) => step.kind === "send_back")) {
-      if (disposed) return;
+      if (off()) return;
       try { await post("grant-send-back", { repositoryId, taskId }); } catch { /* a send-back request is settled and never retried here */ }
     }
     for (const step of stepsFrom(answer)) {
       const { repositoryId, taskId, kind, run } = step;
-      if (disposed) return;
+      if (off()) return;
       if (ended.has(repositoryId)) continue;
       if (kind === "write_tasks") {
         if (!grantWritePending && typeof options.grantWrite === "function") {
@@ -192,10 +200,10 @@ export function createTaskQueueRunner(options = {}) {
         continue;
       }
       const isAuthorized = async () => {
-        if (disposed) return false;
+        if (off()) return false;
         try {
           const answer = await post("grant-check", { repositoryId });
-          return answer?.ok === true && answer.active === true && !disposed;
+          return answer?.ok === true && answer.active === true && !off();
         } catch { return false; }
       };
       if (kind === "merge" || kind === "delete_branch") {
@@ -220,11 +228,11 @@ export function createTaskQueueRunner(options = {}) {
   // Each settled burst of grant entries becomes one chat follow-up, then the monitor moves its cursor past it. With
   // follow-ups off, the burst is settled unwritten. A conversation that is answering asks again on the next tick.
   async function followUpTick() {
-    if (disposed || typeof options.grantFollowUp !== "function") return;
+    if (off() || typeof options.grantFollowUp !== "function") return;
     let answer;
     try { answer = await post("grant-follow-ups", {}); } catch { return; }
     for (const { repositoryId, grant, through, followUps, items, more, ended } of followUpsFrom(answer)) {
-      if (disposed) return;
+      if (off()) return;
       let message = null;
       if (followUps) {
         let written;

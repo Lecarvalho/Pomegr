@@ -40,6 +40,8 @@ const bounded = (value, limit, { empty = false } = {}) => typeof value === "stri
 
 export const newConversationId = () => `chat-${randomBytes(6).toString("hex")}`;
 export const newProposalId = () => `p-${randomBytes(6).toString("hex")}`;
+/** The ID of the next message of a conversation: one past its highest, so a message keeps its ID when the oldest ones are flushed. */
+export const nextMessageId = (messages) => `m-${1 + Math.max(0, ...messages.map((message) => Number(message.id.slice(2))))}`;
 
 /** The first line of a message, cut to a title. */
 export function conversationTitle(text) {

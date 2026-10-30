@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import type { ArilGrant, ArilSettings as Settings, TaskQueue } from "../../../shared/task-contract";
 import { ArilSettings } from "../../settings/ArilSettings";
+import { ArilControlSamples } from "./DesignSystemArilControlsSample";
 import { CapacityStrip } from "../tasks/CapacityStrip";
 import { CommandSelect } from "../command-center/CommandSelect";
 import { NewFeatureAction } from "../tasks/FeatureActions";
@@ -98,6 +99,7 @@ export function QueueControlsSection() {
       </Sample>
     </div>
     <ArilSettingsSamples />
+    <ArilControlSamples />
   </Section>;
 }
 

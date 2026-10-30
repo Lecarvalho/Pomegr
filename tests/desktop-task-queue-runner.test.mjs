@@ -66,6 +66,7 @@ function harness({ next = { ok: true, starts: [] }, grantNext, grantCheck = { ok
       return typeof next === "function" ? next() : json(next);
     },
     execFile,
+    arilOn: () => true,
     ...overrides,
   });
   return { runner, timers, calls, started, pauses: () => calls.filter((call) => call.route === "queue-pause") };
@@ -409,14 +410,14 @@ const rootA = "C:\\Work\\a";
 const cleanup = (repositoryId, taskId, repositoryRoot = rootA) => ({ repositoryId, taskId, repositoryRoot });
 const routes = (h) => h.calls.map((call) => call.route);
 
-function grantHarness({ steps = [], next = [], start, grantWrite, responses = {} } = {}) {
+function grantHarness({ steps = [], next = [], start, grantWrite, responses = {}, arilOn = () => true } = {}) {
   const timers = scheduler(), calls = [], launches = [];
   const granted = (kind) => async (repositoryId, taskId, authorized, run) => {
     launches.push({ repositoryId, taskId, kind, ...(run === undefined ? {} : { run }) });
     return start ? start({ repositoryId, taskId, kind }, authorized) : { status: await authorized() ? "started" : "cancelled" };
   };
   const runner = createTaskQueueRunner({
-    monitorOrigin: origin, authorizationToken: "secret", setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+    monitorOrigin: origin, authorizationToken: "secret", setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, arilOn,
     ...(grantWrite ? { grantWrite } : {}),
     starter: { startQueued: granted("queue"), startGranted: granted("start"), startGrantedReview: granted("review") },
     fetch: async (url, options) => {

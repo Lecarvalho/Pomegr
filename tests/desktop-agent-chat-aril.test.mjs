@@ -139,7 +139,9 @@ test("snapshot includes served settings and bounded oldest-first memory within t
   const snapshot = boardSnapshot(board, { repositoryName: "Repo" });
   assert.deepEqual(snapshot.aril_settings, served);
   assert.deepEqual(snapshot.features, [{ id: "feat-1", name: "Delivery", done: false }], "work rules need feature IDs, not titles");
-  assert.deepEqual(snapshot.memory, Array.from({ length: 100 }, (_, i) => ({ id: i + 1, text: "x".repeat(300), updatedAt: new Date(999).toISOString() })));
+  // At most 100 entries are read, oldest first, and the prompt carries the newest of them that fit 6,000 characters: 20 entries of 300.
+  assert.deepEqual(snapshot.memory, Array.from({ length: 20 }, (_, i) => ({ id: i + 81, text: "x".repeat(300), updatedAt: new Date(999).toISOString() })));
+  assert.equal(snapshot.memory_omitted, 80);
   const prompt = composePrompt({ board, repositoryName: "Repo", message: "Advice" });
   assert.ok(prompt && prompt.length <= PROMPT_LIMIT);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /Your settings and memory/u);

@@ -731,7 +731,7 @@ async function startDesktop() {
         removeTaskActionIpc = () => { for (const remove of removeTaskBridges) remove(); };
         removeTaskStartIpc = installTaskStartIpc({
           ipcMain, monitorOrigin: privateMonitorOrigin, authorizationToken,
-          starter: taskStarter, grantWrite: agentChat.grantWrite, grantFollowUp: agentChat.grantFollowUp, repositoryGithub,
+          starter: taskStarter, grantWrite: agentChat.grantWrite, grantFollowUp: agentChat.grantFollowUp, arilOn: agentChat.arilOn, repositoryGithub,
         });
         void behaviorController.initializeLogin().catch(() => {});
         removeWindowLifecycle = installDesktopWindowLifecycle(mainWindow, {

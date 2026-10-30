@@ -17,7 +17,7 @@
 > added on 2026-10-28 (Aril agent plan, phase 1), and so were its compaction into a summary
 > and the timing of each run. Quick replies and one multiple-choice question under an answer were added on 2026-10-28
 > (Aril agent plan, phase 2), and so were a smaller prompt and a "Starting" label that lasts only until the provider's first event (2026-10-29).
-> Pre-warmed Claude Code runs were added on 2026-10-29 (Aril agent plan, phase 2a). A change that widens exposure changes the
+> Pre-warmed Claude Code runs were added on 2026-10-29 (Aril agent plan, phase 2a). The On/Off switch, the owner's memory, and each thread's size and flush were added on 2026-10-30 (Aril agent plan, phase 4). A change that widens exposure changes the
 > Privacy section in the same pull request. The executable contract
 > `shared/agent-chat-contract.ts` wins on exact shapes. Repository-wide rules are in
 > [AGENTS.md](../../../AGENTS.md).
@@ -34,7 +34,7 @@ panel; Aril reads the board, the repository's files, and Pomegr's observations, 
 answers. Aril may record a rework link (references and a cause from a fixed list) without Apply; it changes no task. Aril otherwise changes and starts nothing itself, except through the fixed grant actions
 while a grant the owner started is active ([Aril grants](tasks.md#aril-grants)). Otherwise it
 proposes board changes, and Pomegr applies a proposal after the owner presses **Apply changes**.
-While an owner-started grant is active, the desktop runner may start selected Ready tasks and
+While an owner-started grant is active and Aril is On, the desktop runner may start selected Ready tasks and
 their reviews, send failed work back within the grant's limit, merge on green CI after a passing
 review, and write tasks from the plans the grant names, through those fixed grant actions.
 When the owner asks for it, Aril
@@ -58,7 +58,7 @@ outgrows what a prompt carries, Pomegr summarizes its older part in the backgrou
 for Aril's later runs; the owner still sees and searches every message (see [Compaction](#compaction)). Aril talks briefly: it may end
 an answer with quick replies or one multiple-choice question, and a tap sends its label as the owner's own message and does nothing else (see
 [Choices](#choices)). So that an answer does not wait for a provider process to start, Pomegr may start a Claude Code process before the
-owner sends and hold it, with no prompt, until the owner does (see [The warm run](#the-warm-run)). The user guide is
+owner sends and hold it, with no prompt, until the owner does (see [The warm run](#the-warm-run)). One On/Off switch, kept by desktop main, stops everything Aril does by itself while it is Off, and the chat still answers the owner (see [The switch](#the-switch)). Aril also reads the owner's memory and each repository's memory within one size bound (see [Memory](#memory)), and Settings shows the space each thread takes and can flush its oldest messages (see [Thread space](#thread-space)). The user guide is
 [Agent chat](../../public/using-pomegr/agent-chat.md).
 
 ## Ownership
@@ -73,6 +73,11 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 | `desktop/runtime/agent-chat.mjs` | The operations, the one running turn, the choice of the conversation a message goes to, the follow-up after an answered proposal, the trusted IPC handler, the answers, the hand-off of an approved session start to the manual start, the one request of an approved queue change, the removal of the worktrees the owner approved, the stop of a repository's compaction when a turn of it starts, and the `warm` operation with the warm run an owner's message takes | Pass provider, monitor, or error text through; import `server/`; start a session by any path but the manual start it is given, or for a call that is not the desktop window's; remove a worktree for a call that is not the desktop window's, or by any path but the unforced removal of `task-worktree.mjs`; send `queue_settings` with any setting but `on`; warm a run for a message, or take a warm run for a message, any other way than this file's `warm` and `send` |
 | `desktop/runtime/agent-chat-runner.mjs` | The fixed provider arguments, the process, the writing of the prompt to it, the reading of its output, and the run's own [timing](#timing) | Put the prompt or any owner text in an argument, a path, or the environment; name an image folder or file that is not in the fixed form desktop main builds; report any content in a timing |
 | `desktop/runtime/agent-chat-warm.mjs` | The [warm runs](#the-warm-run): when one starts, the arguments it holds, its idle clock, the limit of two, the match of a message to a run, and the close of a run nobody used | Write a prompt, a board fact, or any conversation text to a run; start a run for a provider but Claude Code; keep a run for a message that does not match every fixed argument; keep a run after the idle clock, the limit, an exit, or quitting; call a model |
+| `desktop/runtime/agent-chat-aril.mjs` | Aril's own controls beside the chat: the operations `aril_switch`, `aril_switch_set`, `aril_paired_on_set`, `owner_memory`, `owner_memory_add`, `owner_memory_update`, `owner_memory_remove`, `thread_space`, and `thread_flush`, who may use each, and the question `isOn()` that the grant runner, the grant write, and the follow-up ask | Let Aril, a tool, a proposal, the queue, or the monitor turn the switch On or change a memory; let a paired device allow itself to turn Aril On, change the owner's memory, or flush; hold or send any content |
+| `desktop/runtime/aril-switch.mjs` | [The switch](#the-switch): its file, its Off-first rule, and its change | Be turned On by anything but the owner's call; apply an On that was not written; write plain text outside `aril-v1/` |
+| `desktop/runtime/aril-owner-memory.mjs` | The owner's [memory](#memory): its file, its limits, and its changes | Be changed by a paired device, Aril, or a run; keep a line outside the memory line rule |
+| `desktop/runtime/agent-chat-space.mjs` | [Thread space](#thread-space): the size of a repository's chat folder and the flush | Remove anything but the oldest half of a thread's messages, the images they carry, and a conversation left empty; touch the summary file, another repository, or a thread while its turn, follow-up, or compaction runs; read or return a message text or a path |
+| `desktop/runtime/agent-chat-prompt-parts.mjs` | The owner's memory section and the image rows of the prompt | Read anything itself |
 | `desktop/runtime/agent-chat-images.mjs` | The image files the owner sends: the staged ones and the ones of each conversation | Write outside the chat's directory; build a path from anything but a validated repository ID, conversation ID, and image ID; serve a file by itself |
 | `desktop/runtime/agent-chat-prompt.mjs` | The instructions, the board snapshot, the summary of earlier conversation, the history of the thread for one turn, and the length of each part | Read anything itself |
 | `desktop/runtime/agent-chat-thread.mjs` | The thread: the order of a repository's messages across its conversations, a page of them, the cursor, the conversation the next message goes to, the last run, where the summary ends, and the search of their text | Read or write a file; answer more than `read` of the same conversations answers; read a pattern from the owner's text; answer the text of a summary |
@@ -94,21 +99,23 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 | `server/providers/kernel/chat-run-declarations.mjs` | The declared session IDs of the chat's runs, in monitor memory, and their expiry | Hold anything but a version 4 UUID and its expiry; persist or serve it |
 | `mcp/agent-chat-server.mjs` | The chat's own MCP server with seven observation tools and two read-only task tools | Register a signal, write, or feature tool |
 | `desktop/runtime/lan-gateway.mjs` | The chat route and the two chat image routes of a paired device, `warm` included: the route forwards every operation to the chat, which judges it | Forward a chat request to the web host |
+| `shared/aril-memory.mjs` | The memory bounds (100 entries, 300 characters a line, 6,000 characters in a prompt), the line rule, and the choice of entries for a prompt | Read a file or hold state |
+| `app/aril-control-client.ts`, `app/settings/ArilGlobalSettings.tsx`, `app/settings/MemoryList.tsx` | The renderer's and the phone's view of the switch, the owner's memory, and the thread space | Keep any of it in browser storage, or draw a state the desktop has not answered |
 | `shared/agent-chat-contract.ts` | Browser-visible types and bounds | Import `server/` or `desktop/` |
 | `app/agent-chat-client.ts`, `app/agent-chat-search.ts`, `app/components/agent-chat/` | The transport, the thread as far as it is loaded, the search, and the panel | Keep conversation content in browser storage, or change the board except through the chat's `apply` |
 
 ## One turn
 
-[Aril settings and repository memory](tasks.md#aril-settings-and-memory) are included in each provider prompt: settings, including read-only `pairedDevices` and `settledAt` (when the settings were last saved, or null), and oldest-first memory entries (at most 100, each at most 300 characters, with the ISO `updatedAt`).
+[Aril settings and repository memory](tasks.md#aril-settings-and-memory) are included in each provider prompt: settings, including read-only `pairedDevices` and `settledAt` (when the settings were last saved, or null), and oldest-first memory entries (at most 100, each at most 300 characters, with the ISO `updatedAt`), the newest of them that fit 6,000 characters (see [Memory](#memory)). The owner's memory follows the snapshot in its own section.
 What the settings and memory answer is settled: Aril acts on it and does not ask the owner again. It asks again only when the owner says a rule changed, or when the [workflow changes](#workflow-changes) list a source that the rule depends on.
 
-Each message of the owner starts one provider run. When an active grant allows writing
-tasks, the desktop starts a write turn only when the chat is free. It uses the reviewer
+Each message of the owner starts one provider run, whether Aril is On or Off. When an active grant allows writing
+tasks and Aril is On, the desktop starts a write turn only when the chat is free. It uses the reviewer
 provider when configured, otherwise Claude when available, otherwise Codex; its model is
 null.
 The run answers and exits. Every
-stored Apply or Dismiss starts exactly one provider run for a follow-up (see
-[Follow-up](#follow-up)). A follow-up may contain one board-change proposal only after
+stored Apply or Dismiss starts exactly one provider run for a follow-up while Aril is On (see
+[Follow-up](#follow-up)); with Aril Off it starts none (see [The switch](#the-switch)). A follow-up may contain one board-change proposal only after
 any applied or partial outcome. The owner must Apply or Dismiss it, which starts its own
 single follow-up run; no proposal starts a run or applies itself. Follow-ups never propose a session start, a queue change, or a worktree removal.
 Two other runs start without a message of the owner. A [compaction](#compaction) is a read-only run with no tools (Codex keeps its read-only sandbox) in the background that
@@ -1236,6 +1243,47 @@ A real answer on 2026-10-29 spent about 3 seconds of its preparation on the `git
 - **Timers.** They do not keep the process alive. Closing the app clears them and the prefetch's, and a refresh that is still running arms nothing.
 - **What it cannot do.** It runs the same `gh repo view` in the same folder as a message would, with the owner's own login. It changes neither what the prompt holds nor what crosses a boundary, and it starts no session and no provider run.
 
+## The switch
+
+Added on 2026-10-30 (Aril agent plan, phase 4). Aril has one On/Off switch, global for the app and not for a repository. It is Pomegr's answer to "does Aril act by itself": On, Aril acts as the owner settled with it; Off, it does nothing by itself, anywhere.
+
+- **Where it is kept.** Desktop main keeps it in `<desktop data root>/aril-v1/switch.json`, `{ version: 1, on, pairedOn }` (`desktop/runtime/aril-switch.mjs`), written through a temporary file and a rename. A fresh install, a missing file, and a file outside that shape all read as **Off**. The state is read once at start and held in memory; before it has been read, Aril is Off. A restart keeps whatever was saved: On stays On and Off stays Off.
+- **Only the owner turns it On.** Aril cannot: no provider run, tool, proposal, queue, monitor route, or timer reaches the switch. Aril never resumes after the owner's Off. Nothing turns it On by default, so after an update the owner turns it On once.
+- **What Off stops, at once.** The grant runner in desktop main (`task-queue-runner.mjs`) asks `arilOn()` before it asks the monitor for grant steps and before every step, and a step asks it again at each authorization check (`grant-check`) before it launches. So with Aril Off no start, review, send-back, merge, branch delete, Mark done, or task writing runs, the grant asks for no step, and a step in flight stops at its next check. A session that already launched keeps running, is recorded, and ends only by the owner or by the rules of [Ending a Done task's sessions](tasks.md#ending-a-done-tasks-sessions). The runner also writes no [grant follow-up](#grant-follow-ups) line while Aril is Off and acknowledges nothing, so the entries wait and are reported when Aril is On again.
+- **Provider runs Off stops.** `grantWrite` answers `unavailable` and starts no run. The follow-up after an Apply or a Dismiss is not asked for; one that waits behind another turn is dropped the moment the switch turns Off (the turn that runs is not stopped). The owner's Apply or Dismiss still applies or dismisses the proposal and stores its outcome.
+- **What Off does not stop.** The chat still answers when the owner writes. A [compaction](#compaction) after such an answer and a [warm run](#the-warm-run) still happen, because they serve that answer and call no model for a task. The owner's own queue is not Aril's and keeps running. Observation is unaffected. An active grant stays recorded in the monitor with its clock; it does nothing while Aril is Off, and it is not ended by Off.
+- **Who may change it.**
+
+| Client | Read | Turn Off | Turn On | Allow a paired device to turn On |
+| --- | --- | --- | --- | --- |
+| The desktop window | Yes | Yes | Yes | Yes |
+| A paired device | Yes | Always | Only when the owner allowed it (`pairedOn`) | No |
+
+  `pairedOn` is the global counterpart of a repository's `pairedDevices` ([Tasks: Aril grants](tasks.md#aril-grants): a paired device may start a grant only when it is true, and may always stop one). It is false until the owner sets it in Settings in the desktop app, and it is the one thing a paired device cannot grant itself.
+- **How a change is made.** Off is applied in memory before it is written, so it holds at once even when the write fails (the answer is then `unavailable` and the state is Off until a restart reads the file). On is written first and applied only when the write succeeded and no Off arrived meanwhile (`conflict`). A write that fails never turns Aril On.
+- **Where it shows.** The header of the panel shows a chip beside the name, **On** (positive tone) or **Off** (neutral), once the desktop has answered; Settings › Aril has the switch itself ([Settings design](../design/settings.md#aril)). The open panel and Settings ask for the switch every five seconds so a change made on the other device reaches them, and a closed panel asks nothing. The state is not in any prompt.
+
+## Memory
+
+Aril reads two memories in every prompt, both lines the owner wrote or settled, and both within one size bound. Memory guides Aril's advice and grants it no authority.
+
+- **A repository's memory** is in the repository's task store ([Tasks: Aril settings and memory](tasks.md#aril-settings-and-memory)): at most 100 entries of at most 300 characters, edited by the owner in Settings and by an applied proposal. It reaches the prompt as `memory` in the board snapshot.
+- **The owner's memory** is the same list for every repository, kept by desktop main in `<desktop data root>/aril-v1/owner-memory.json` (`desktop/runtime/aril-owner-memory.mjs`): `{ version: 1, next, entries }` with the same entry shape (`id`, `text`, `createdAt`, `updatedAt`) and the same limits as a repository's, an ID that is never reused, and one temporary file and rename for each write. A file outside that shape reads as empty and stays as it is until the owner changes the memory. Only the owner edits it, in Settings in the desktop app; a paired device reads it (`owner_memory`) and cannot change it, and Aril has no proposal operation that does. It reaches the prompt as an `<owner_memory>` section right after the board snapshot, one `- ` line for each entry, preceded by one fixed line that says the owner wrote them in Settings and that they guide and grant no authority. With no entry the section is left out.
+- **The size bound.** `ARIL_MEMORY.promptLength` in `shared/aril-memory.mjs`, 6,000 characters of entry text for each memory. Entries are taken newest first while their text fits, and the prompt carries them oldest first; the older ones are left out and counted: `memory_omitted` in the snapshot, and one line "(n older entries are left out to fit the prompt.)" in the owner's section. The owner's section adds at most about 6,500 characters to a prompt and sits in the 60,000 that the snapshot's budget reserves for the sections other than the board, the conversation, and the summary. Settings shows the count of lines Aril reads when some do not fit.
+- **Who gets it.** The trusted renderer through `owner_memory` and, to read, a paired device through `POST /api/agent-chat`; the provider the thread runs with, in each prompt (an owner message, a follow-up, and a grant write turn). Not the monitor, the task store, a log, a notification, diagnostics, a checkpoint, or browser storage.
+- **Tests.** `tests/desktop-agent-chat-memory.test.mjs` covers the storage, the bound, and the prompt, and `tests/ui/settings-aril-controls.test.tsx` the Settings lists.
+
+## Thread space
+
+Added on 2026-10-30 (Aril agent plan, phase 4; the owner's decision of 2026-10-28 that a thread has no cap). Settings › Aril lists how much space each repository's thread takes and offers one action, **Flush oldest messages**, to give space back (`desktop/runtime/agent-chat-space.mjs`; the operations `thread_space` and `thread_flush` are for the desktop window only).
+
+- **The size** is the bytes of every file under the repository's chat folder, `<desktop data root>/agent-chat-v1/<repository ID>/`: its conversation files, its `summary.json`, and the images in `images/`, staged ones included. `thread_space` answers, for each repository with a folder, `{ repositoryId, bytes, messages }`. It reads file sizes and the conversations' index, never a message text.
+- **What a flush removes.** The oldest half of the thread's messages, rounded down, by the order of the thread (the time of a message, then the creation of its conversation, then its place in it), across all the repository's conversations. With them go the images those messages carry, and a conversation left with no message goes whole, with its image folder. A message that stays keeps its ID, and new message IDs are one past the highest in the conversation, so a flush never makes an ID repeat. A thread of fewer than two messages has nothing to flush (`not_found`).
+- **What it keeps.** The newest half of the messages, the repository's [summary](#the-summary) file untouched (its text, where it ends, and when it was written), the memory and settings, the board, and every other repository. A summary that covered the removed part still stands for it, and the prompt reads it with the messages after its end as before; when the flush reaches past where the summary ends, the removed messages that no summary covers are gone, and the summary and the newest messages stay.
+- **When it refuses.** `busy` while a turn, a follow-up, or a compaction of that repository runs or waits, or another flush of it runs; `invalid` for a payload that is not exactly `{ repositoryId }`; `desktop_only` from a paired device; `unavailable` when a file could not be changed (what was done before it stays done; each step leaves the store whole).
+- **What the owner is asked.** Settings asks in the panel before it flushes: "Remove the oldest 20 of 40 messages and their images?" with **Flush messages** and **Cancel**, and then says what was removed and the space freed. The answer is `{ ok: true, messages, conversations, images, freed }`, numbers only.
+- **A limit.** A panel that is open keeps showing the removed messages until it reads the thread again, because a flush changes no conversation's update time.
+
 ## Conversations
 
 Desktop main keeps one JSON file per conversation:
@@ -1249,6 +1297,7 @@ Desktop main keeps one JSON file per conversation:
   `low`, `medium`, `high`, and `xhigh`, and the field is absent when there is none. A record
   without it, such as one an older version wrote, reads as null; a value that is not one of the
   four makes the store refuse the record, as it does for a model outside the contract.
+- A message's ID is `m-` and one past the highest ID in its conversation, so a message keeps its ID when [a flush](#thread-space) removes the oldest ones.
 - Bounds: 200 messages for each conversation, 4,000
   characters for a message of the owner, and 32,000 for an answer. A repository holds any number of conversations.
   A named conversation that is full answers `limit`.
@@ -1266,7 +1315,7 @@ Desktop main keeps one JSON file per conversation:
 - A file outside the contract, of another version, or over the size bound is never
   listed and never overwritten.
 - The repository's [summary](#the-summary) is one more file in the repository's folder. `delete` does not rewrite it, so a summary can outlive the conversation it was made from.
-- Nothing deletes a conversation except `delete`, which also removes the folder of its images. The panel no longer offers it:
+- Nothing deletes a conversation except `delete`, which also removes the folder of its images, and the [flush](#thread-space) of its repository, which removes the oldest messages and a conversation left empty. The panel no longer offers `delete`:
   the owner sees one thread, and no client calls `delete`. Storage
   retention and the prune cycle of the observation store do not touch this directory.
 - A conversation that ends on the owner's message with no run behind it lost its answer:
@@ -1282,7 +1331,9 @@ Aril may record a rework link (references and a cause from a fixed list) without
 | `pomegr:agent-chat` IPC | The renderer, through a trusted main frame only | One fixed operation and a payload of at most 17 KiB; answers the chat's own bounded answer, `thread` and `search` included. The only surface whose `apply` can start a session or remove a worktree |
 | `pomegr:agent-chat-image` IPC | The renderer, through a trusted main frame only | One of the fixed operations `add` and `read`. `add`: a repository ID and the image bytes (a `Uint8Array` of at most 5 MiB); answers the image's ID, type, and size. `read`: a repository ID, a conversation ID, and an image ID; answers the type and the bytes. No answer carries a path |
 | `POST /api/agent-chat/image-add` and `GET /api/agent-chat/image-read` on the LAN gateway | A paired device only | The same two operations, answered in desktop main and never forwarded. `image-add` takes the bytes as an `application/octet-stream` body of at most 5 MiB with the repository ID as its only query key. `image-read` takes the repository ID, the conversation ID, and the image ID as its only query keys, and answers the bytes with one of the four media types, `no-store` |
-| `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound, `thread`, `search`, and `warm` included; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start, a worktree removal, or a feature edit answers `desktop_only`. Its `apply` of a queue change is accepted |
+| `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound, `thread`, `search`, and `warm` included; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start, a worktree removal, or a feature edit answers `desktop_only`. Its `apply` of a queue change is accepted. It also carries Aril's own controls: it reads the switch and the owner's memory, turns Aril Off, and turns it On only when `pairedOn` is true; it cannot change the owner's memory, see the thread space, or flush |
+| `pomegr:agent-chat` IPC, through the preload's `arilControl(operation, payload)` | The renderer, through a trusted main frame only | One of the nine operations of [Aril's controls](#the-switch) and an exact payload (no repository except `thread_flush`); the answer is a fixed shape of booleans, the owner's memory entries, sizes, or counts |
+| `<desktop data root>/aril-v1/` | Desktop main | `switch.json` ([the switch](#the-switch)) and `owner-memory.json` ([memory](#memory)); private files, never read by the monitor |
 | The manual start in desktop main (`createTaskStart().startApproved`) | Desktop main, for an approved start proposal of the desktop window | The window event, the repository ID, and the task ID in; one fixed start status out. No prompt, plan, path, or token reaches the chat |
 | Git in desktop main (`createTaskWorktrees`) | Desktop main | `worktree list`, `status`, `rev-list`, `worktree remove`, and, under the branch rule, `branch -D`, as argument arrays with no shell, for the facts of the worktree rows (read in the background, never during a turn) and for an approved removal. The folder walk of the sizes follows no link. The prompt gets facts and result words only; no output, path, or error text |
 | `GET /api/tasks` and `POST /internal/tasks/worktree-root` on the monitor | Desktop main, with the desktop token | The board for the prompt and for an apply; the repository root for the run's working directory |
@@ -1312,11 +1363,23 @@ The operations and their payloads, each with `repositoryId`:
 | `delete` | `conversationId` | Nothing more. No client calls it |
 | `warm` | none, or `provider`, `model` (or null), and `effort` (or null) together | `{ ok: true }` for a valid request, whether or not it started a run: see [The warm run](#the-warm-run). It calls no model and stores nothing. The panel sends it while the message field keeps focus, and a paired device may send it |
 
+Aril's own controls take no repository except the flush, and every payload is exact:
+
+| Operation | Payload | Answer on success | Who |
+| --- | --- | --- | --- |
+| `aril_switch` | none | `{ ok: true, on, pairedOn }` | Desktop window, paired device |
+| `aril_switch_set` | `{ on }` | `{ ok: true, on }` | Desktop window; a paired device to turn Off, and to turn On only when `pairedOn` |
+| `aril_paired_on_set` | `{ allowed }` | `{ ok: true, pairedOn }` | Desktop window |
+| `owner_memory` | none | `{ ok: true, entries }`, oldest first | Desktop window, paired device |
+| `owner_memory_add`, `owner_memory_update`, `owner_memory_remove` | `{ text }`, `{ id, text }`, `{ id }` | `{ ok: true, entry }` for add and update, `{ ok: true }` for remove; `limit` at 100 entries, `not_found` for an unknown ID | Desktop window |
+| `thread_space` | none | `{ ok: true, repositories: [{ repositoryId, bytes, messages }] }` | Desktop window |
+| `thread_flush` | `{ repositoryId }` | `{ ok: true, messages, conversations, images, freed }` or `busy` or `not_found` (nothing to flush) | Desktop window |
+
 A refusal is `{ ok: false, error }` with one of `invalid`, `not_found`, `busy`, `limit`,
 `cli_missing`, `conflict`, `unavailable`, and `desktop_only`. A payload with another key
 is `invalid`. `desktop_only` answers only the `apply` of a session start, a worktree
-removal, or a feature edit that did not come from the desktop window, and of settings or
-memory while `pairedDevices` is not true.
+removal, or a feature edit that did not come from the desktop window, of settings or
+memory while `pairedDevices` is not true, and of the controls above that a paired device may not use.
 
 - An image operation refuses with `{ ok: false, error }` and one of `invalid`,
   `not_found`, and `unavailable`. The two paired-device image routes take a request
@@ -1340,7 +1403,7 @@ memory while `pairedDevices` is not true.
   or a payload without a repository ID before any call. It exposes
   `agentChatImage(operation, payload)` too, and refuses a payload outside the exact shape
   of `add` or `read`. It exposes `agentChatJev(operation, payload)` for the [Jev key](#effort-routing),
-  and refuses anything but `status`, `remove`, and `set` with one key of the key's form.
+  and refuses anything but `status`, `remove`, and `set` with one key of the key's form. It exposes `arilControl(operation, payload)` for [Aril's own controls](#the-switch), and refuses any operation outside the nine.
 - A `turn` carries the conversation ID, the start time, the provider, the model, the effort when
   there is one, the answer text so far, and one activity: `starting`, `thinking`, `reading_files`,
   `reading_sessions`, `reading_usage`, or `writing`. The label is chosen from the tool's
@@ -1376,6 +1439,9 @@ never a session's.
 - **Images are part of it.** An image the owner sends is the owner's own content, of the
   same data class as the message it belongs to. It is kept as a file under the chat's
   directory, and a conversation file lists only its ID, type, and size.
+- **The switch is two booleans.** `on` and `pairedOn`, in `<desktop data root>/aril-v1/switch.json`. They go to the trusted renderer and to a paired device (`aril_switch`), who may also change them as [The switch](#the-switch) lists. They are in no prompt, and in no monitor route, task store, log, notification, diagnostics, or browser storage. A grant runner and the chat read them in desktop main's memory.
+- **The owner's memory is the owner's own text, and it reaches every repository's prompt.** The lines the owner wrote in Settings, in `aril-v1/owner-memory.json`. They go to the trusted renderer and, to read, to a paired device, and to the provider each run uses, in the prompt of an owner message, a follow-up, and a grant write turn, for every repository, within 6,000 characters of text (the newest lines; the count of the rest). This is the widening of 2026-10-30 (Aril agent plan, phase 4): until then a memory line reached only the prompts of its own repository. Never in the monitor, the task store, a log, a notification, diagnostics, a checkpoint, or browser storage. The settings page tells the owner not to keep secrets in it, as the instructions tell Aril not to store any.
+- **Thread space is numbers.** `thread_space` and `thread_flush` answer repository IDs, bytes, and counts to the trusted renderer only: never a path, a file name, or a message text. A flush deletes stored conversation files and image files in desktop main and writes the rest of a conversation back with the same content; it sends nothing anywhere.
 - **Where it lives.** In the conversation files and the image files under the desktop
   data root, and in desktop main's memory. Not in the monitor, the task store, the observation store, a
   checkpoint, a report, a log, a notification, or diagnostics.
@@ -1397,7 +1463,7 @@ never a session's.
   These entries carry only task IDs, fixed kinds, times, and pull-request numbers; no text. A grant usage pause or resume has no task ID and carries only the fixed provider ID.
   The cursor moves only after a complete turn. Follow-ups neither read nor acknowledge the log.
   From 2026-10-25 (Aril operator phase 2), the board snapshot also sends the latest review verdict, its time, and its one-line reasons (written by a reviewer session) for a task in Review, never the reviewer session ID.
-  From 2026-10-25 (Aril operator phase 3), the prompt sends the current Aril settings, including read-only `pairedDevices`, and repository memory IDs and text, oldest first, up to 100 entries of 300 characters each.
+  From 2026-10-25 (Aril operator phase 3), the prompt sends the current Aril settings, including read-only `pairedDevices`, and repository memory IDs and text, oldest first. From 2026-10-30 (Aril agent plan, phase 4) it sends the newest of those entries that fit 6,000 characters of text (at most 100 entries of 300 characters each) and the count of those left out, and the owner's memory in the same way (see below).
   From 2026-10-25 (Aril operator phase 4), it also sends the current grant's active state, end time, tasks used, and snapshotted limits and actions; an ended grant adds its fixed end reason. Aril uses these existing settings and grant facts to determine whether an active grant permits a send-back or merge. The owner-set merge method is part of the settings sent with the board; merge outcomes are reported from fixed `grant_merge` and `grant_merge_refused` log entries.
   From 2026-10-25 (Aril operator phase 9d), the prompt also sends the time the settings were last saved, each memory entry's last update time, and, once something is settled, the [workflow changes](#workflow-changes): the repository-relative names of changed workflow sources (the fixed list and the files under `.github/workflows/`) with a commit or last-edit date and whether they are uncommitted. It sends no file content, no absolute path, and no Git output beyond those names and dates; a Git failure sends only "Workflow changes are unknown." The provider run can read those files itself, as it can read any file of the repository.
   From 2026-10-25 (Aril operator phase 9b), an owner-message prompt also holds the repository's five GitHub merge-setting booleans and its default branch name, or `unknown`. Desktop main reads them with `gh repo view` and the owner's own gh login and keeps them in memory (30 minutes; a failed read 5); nothing else of the `gh` answer is kept or sent. From 2026-10-29 desktop main reads them again in the background 25 minutes after a read, for a repository with an owner message in the last 2 hours (see [Repository GitHub settings cache](#repository-github-settings-cache)); the same call, folder, and values, and the repository folder stays in desktop main's memory.
@@ -1498,10 +1564,12 @@ never a session's.
   registry entry is dropped before any pipeline stage reads it (see
   [The declared run](#the-declared-run)), and no pipeline stage reads a conversation.
 - Aril never changes the board itself, except through the fixed grant actions while a grant
-  the owner started is active. Otherwise only `apply` does, on the owner's answer, through
+  the owner started is active and Aril is On. Otherwise only `apply` does, on the owner's answer, through
   the fixed task actions. An active grant permits fixed starts, reviews, send-backs,
   eligible pull-request merges, and task writes from its named plans in
   [Aril grants](tasks.md#aril-grants).
+- With Aril Off the grant runner starts, reviews, sends back, merges, deletes a branch, marks Done, and writes nothing, no follow-up run starts, the grant's chat lines wait, and the chat still answers the owner. Off holds at once, from the desktop and from a paired device, ends no running session, and only the owner turns Aril On. Aril is Off on a fresh install and after a damaged file, and a restart keeps the saved state.
+- A flush removes at most the oldest half of a thread's messages and the images they carry, never the summary, never while a turn, follow-up, or compaction of the repository runs, and only for the desktop window.
 - A grant write turn uses the plan paths snapshotted at grant start and the fixed
   `create_task` request. It writes only through `POST /internal/tasks/grant-write-tasks`.
   It creates Ready tasks within the grant cap, with no owner Apply. It runs
@@ -1628,8 +1696,8 @@ never a session's.
     Claude Code and Codex keep a follow-up short and limit any eligible proposal to the
     owner's earlier request remains unproven on a device.
 17. **A follow-up costs a run.** Every Apply and every Dismiss starts one provider run
-    with the board in its prompt, a dismissal included. The chat has no setting that
-    turns follow-ups off.
+    with the board in its prompt, a dismissal included, while Aril is On. Turning Aril Off
+    is the only way to stop them, and it stops the grant too.
 18. **A waiting follow-up is not kept.** A follow-up that waits for another turn lives in
     memory. Closing the app before it starts loses it; the proposal's outcome stays.
 19. **A session that links later.** A start that launched is followed up at once, before
@@ -1644,6 +1712,7 @@ never a session's.
 26. **Choices from a live provider.** Not probed. The block's reading and bounds, its storage, the prompt's rules and history lines, and the panel are covered by tests with fakes. Whether Claude Code and Codex write the block in this form, offer replies only when they must ask, and keep their answers short is not proven on a device. A model that writes an invalid block loses its choices silently, and the answer text stays.
 27. **The warm run from a live provider.** The probe of 2026-10-29 (see [The warm run](#the-warm-run)) proved what the stream-json input mode and the waiting process do for Claude Code, and that Codex does nothing before its prompt arrives. The whole path in an installed build is not proven: the focus ask in the app, a run that waits several minutes and is then taken, the tool-less compaction run in stream-json input mode, and the numbers a warm answer stores. The first measure is the "Started" time in an answer's tooltip, which should read a fraction of a second with "(warm)", and the time from send to the first words. A warm run costs a held process for up to five minutes, up to two at a time, and a message that does not match it (another model, effort, or a first image in a conversation) starts a process as before.
 28. **Effort routing from a live Jev.** The owner's first use on 2026-10-29 recorded `timeout` on every message (see [The connection](#effort-routing)). Calls made with the owner's key from a scratch Electron process then answered `choice` in 93 to 169 ms ("ok thanks" low 0.96, "alright, queue it" medium 0.19, a backlog scan high 1), so the body, the instructions, and the answer's shape are live-proven for those three messages, and how well Jev chooses beyond them is not. The transport that fixes the timeout is covered by tests against a local server and a fake resolver, and by a probe with no key to the real host; the first use with it in an installed build is unmeasured. The effort change of a waiting Claude Code run was probed on 2026-10-29 (see [Effort routing](#effort-routing)). Whether a lower effort makes a simple reply faster, and whether Jev lowers wrongly (a short message that needed real work) is not measured yet. The measure is the time from send to the first words and to the end of the answer for messages Jev lowered against messages it left alone, and Jev's own time, read from the tooltips and `route`. A lowered effort on a waiting run costs one acknowledgment (tens of milliseconds, 1.9 seconds once) before the prompt is written, and a run that does not acknowledge costs a new process.
+29. **The switch and the flush in real use.** Not tried by the owner yet. The switch's file, the runner's checks before every action, the dropped follow-ups, the paired-device rules, the memory and its bound, and the flush with its summary rule are covered by tests with fakes and temporary folders. How a person finds the paired-device permission, and whether the oldest half is the right amount to flush, are not known. A race remains in a merge: when Aril goes Off between the monitor recording the attempt and the `gh` command, the attempt is recorded and the merge is refused for that head, which the task log shows as a refused merge and the owner sees as a task that needs them.
 
 ## Change and verify
 

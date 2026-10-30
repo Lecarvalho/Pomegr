@@ -625,7 +625,7 @@ Each row below the tags shows only when it is set, in this order:
 - Paired devices show their permission as text and remain read-only unless the committed setting allows editing.
 - **Save** sends only changed settings sections; supplied sections include all nested fields.
 - A failed save preserves the draft and shows “Aril settings could not be saved. Try again.”.
-- Memory appears oldest first, with its text and an “n of 100” counter.
+- Memory appears oldest first, with its text and an “n of 100” counter. The list is the one that [Your memory](settings.md#your-memory) uses, with its field names unchanged.
 - The memory caption reads “What Aril remembers about how you like this repository worked. Aril proposes entries; you can edit or delete any of them.”
 - Memory edits use a single-line field of at most 300 characters and save independently of settings.
 - **Delete** requires **Delete entry** inside the panel; **Keep entry** cancels deletion.

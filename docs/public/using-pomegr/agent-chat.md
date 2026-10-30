@@ -12,8 +12,10 @@ changes, and you apply them.
 
 Aril records links when the evidence shows that one task or pull request fixes earlier work, without **Apply changes**. Each link names a fixed cause, appears in the answer and task log, and changes no task. Aril weighs reworked results when choosing models and proposes a memory check when a cause repeats. You still apply memory proposals.
 
+Aril has one switch, **On** or **Off**, at the top of the **Aril** section of Settings, and its state shows beside Aril's name in the panel. Aril is Off until you turn it on, and only you can. While it is Off, the chat still answers when you write, and nothing else Aril does by itself happens (see [Turn Aril on or off](#turn-aril-on-or-off)).
+
 Aril can also work under a grant that only you start. A grant is time-bound and scoped by
-your Aril settings. The desktop app then starts tasks and reviews, sends failed work back,
+your Aril settings, and it does something only while Aril is On. The desktop app then starts tasks and reviews, sends failed work back,
 merges on green CI, and, when you allow it, marks merged tasks Done whose acceptance passed,
 within limits you set. Aril cannot start or extend a grant. Under a
 grant that allows **Write tasks from plans**, Aril also creates tasks in **Ready** from the
@@ -312,6 +314,15 @@ or a commit that exists nowhere else. It proposes none for a task in progress.
 
 A kept worktree does not stop the next row. Pomegr never forces a removal.
 
+## Turn Aril on or off
+
+The first thing in the **Aril** section of Settings is one switch. The panel's header shows **On** or **Off** beside Aril's name.
+
+- **Aril is Off until you turn it on.** Only you turn it on. Aril never does, and it is Off again only when you turn it off. A restart keeps what you chose.
+- **Off takes effect at once**, in the desktop app and on a paired phone. A grant then starts, reviews, sends back, merges, and marks Done nothing, and writes no tasks. After you apply or dismiss a proposal, Aril writes no follow-up. A session that is already running goes on.
+- **The chat still answers.** Write to Aril while it is Off and it answers, as it always does.
+- **A phone** can always turn Aril off. It can turn Aril on only after you allow that with **Paired devices** under the switch in the desktop app.
+
 ## Aril's settings and memory
 
 Ask Aril to settle this repository's actions, limits, work rules, merge settings, or
@@ -326,7 +337,19 @@ settled the rule. These files are `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, a
 template, `.pomegr/signals.md`, and the files in `.github/workflows/`. Aril reads the changed
 file, then proposes an update or asks only about what the change left unclear.
 
-Settings and repository memory are sent with each chat prompt to your chosen provider.
+### Your memory
+
+**Your memory** in the **Aril** section holds lines about how you like to work with Aril in every repository, such as "Reply in the language I write in." You add, edit, and delete the lines in the desktop app. A paired phone reads them. Aril reads them in each prompt and cannot change them. Aril reads at most 6,000 characters of each memory, the newest lines first. Settings tells you when older lines do not fit.
+
+Do not keep secrets in a memory.
+
+### Free space from a thread
+
+A repository's conversation has no size limit, so its files grow with use. **Thread space** in the **Aril** section of Settings, in the desktop app, lists what each repository's conversation takes on disk, with its images, and its number of messages.
+
+**Flush oldest messages** removes the oldest half of that repository's messages, and the images they carry. It asks first, and tells you what it removed and how much space it freed. Aril keeps its summary of the conversation and the newest half. Pomegr will not flush a conversation while Aril is answering in that repository, and no phone can flush.
+
+Settings and repository memory are sent with each chat prompt to your chosen provider, and so is your own memory.
 
 ## Understand what is kept and sent
 
@@ -352,6 +375,7 @@ Settings and repository memory are sent with each chat prompt to your chosen pro
   settings (whether squash, merge commit, rebase, auto-merge, and delete-branch-on-merge are on) and its default branch name.
   It gets the names and dates of the changed workflow files, but not their content, and the facts of the task worktrees that remain, but not their paths.
   Merge and branch results appear as fixed task-log labels.
+- **Your memory and the switch.** Your memory is kept in a private file on this computer, and the switch in another. The memory goes to the provider with each prompt, within 6,000 characters. The switch goes nowhere.
 - **Sent to Jev, only with your key.** If you set a Jev key, each message without an image also sends Jev your message and the last
   2,000 characters of Aril's previous answer, so it can suggest a lower effort. Nothing else goes to Jev.
 - **Not observed.** A chat run leaves no session, so it does not show in **Sessions**.

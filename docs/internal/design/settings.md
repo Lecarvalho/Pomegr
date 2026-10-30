@@ -154,11 +154,43 @@ This page states how each Settings section looks and how the user operates it.
 
 ### Layout
 
-- The section reuses the GitHub section's header: an `h2` **Aril** and one muted line, “What Aril may do under a grant you start, and what it remembers. These settings belong to one repository.”
-- Under the header, one bordered panel holds the **Repository** row (`SettingRow`).
-- Under the panel, the body is the [Aril settings content](task-board.md#aril-settings-section) in a column of at most 560px, with no frame of its own.
+- The section reuses the GitHub section's header: an `h2` **Aril** and one muted line, “Turn Aril on or off and say how you like to work. Grants and a repository's memory belong to one repository.”
+- Under the header come the parts that belong to Aril itself, in this order: the [switch](#switch), [Your memory](#your-memory), and [Thread space](#thread-space).
+- Then one bordered panel holds the **Repository** row (`SettingRow`).
+- Under that panel, the body is the [Aril settings content](task-board.md#aril-settings-section) in a column of at most 560px, with no frame of its own.
 - Its sections keep their `h3` headings: Grant, Actions under a grant, Limits, Work rules, Reviewer, Paired devices, Memory, and, in the desktop app only, Effort routing.
 - The section is a feature composition of existing controls. It adds no shared control.
+
+### Switch
+
+- The first panel is bordered like the Repository panel (`.arilSettingsPanel`) and holds `SettingRow`s.
+- Its first row is **Aril**. The description reads “Aril acts as you settled with it. Turning it off stops its actions at once; running sessions continue.” while On, and “Aril takes no action of its own. The chat still answers when you write.” while Off.
+- The control is the state chip and the settings switch (`input role="switch"`, named **Aril**). The chip is **On** in the positive tone or **Off** in the neutral tone. Off is never amber: it is not a fault.
+- The switch acts at once in either direction and asks for no confirmation. While a change is sent it is unavailable. A failed change keeps the state it had and shows the alert “Aril could not be changed. Try again.”
+- The desktop app adds a second row, **Paired devices** (“Let a paired device turn Aril on. A paired device can always turn it off.”), with a switch named **Let a paired device turn Aril on**.
+- A paired device has no second row. While Aril is Off and the desktop app has not allowed it, its switch is unavailable and a muted line says “Turning Aril on needs the desktop app.”
+- Nothing is drawn for a state the desktop has not answered. The section says “Reading Aril…” as a status and never shows Off and then On.
+- A browser that is neither the desktop app nor a paired device shows one muted line, “Turn Aril on or off in the desktop app or on a paired device.”, and no switch.
+- While Aril is Off the Grant section says “Aril is off. A grant does nothing until you turn it on above.” and its **Start grant** is unavailable. An active grant says “Aril is off, so this grant does nothing until you turn it on above.” and keeps **Stop grant**.
+- The state is also the chip beside Aril's name in the [panel header](agent-chat.md#header).
+
+### Your memory
+
+- A `taskGatesPanel` with the `h3` **Your memory**, in the body column. The desktop app and a paired device draw it; a browser does not.
+- It is the shared memory list of the Memory section: the caption “How you like to work with Aril in every repository. Aril reads these lines and cannot change them; you edit them here.”, the “n of 100” counter, the lines oldest first, and the edit, delete, and add rows. Its fields are named **Add your entry** and **Edit your entry**.
+- When the lines are more than Aril reads in a prompt (6,000 characters, the newest first), a muted line says “Aril reads the newest n lines. The m older lines do not fit its limit of 6,000 characters.” A repository's Memory shows the same line.
+- A paired device reads the lines and has no field or action.
+- The add and edit fields of both memories show no focus ring: the caret marks focus ([DESIGN.md](../../../DESIGN.md#agent-chat-exceptions)).
+- A refused change keeps what was typed and shows the alert “Memory could not be saved. Try again.” While the lines are read, the section says “Reading your memory…” as a status.
+
+### Thread space
+
+- A `taskGatesPanel` with the `h3` **Thread space**, in the body column. Only the desktop app draws it; a paired device shows nothing and asks nothing.
+- The caption reads “What each repository's conversation with Aril takes on disk. Flushing removes the oldest half of its messages and their images. Aril keeps its summary and the newest messages.”
+- Each known repository with a thread has one row: its name in the data font, its size (bytes, KB, MB, or GB), and its number of messages, then the Quiet action **Flush oldest messages** (accessible name “Flush oldest messages of <repository>”). A repository with no thread is not listed, and a thread of one message has no action.
+- The action asks in the row first: “Remove the oldest 20 of 40 messages and their images?” with a Secondary **Flush messages** and a Quiet **Cancel**. Cancel changes nothing.
+- The result is one quiet status line, “Removed 20 messages and freed 700 KB.”. A repository where Aril is answering says “Aril is answering in this repository. Try again when it is done.”, and any other failure shows the alert “The messages could not be flushed. Try again.”
+- While a flush runs, every flush action is unavailable. The sizes are read when the section opens and after each flush; nothing is drawn for them before they are read.
 
 ### Repository
 
@@ -186,6 +218,6 @@ This page states how each Settings section looks and how the user operates it.
 ## Samples
 
 - `/design-system` renders every GitHub state from static data.
-- `/design-system` renders the Aril section's body from static data in each state listed in the [Task board design](task-board.md#aril-settings-section).
+- `/design-system` renders the Aril section's body from static data in each state listed in the [Task board design](task-board.md#aril-settings-section), and the switch, Your memory, and Thread space in every state above.
 - `/design-system` renders the storage usage meter.
 - `/design-system` renders the settings tab rail (`.commandSettingsNav`) with its pane.

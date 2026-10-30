@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { createAgentChat } from "../../desktop/runtime/agent-chat.mjs";
+import { createArilSwitch } from "../../desktop/runtime/aril-switch.mjs";
 import { createAgentChatImages } from "../../desktop/runtime/agent-chat-images.mjs";
 import { AGENT_CHAT_DIRECTORY, createAgentChatStore } from "../../desktop/runtime/agent-chat-store.mjs";
 import { createAgentChatSummaries } from "../../desktop/runtime/agent-chat-summary.mjs";
@@ -127,6 +128,8 @@ export async function chatHarness(context, overrides = {}) {
     fetch: fetchImpl, monitorOrigin: origin, authorizationToken: token, environment: { ...sourceEnvironment }, platform: "win32",
     fileExists: (file) => files.includes(file), now, runTurn, spawn, worktrees: { inventory: async () => [] },
     executable: desktopExecutable, unpackedRoot,
+    // Aril is On for the chat tests; a test of the switch passes its own `arilSwitch`.
+    arilSwitch: createArilSwitch({ initial: { on: true } }),
     ...(viaDataRoot ? { dataRoot } : { store, images, summaries }),
     ...rest,
   });

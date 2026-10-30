@@ -16,7 +16,7 @@ function harness({ batches, grantFollowUp }) {
   const written = [];
   const runner = createTaskQueueRunner({
     starter: { startQueued: async () => ({ status: "started" }) },
-    monitorOrigin: origin, authorizationToken: "secret",
+    monitorOrigin: origin, authorizationToken: "secret", arilOn: () => true,
     setTimeout: (callback) => { timer = callback; return { unref() {} }; }, clearTimeout: () => {},
     fetch: async (url, options) => {
       const route = url.split("/").pop();

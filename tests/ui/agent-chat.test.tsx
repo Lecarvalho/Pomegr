@@ -92,7 +92,10 @@ describe("agent chat availability", () => {
     expect(first[0]).toBe("/api/agent-chat");
     expect(first[1]).toMatchObject({ method: "POST", cache: "no-store" });
     expect(JSON.parse(String(first[1].body))).toEqual({ operation: "thread", payload: { repositoryId: REPO_A } });
-    expect(fetchMock.mock.calls.map(([, init]) => (JSON.parse(String((init as RequestInit).body)) as { operation: string }).operation).slice(0, 2)).toEqual(["thread"]);
+    // The open panel also reads the Aril switch, for the On/Off beside its name; everything else it asked is the thread.
+    const operations = fetchMock.mock.calls.map(([, init]) => (JSON.parse(String((init as RequestInit).body)) as { operation: string }).operation);
+    expect(operations.filter((operation) => operation !== "aril_switch").slice(0, 2)).toEqual(["thread"]);
+    expect(operations).toContain("aril_switch");
     expect(chat.agentChat.mock.calls.length).toBe(fetchMock.mock.calls.length);
   });
 });

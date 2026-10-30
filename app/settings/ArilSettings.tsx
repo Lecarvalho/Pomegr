@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useState } from "react";
 import type { ArilSettings as Settings, TaskBoard } from "../../shared/task-contract";
+import { useArilSwitch, useOwnerMemory, useThreadSpace } from "../aril-control-client";
 import { useRepositoryInventory } from "../repository-inventory-client";
 import { useTasks } from "../tasks-store";
 import { readStoredRepository, storeRepository } from "../components/agent-chat/agent-chat-presentation";
@@ -9,6 +10,8 @@ import { CommandSelect } from "../components/command-center/CommandSelect";
 import { JEV_KEY_PATTERN, useJevKey, type JevKeyControl } from "../components/tasks/jev-key-desktop";
 import { sendTaskAction, useTaskEditAvailability, type GrantActionResult } from "../components/tasks/task-desktop";
 import { timeOfDay } from "../components/tasks/task-schedule";
+import { ArilSwitchPanel, OwnerMemorySection, ThreadSpaceSection } from "./ArilGlobalSettings";
+import { MemoryList } from "./MemoryList";
 import { SettingRow } from "./SettingRow";
 
 const ACTIONS = { start: "Start tasks", review: "Start reviews", sendBack: "Send work back", merge: "Merge on green", writeTasks: "Write tasks from plans",
@@ -33,10 +36,12 @@ type Props = {
   onAction(action: Action, payload: unknown): Promise<GrantActionResult>;
   /** The Jev key of the effort routing: given only in the desktop app, so a paired device neither sets nor sees it. */
   jev?: JevKeyControl;
+  /** Whether Aril is On, or null/undefined while that is not known. A grant starts nothing while Aril is Off. */
+  arilOn?: boolean | null;
 };
 
 /** The settings of one repository's Aril: the same content in the live Settings section and the static design-system frames. */
-export function ArilSettings({ board, desktop, editable, onAction, jev, initialFailure = null, initialConfirm = false }: Props & {
+export function ArilSettings({ board, desktop, editable, onAction, jev, arilOn = null, initialFailure = null, initialConfirm = false }: Props & {
   initialFailure?: "settings" | "memory" | null; initialConfirm?: boolean | number;
 }) {
   const allowed = editable && (desktop || board.aril.settings.pairedDevices);
@@ -54,9 +59,6 @@ export function ArilSettings({ board, desktop, editable, onAction, jev, initialF
   const draft = allowed ? edited : board.aril.settings;
   const [kind, setKind] = useState<keyof typeof KINDS>("tag");
   const [value, setValue] = useState("");
-  const [adding, setAdding] = useState("");
-  const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
-  const [removing, setRemoving] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<keyof typeof FAILURES | null>(initialFailure);
   const [jevKey, setJevKey] = useState("");
@@ -100,6 +102,12 @@ export function ArilSettings({ board, desktop, editable, onAction, jev, initialF
     } catch { setFailure(errorKind); }
     finally { setBusy(false); }
   };
+  // A memory change reports whether the desktop accepted it, so the list keeps what was typed when it did not.
+  const memoryAction = async (action: Action, payload: unknown) => {
+    let accepted = false;
+    await send(action, payload, () => { accepted = true; });
+    return accepted;
+  };
   // The key is sent once and the field is emptied when it was saved: the renderer never receives the key back, only whether one is set.
   const changeJev = async (which: "save" | "remove") => {
     if (!jev || jevBusy) return;
@@ -124,12 +132,14 @@ export function ArilSettings({ board, desktop, editable, onAction, jev, initialF
         <p className="taskGatesCaption">Active until <span className="taskCapacityValue">{grantTime(grant.endsAt)}</span> · <span className="taskCapacityValue">{grant.startsUsed}</span> of <span className="taskCapacityValue">{grant.limits.tasks}</span> tasks used</p>
         {editable && <button type="button" className="commandSecondaryAction" disabled={busy} onClick={() => void send("grant_stop", {}, () => setConfirm(null))}>Stop grant</button>}
         <p className="taskGatesCaption">Stopping takes effect at once. Running sessions continue.</p>
+        {arilOn === false && <p className="taskGatesCaption">Aril is off, so this grant does nothing until you turn it on above.</p>}
       </> : <>
         {notReady ? <p className="taskGatesCaption">{notReady}</p> : <p className="taskGatesCaption">Starts {saved.actions.start ? saved.actions.review ? "tasks and reviews" : "tasks" : "reviews"} that your work rules select, for {saved.limits.hours} hours, at most {saved.limits.tasks} tasks, {saved.limits.tasksAtATime} at a time.</p>}
         {unsaved && <p className="taskGatesCaption">Save your changes first.</p>}
+        {arilOn === false && <p className="taskGatesCaption">Aril is off. A grant does nothing until you turn it on above.</p>}
         {allowed && !notReady && <>
           {confirming && <p className="taskGatesCaption">Aril will start sessions without asking until {grantTime(confirm.until)} or until you stop it.</p>}
-          <div className="taskHeadActions"><button type="button" className="commandPrimaryAction" disabled={busy || unsaved}
+          <div className="taskHeadActions"><button type="button" className="commandPrimaryAction" disabled={busy || unsaved || arilOn === false}
             onClick={() => confirming ? void send("grant_start", {}, () => setConfirm(null)) : setConfirm(confirmation())}>Start grant</button>
             {confirming && <button type="button" className="commandQuietAction" disabled={busy} onClick={() => setConfirm(null)}>Cancel</button>}</div>
         </>}
@@ -208,24 +218,8 @@ export function ArilSettings({ board, desktop, editable, onAction, jev, initialF
     {(failure === "settings" || failure === "memory") && <p className="newTaskError" role="alert">{FAILURES[failure]}</p>}
     <section className="taskGatesPanel taskSchedulePanel">
       <h3 className="taskGatesHeading">Memory</h3>
-      <p className="taskGatesCaption">What Aril remembers about how you like this repository worked. Aril proposes entries; you can edit or delete any of them.</p>
-      <p className="taskGatesCaption">{memory.length} of 100</p>
-      {memory.length === 0 && <p className="taskGatesCaption">No memory entries yet.</p>}
-      {memory.map((entry) => <div className="taskGateField" key={entry.id}>
-        {allowed && editing?.id === entry.id ? <>
-          <input aria-label="Edit entry" className="taskOwnInput" value={editing.text} maxLength={300} disabled={busy} onChange={(event) => setEditing({ ...editing, text: event.currentTarget.value })} />
-          <div className="taskHeadActions"><button type="button" className="commandSecondaryAction" disabled={busy || !line(editing.text, 300)} onClick={() => void send("aril_memory_update", editing, () => setEditing(null))}>Save entry</button>
-            <button type="button" className="commandQuietAction" disabled={busy} onClick={() => setEditing(null)}>Cancel edit</button></div>
-        </> : <p className="taskGateReadOnly">{entry.text}</p>}
-        {allowed && editing?.id !== entry.id && <div className="taskHeadActions">
-          {removing === entry.id ? <><span>Delete this entry?</span><button type="button" className="commandSecondaryAction" disabled={busy} onClick={() => void send("aril_memory_remove", { id: entry.id }, () => setRemoving(null))}>Delete entry</button>
-            <button type="button" className="commandQuietAction" disabled={busy} onClick={() => setRemoving(null)}>Keep entry</button></>
-            : <><button type="button" className="commandQuietAction" disabled={busy} onClick={() => { setEditing({ id: entry.id, text: entry.text }); setRemoving(null); }}>Edit</button>
-              <button type="button" className="commandQuietAction" disabled={busy} onClick={() => { setRemoving(entry.id); setEditing(null); }}>Delete</button></>}
-        </div>}
-      </div>)}
-      {allowed && <><label className="taskGateField"><span className="taskGateFieldLabel">Add entry</span><input className="taskOwnInput" value={adding} maxLength={300} disabled={busy || memory.length >= 100} onChange={(event) => setAdding(event.currentTarget.value)} /></label>
-        <button type="button" className="commandSecondaryAction" disabled={busy || memory.length >= 100 || !line(adding, 300)} onClick={() => void send("aril_memory_add", { text: adding }, () => setAdding(""))}>Add entry</button></>}
+      <MemoryList entries={memory} editable={allowed} busy={busy} caption="What Aril remembers about how you like this repository worked. Aril proposes entries; you can edit or delete any of them."
+        onAdd={(text) => memoryAction("aril_memory_add", { text })} onUpdate={(id, text) => memoryAction("aril_memory_update", { id, text })} onRemove={(id) => memoryAction("aril_memory_remove", { id })} />
     </section>
     {desktop && jev && <section className="taskGatesPanel taskSchedulePanel">
       <h3 className="taskGatesHeading">Effort routing</h3>
@@ -246,12 +240,12 @@ export function ArilSettings({ board, desktop, editable, onAction, jev, initialF
 }
 
 /** One repository's settings, read from its board and saved through the fixed task actions. A board that is not ready says so in a line. */
-function ArilRepositorySettings({ repositoryId, jev }: { repositoryId: string; jev: JevKeyControl | undefined }) {
+function ArilRepositorySettings({ repositoryId, jev, arilOn }: { repositoryId: string; jev: JevKeyControl | undefined; arilOn: boolean | null }) {
   const access = useTaskEditAvailability();
   const { board, refresh } = useTasks(repositoryId);
   if (access === "pending" || board.readiness === "loading") return <p className="arilSettingsNote" role="status">Reading Aril settings…</p>;
   if (!board.aril) return <p className="arilSettingsNote">Aril settings are unavailable.</p>;
-  return <ArilSettings board={{ ...board, aril: board.aril }} desktop={access === "desktop"} editable={access === "desktop" || access === "paired"} jev={jev}
+  return <ArilSettings board={{ ...board, aril: board.aril }} desktop={access === "desktop"} editable={access === "desktop" || access === "paired"} jev={jev} arilOn={arilOn}
     onAction={async (action, payload) => {
       const result = await sendTaskAction(repositoryId, action, payload);
       if (result.ok) await refresh();
@@ -260,25 +254,33 @@ function ArilRepositorySettings({ repositoryId, jev }: { repositoryId: string; j
 }
 
 /**
- * The Aril section of Settings. Aril's settings, memory, and grant belong to one repository, so the section holds a repository choice
- * like the chat's: the repository the page was opened for, else the last one used, else the first listed. With one repository the choice
- * is its name. The Jev key belongs to the desktop app and is given only there.
+ * The Aril section of Settings. The switch, the owner's memory, and the space each thread takes belong to Aril and come first. Aril's settings,
+ * repository memory, and grant belong to one repository, so below them the section holds a repository choice like the chat's: the repository
+ * the page was opened for, else the last one used, else the first listed. With one repository the choice is its name. The Jev key belongs
+ * to the desktop app and is given only there.
  */
 export function ArilSettingsSection({ initialRepositoryId = null }: { initialRepositoryId?: string | null }) {
   const headingId = useId();
   const { snapshot, loading } = useRepositoryInventory();
   const access = useTaskEditAvailability();
   const jev = useJevKey(access === "desktop");
+  const aril = useArilSwitch();
+  const ownerMemory = useOwnerMemory();
+  const space = useThreadSpace();
   const [picked, setPicked] = useState<string | null>(null);
   const options = useMemo(() => snapshot.repositories.map((repository) => ({ value: repository.id, label: repository.displayName })), [snapshot.repositories]);
+  const names = useMemo(() => new Map(options.map((option) => [option.value, option.label])), [options]);
   const known = (id: string | null) => id !== null && options.some((option) => option.value === id);
   const repositoryId = [picked, initialRepositoryId, readStoredRepository()].find(known) ?? options[0]?.value ?? null;
   const choose = (id: string) => { storeRepository(id); setPicked(id); };
   return <section className="arilSettings" aria-labelledby={headingId}>
     <header>
       <h2 id={headingId}>Aril</h2>
-      <p>What Aril may do under a grant you start, and what it remembers. These settings belong to one repository.</p>
+      <p>Turn Aril on or off and say how you like to work. Grants and a repository&apos;s memory belong to one repository.</p>
     </header>
+    <ArilSwitchPanel control={aril} />
+    <OwnerMemorySection control={ownerMemory} />
+    <ThreadSpaceSection control={space} names={names} />
     {repositoryId === null
       ? <p className="arilSettingsNote">{loading ? "Reading repositories…" : "No repositories observed yet."}</p>
       : <>
@@ -289,7 +291,7 @@ export function ArilSettingsSection({ initialRepositoryId = null }: { initialRep
               : <span className="commandMonoValue">{options[0].label}</span>}
           </SettingRow>
         </div>
-        <ArilRepositorySettings key={repositoryId} repositoryId={repositoryId} jev={jev} />
+        <ArilRepositorySettings key={repositoryId} repositoryId={repositoryId} jev={jev} arilOn={aril.state?.on ?? null} />
       </>}
   </section>;
 }
