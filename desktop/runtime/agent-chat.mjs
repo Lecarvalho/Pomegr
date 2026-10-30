@@ -732,6 +732,8 @@ export function createAgentChat(options = {}) {
     if (!exactly(payload, named ? ["repositoryId", "provider", "model", "effort"] : ["repositoryId"]) || !REPOSITORY_ID.test(String(payload.repositoryId))) return INVALID;
     const { repositoryId, provider, model, effort } = payload;
     if (named && (!PROVIDERS.has(provider) || !(model === null || (typeof model === "string" && MODEL.test(model))) || !(effort === null || (typeof effort === "string" && EFFORTS.has(effort))))) return INVALID;
+    // The owner is at the chat: the repository's GitHub settings are read in the background when they are old. Nothing waits for it.
+    void repositoryGithub?.open(repositoryId, () => repositoryRoot(repositoryId));
     const run = named ? { provider, model, effort } : lastRun(await store.index(repositoryId));
     if (run) await warm.request(repositoryId, { provider: run.provider, model: run.model ?? null, effort: run.effort ?? null });
     return { ok: true };

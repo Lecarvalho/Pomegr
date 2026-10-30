@@ -82,6 +82,31 @@ export function createGithubKeeper({ github, now = Date.now, refreshMs = REFRESH
       const entry = track(repositoryId, root, usedAt);
       arm(repositoryId, entry, waitFor(repositoryId, entry, 0));
     },
+    /**
+     * The owner opened the chat of the repository (the `warm` request). Never awaited by a turn, and it never rejects. Facts younger than a
+     * refresh need no read; a refresh that runs, or a retry that waits after a failure, is left alone. Otherwise it reads now (a read already
+     * running is joined by the reader) and tracks the repository, whose folder `rootOf()` answers when the keeper does not hold it. An
+     * open starts the idle clock for a repository that is not tracked, or whose 2 hours have passed; it never extends a clock that runs,
+     * because a focused message field asks again and again and only a message is a use.
+     */
+    async open(repositoryId, rootOf) {
+      if (!keeps || closed) return;
+      const ageOf = () => github.age?.(repositoryId) ?? null;
+      const settled = (entry) => entry && (entry.running || entry.failures > 0 || (ageOf() !== null && ageOf() < refreshMs));
+      try {
+        if (settled(tracked.get(repositoryId))) return;
+        const root = tracked.get(repositoryId)?.root ?? await rootOf();
+        if (typeof root !== "string" || root === "" || closed || settled(tracked.get(repositoryId))) return;
+        const known = tracked.get(repositoryId);
+        const entry = track(repositoryId, root, known && now() - known.usedAt <= idleMs ? known.usedAt : now());
+        if (ageOf() !== null && ageOf() < refreshMs) {
+          arm(repositoryId, entry, refreshMs - ageOf());
+        } else {
+          if (entry.timer) { clearTimer(entry.timer); entry.timer = null; }
+          void tick(repositoryId, entry);
+        }
+      } catch { /* The next message reads, as before. */ }
+    },
     close() {
       closed = true;
       for (const entry of tracked.values()) if (entry.timer) clearTimer(entry.timer);

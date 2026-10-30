@@ -314,12 +314,142 @@ test("a prefetch whose Tasks home or store fails goes on, and cancelling stops t
   assert.deepEqual(w.clock.timers.map(({ cleared }) => cleared), [true, true]);
 });
 
+/** The folder lookup `open` is given, counting how often it was asked. */
+function folderLookup(answer = "C:\\a") {
+  const lookup = { asked: 0, rootOf: async () => { lookup.asked += 1; return answer; } };
+  return lookup;
+}
+
+test("opening the chat reads the settings once when none are held, asks for the folder once, and tracks the repository", async () => {
+  const w = world();
+  const lookup = folderLookup();
+  await w.keeper.open(repoA, lookup.rootOf);
+  await settle();
+  assert.deepEqual(w.calls, ["C:\\a"]);
+  assert.equal(lookup.asked, 1);
+  assert.deepEqual(w.clock.live().map(({ delay }) => delay), [25 * MINUTE]);
+  assert.equal(w.clock.live()[0].unrefs, 1);
+
+  await w.keeper.open(repoA, lookup.rootOf);
+  await settle();
+  assert.equal(w.calls.length, 1, "facts that were just read are not read again");
+  assert.equal(lookup.asked, 1, "and a tracked repository does not ask for its folder again");
+});
+
+test("opening the chat with facts younger than 25 minutes reads nothing and only starts the repository's timer", async () => {
+  const w = world();
+  await w.github.read(repoA, "C:\\a");
+  w.clock.now += 10 * MINUTE;
+  const lookup = folderLookup();
+  await w.keeper.open(repoA, lookup.rootOf);
+  await settle();
+  assert.equal(w.calls.length, 1);
+  assert.deepEqual(w.clock.live().map(({ delay }) => delay), [15 * MINUTE], "tracked from the age of the facts");
+  await w.keeper.open(repoA, lookup.rootOf);
+  assert.equal(lookup.asked, 1);
+  assert.equal(w.clock.timers.length, 1, "a second open leaves the timer alone");
+});
+
+test("opening the chat with facts 25 minutes old reads once, whoever read them", async () => {
+  const w = world();
+  await w.github.read(repoA, "C:\\a");
+  w.clock.now += 26 * MINUTE;
+  await w.keeper.open(repoA, folderLookup().rootOf);
+  await settle();
+  assert.equal(w.calls.length, 2);
+  assert.equal(w.github.age(repoA), 0);
+  assert.deepEqual(w.clock.live().map(({ delay }) => delay), [25 * MINUTE]);
+});
+
+test("opening the chat while a refresh runs joins it: no second read, no second timer, no folder lookup", async () => {
+  const gate = deferred();
+  const w = world({ answers: [{}, { gate }] });
+  await w.keeper.read(repoA, "C:\\a");
+  await w.clock.fire();
+  assert.equal(w.calls.length, 2);
+  const lookup = folderLookup();
+  await w.keeper.open(repoA, lookup.rootOf);
+  assert.deepEqual([w.calls.length, lookup.asked, w.clock.live().length], [2, 0, 0]);
+  gate.resolve();
+  await settle();
+  assert.deepEqual(w.clock.live().map(({ delay }) => delay), [25 * MINUTE], "the refresh that was running set the one timer");
+});
+
+test("opening the chat while a message's read runs joins that read", async () => {
+  const gate = deferred();
+  const w = world({ answers: [{ gate }] });
+  const reading = w.keeper.read(repoA, "C:\\a");
+  await w.keeper.open(repoA, folderLookup().rootOf);
+  assert.equal(w.calls.length, 1, "the reader runs one gh read for the repository");
+  gate.resolve();
+  assert.deepEqual(await reading, FACTS);
+  await settle();
+  assert.equal(w.calls.length, 1);
+  assert.deepEqual(w.clock.live().map(({ delay }) => delay), [25 * MINUTE]);
+});
+
+test("opening the chat while a retry waits after a failed refresh forces no read", async () => {
+  const w = world({ answers: [{}, OFFLINE, {}] });
+  await w.keeper.read(repoA, "C:\\a");
+  await w.clock.fire();
+  const [retry] = w.clock.live();
+  assert.equal(retry.delay, 2 * MINUTE);
+  const lookup = folderLookup();
+  await w.keeper.open(repoA, lookup.rootOf);
+  await settle();
+  assert.deepEqual([w.calls.length, lookup.asked], [2, 0]);
+  assert.deepEqual(w.clock.live(), [retry], "the retry is the same timer, due when it was due");
+  await w.clock.fire();
+  assert.equal(w.calls.length, 3, "and it still runs");
+  assert.deepEqual(w.clock.live().map(({ delay }) => delay), [25 * MINUTE]);
+});
+
+test("opening the chat never extends the idle clock of a repository that is tracked", async () => {
+  const w = world();
+  await w.keeper.read(repoA, "C:\\a");
+  for (let round = 0; round < 3; round += 1) await w.clock.fire();
+  await w.keeper.open(repoA, folderLookup().rootOf);
+  assert.equal(w.calls.length, 4, "the facts were 0 minutes old at 75 minutes");
+  await w.clock.fire();
+  assert.equal(w.calls.length, 5, "100 minutes");
+  await w.clock.fire();
+  assert.equal(w.calls.length, 5, "at 125 minutes the repository is let go, as if nobody had opened the chat");
+  assert.deepEqual(w.clock.live(), []);
+});
+
+test("opening the chat starts the idle clock again for a repository whose 2 hours have passed", async () => {
+  const w = world();
+  await w.keeper.read(repoA, "C:\\a");
+  w.clock.now += 130 * MINUTE;
+  await w.keeper.open(repoA, folderLookup().rootOf);
+  await settle();
+  assert.equal(w.calls.length, 2, "it reads instead of being dropped");
+  await w.clock.fire();
+  assert.equal(w.calls.length, 3, "and it goes on");
+});
+
+test("opening the chat is a no-op for a reader that cannot refresh, after close, and when the folder is not known", async () => {
+  const lookup = folderLookup();
+  await createGithubKeeper({ github: { read: async () => FACTS } }).open(repoA, lookup.rootOf);
+  assert.equal(lookup.asked, 0);
+
+  const w = world();
+  await w.keeper.open(repoA, async () => null);
+  await w.keeper.open(repoA, async () => { throw new Error("monitor down"); });
+  await settle();
+  assert.deepEqual([w.calls.length, w.clock.timers.length], [0, 0]);
+
+  w.keeper.close();
+  await w.keeper.open(repoA, lookup.rootOf);
+  assert.deepEqual([lookup.asked, w.calls.length, w.clock.timers.length], [0, 0, 0]);
+});
+
 // The wiring in the chat controller.
-const github = (calls) => {
+const github = (calls, gate = null) => {
   let held = false;
   return {
     read: async (id, folder) => { calls.push(["read", id, folder]); held = true; return FACTS; },
-    refresh: async (id, folder) => { calls.push(["refresh", id, folder]); held = true; return true; },
+    refresh: async (id, folder) => { calls.push(["refresh", id, folder]); await gate?.promise; held = true; return true; },
     age: () => (held ? 0 : null),
   };
 };
@@ -379,4 +509,31 @@ test("a repository whose last answer is older than 2 hours is left to its first 
   await settle();
   assert.deepEqual(h.calls.map((call) => call.pathname), ["/api/tasks"], "only the home was read: no folder was asked for");
   assert.deepEqual(keeperClock.timers, []);
+});
+
+test("the chat's warm request reads old GitHub settings in the background, answers without waiting for it, and ignores an invalid request", async (context) => {
+  const clock = fakeClock();
+  const calls = [];
+  const gate = deferred();
+  const h = await chatHarness(context, { repositoryGithub: github(calls, gate), githubKeeper: { setTimer: clock.setTimer, clearTimer: clock.clearTimer } });
+  const roots = () => h.calls.filter((call) => call.pathname === "/internal/tasks/worktree-root").length;
+
+  assert.deepEqual(await h.handle("warm", { repositoryId, provider: "nobody", model: null, effort: null }), { ok: false, error: "invalid" });
+  assert.deepEqual(await h.handle("warm", {}), { ok: false, error: "invalid" });
+  await settle();
+  assert.deepEqual([calls, roots()], [[], 0], "a request that is refused reads nothing");
+
+  assert.deepEqual(await h.handle("warm", { repositoryId }), { ok: true });
+  await until(() => calls.length === 1);
+  assert.deepEqual(calls, [["refresh", repositoryId, root]], "the read is still waiting for its gate, and the answer did not wait for it");
+  assert.equal(roots(), 1);
+
+  gate.resolve();
+  await until(() => clock.live().length === 1);
+  assert.deepEqual(clock.live().map(({ delay }) => delay), [25 * MINUTE]);
+  await h.handle("warm", { repositoryId });
+  await settle();
+  assert.deepEqual([calls.length, roots()], [1, 1], "opened again with young facts: no read and no folder lookup");
+  h.chat.dispose();
+  assert.deepEqual(clock.live(), []);
 });
