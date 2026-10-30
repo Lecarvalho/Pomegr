@@ -342,8 +342,8 @@ export function startChatProcess({ spawn, executable, provider, model = null, ef
       let buffer = "";
       const finish = (acknowledged) => { clearTimeout(timer); control = null; listeners.delete(onEnd); resolve(acknowledged); };
       const onEnd = () => finish(false);
+      // Not unref'd: a turn awaits this answer, and the timer is cleared as soon as the process answers or ends.
       const timer = setTimeout(() => finish(false), ackMs);
-      timer.unref?.();
       listeners.add(onEnd);
       // Only the answer to this request counts; any other line the process writes before its prompt belongs to no turn.
       control = (chunk) => {

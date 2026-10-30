@@ -98,7 +98,7 @@ export function createJevRouting({ key, fetch: fetchImpl = null, transport: give
         resolve({ reason: "timeout", ...(ROUTE_PHASES.includes(phase) ? { phase } : {}) });
         controller.abort();
       }, timeoutMs);
-      timer.unref?.();
+      // Not unref'd: a send awaits this answer, and the timer is cleared as soon as Jev answers.
     });
     const call = (async () => {
       const response = await send(JEV_URL, {
