@@ -148,11 +148,8 @@ export function TaskFieldsSection() {
           notice={<ModelDiffersNotice planned="model-large" observed="model-small" />}
           issue={<TaskIssueRow number={null} offered={false} repositoryId="design-system" repositoryName="pomegr" taskId="T-3" unsaved={false} saveFirst={null} onChanged={noop} />} />
       </Sample>
-      <Sample label="Feature" note="Feature lists the features that are not done, No feature and New feature…. A feature gives a task context only, not an order. The folded In this feature list counts the feature's tasks and opens on demand.">
+      <Sample label="Feature" note="Feature lists the features that are not done, No feature and New feature…. A feature gives a task context only, not an order. The folded In this feature list counts the feature's tasks and opens on demand. In the Task modal it lists the other tasks in board order and leaves the open task out.">
         <RunSettings><FeatureFields draft={placed} board={BOARD_RUNNING} onChange={setPlaced} /></RunSettings>
-      </Sample>
-      <Sample label="Feature, in the Task modal" note="Given the open task, its siblings are listed in board order and the task itself is left out of the list.">
-        <RunSettings><FeatureFields draft={placed} board={BOARD_RUNNING} selfId="T-3" onChange={setPlaced} /></RunSettings>
       </Sample>
       <Sample label="New feature" note="New feature… reveals a one-line name in place; Enter or leaving the field commits it.">
         <RunSettings><FeatureFields draft={created} board={BOARD_RUNNING} onChange={setCreated} /></RunSettings>

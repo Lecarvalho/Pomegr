@@ -12,7 +12,8 @@ vi.mock("../../app/tasks-store", async (importOriginal) => ({ ...(await importOr
 vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: [] }, loading: false, refreshing: false, connected: true, checkedAt: null }) }));
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: { revision: 1, readiness: "ready", repositories: [] }, loading: false, connected: true, refresh: vi.fn() }) }));
 
-import { DesignSystemView } from "../../app/components/design-system/DesignSystemView";
+import { AssignedSessionsSection } from "../../app/components/design-system/DesignSystemAssignedSessionsSample";
+import { SessionTaskSection } from "../../app/components/design-system/DesignSystemSessionTaskSample";
 import { SessionTaskCell } from "../../app/components/tasks/SessionTaskCell";
 import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 import { TaskCard } from "../../app/components/tasks/TaskCard";
@@ -200,12 +201,12 @@ describe("SessionTaskCell with assigned tasks", () => {
   });
 
   it("has a design-system sample of a reviewer session", () => {
-    render(<DesignSystemView />);
+    render(<SessionTaskSection />);
     const section = screen.getByRole("heading", { level: 2, name: "Sessions list Task cell" }).closest("section") as HTMLElement;
     const reviewer = [...section.querySelectorAll(".designSystemSample")].find((element) => element.querySelector(":scope > span")?.textContent === "Reviewer session") as HTMLElement;
     expect(within(reviewer).getByRole("link", { name: "Open task T-12 on its board" })).toBeInTheDocument();
     expect(within(reviewer).getByText("Review")).toHaveClass("commandSessionTaskFeature");
-  }, 20_000);
+  });
 
   it("titles the dash for a session that is neither started from a task nor assigned", () => {
     render(<SessionTaskCell task={null} assigned={[]} />);
@@ -390,7 +391,7 @@ describe("Assigned sessions design-system section", () => {
 
   it("renders the section with its card, modal and Task cell samples from static data", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(() => Promise.reject(new Error("network use is forbidden")));
-    render(<DesignSystemView />);
+    render(<AssignedSessionsSection />);
     const section = screen.getByRole("heading", { level: 2, name: "Assigned sessions" }).closest("section") as HTMLElement;
     const labels = [...section.querySelectorAll(".designSystemSample > span")].map((element) => element.textContent);
     expect(labels).toEqual([
@@ -403,7 +404,7 @@ describe("Assigned sessions design-system section", () => {
     expect(section.querySelectorAll(".taskCardSessions")).toHaveLength(3);
     expect(within(section).getByText("+2 more")).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
-  }, 20_000);
+  });
 
   it("is documented in the surface pages and styled with tokens only", () => {
     const read = (...parts: string[]) => readFileSync(join(process.cwd(), ...parts), "utf8");

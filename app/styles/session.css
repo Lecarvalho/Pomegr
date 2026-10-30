@@ -97,8 +97,7 @@
 .commandSessionView .sessionProgressPanel,
 .commandSessionView .gitPanel,
 .commandSessionView .limitsPanel,
-.commandSessionView .contentGrid,
-.commandSessionView .dashboardDisclosurePanel  { margin-bottom: 0; }
+.commandSessionView .contentGrid { margin-bottom: 0; }
 .commandSessionView .sessionProgressHeader { min-height: 52px; padding: 11px 15px; }
 .commandSessionView .sessionProgressHeader h2 { font-size: var(--text-heading); font-weight: 600; letter-spacing: 0; }
 .commandSessionView .sessionProgressInstrument { padding: 15px; }
@@ -115,9 +114,6 @@
 .commandSessionView .panelHeader .quiet,
 .commandSessionView .panelHeader > small,
 .commandSessionView .gitSummary p { color: var(--command-muted); font-size: var(--text-xs); }
-.commandSessionView .dashboardDisclosurePanel > summary { min-height: 52px; padding: 10px 15px; }
-.commandSessionView .dashboardDisclosureTitle { color: var(--command-ink); font-size: var(--text-heading); font-weight: 600; }
-.commandSessionView .dashboardDisclosureIcon { width: 20px; height: 20px; color: var(--command-muted); }
 .commandSessionView .resourceStat { min-height: 92px; padding: 14px 15px; }
 .commandSessionView .resourceStat > strong { font: 500 20px/1 var(--font-data); }
 
@@ -160,8 +156,6 @@
 .commandSessionView .sessionPhoneLabel { display: none; }
 .commandSessionView .sessionEvidenceDisclosure > summary { grid-template-columns: 16px max-content minmax(0, 1fr); min-height: 52px; padding: 0 20px; gap: 12px; }
 .commandSessionView .sessionEvidenceDisclosure > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
-.commandSessionView .sessionEvidenceDisclosure .dashboardDisclosureIcon { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; }
-.commandSessionView .sessionEvidenceDisclosure[open] .dashboardDisclosureChevron { transform: rotate(90deg); }
 .commandSessionView .sessionEvidenceSummary { min-width: 0; color: var(--command-muted); font: 400 12px/1.4 var(--font-ui); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commandSessionView .sessionRepositoryBranch { overflow-wrap: anywhere; }
 .commandSessionView .sessionRepository .gitPanel { margin: 0; border: 0; border-radius: 0; background: transparent; }
@@ -349,7 +343,6 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
 
 @media (max-width: 760px) {
   .commandSessionView .sessionEvidenceDisclosure > summary { padding: 0 14px; gap: 10px; }
-  .commandSessionView .sessionEvidenceDisclosure .dashboardDisclosureTitle { font-size: var(--text-heading); }
   .commandSessionView .sessionEvidenceSummary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
   .commandSessionView .sessionView { gap: 14px; }
   .commandSessionView .sessionDesktopLabel { display: none; }

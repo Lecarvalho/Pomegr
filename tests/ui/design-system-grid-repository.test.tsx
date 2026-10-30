@@ -1,20 +1,13 @@
 import { readFileSync } from "node:fs";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, within } from "@testing-library/react";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { AgentGridSection } from "../../app/components/design-system/DesignSystemAgentGridSample";
 import { RepositorySetupSection } from "../../app/components/design-system/DesignSystemRepositorySamples";
+import { sample, sectionOf } from "./design-system-helpers";
 
 const styles = ["agent-grid", "workspace"].map((name) => readFileSync("app/styles/" + name + ".css", "utf8")).join("\n");
-
-function sectionOf(name: string) {
-  return screen.getByRole("heading", { level: 2, name }).closest("section") as HTMLElement;
-}
-
-function sample(root: HTMLElement, label: string) {
-  return within(root).getByText(label, { selector: ".designSystemSample > span" }).closest(".designSystemSample") as HTMLElement;
-}
 
 describe("Static grid and repository samples", () => {
   let fetchSpy: MockInstance;

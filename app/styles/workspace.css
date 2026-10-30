@@ -322,11 +322,6 @@
 .commandStatusText.active .commandStatusDot { background: var(--command-green); }
 .commandStatusText.attention .commandStatusDot { background: var(--command-amber); }
 .commandStatusText.idle .commandStatusDot, .commandStatusText.unknown .commandStatusDot { border: 1px solid var(--command-faint); background: transparent; }
-.commandMetric { min-height: 110px; padding: 15px; background: var(--command-panel); }
-.commandMetric > span, .commandMetric > strong, .commandMetric > small { display: block; }
-.commandMetric > span { color: var(--command-muted); font-size: var(--text-xs); }
-.commandMetric > strong { margin-top: 19px; color: var(--command-ink); font: 500 26px/1 var(--font-ui); }
-.commandMetric > small { margin-top: 8px; color: var(--command-faint); font-size: var(--text-xs); }
 .commandSelect { position: relative; display: inline-grid; min-width: 0; max-width: 100%; color: var(--command-muted); }
 .commandSelect::after { position: absolute; inset-inline-end: 14px; top: 50%; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-70%) rotate(45deg); pointer-events: none; content: ""; }
 .commandSelectTrigger { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; min-height: var(--control-height); padding-block: 0; padding-inline: var(--space-3) 36px; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-ground); color: var(--command-ink); font: 500 var(--text-sm)/1.3 var(--font-ui); text-align: start; cursor: pointer; }
@@ -352,7 +347,6 @@
 .commandEmpty p { max-width: 54ch; margin: 8px 0 0; font-size: var(--text-xs); line-height: 1.55; }
 .commandComingSoon { min-height: 134px; margin-top: 12px; padding: 20px; display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: start; gap: 16px; border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandComingSoonIcon { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid var(--command-line-strong); color: var(--command-muted); }
-.commandBadge { display: inline-block; padding: 5px 7px; border: 1px solid var(--command-line); border-radius: var(--control-radius); color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); text-transform: none; letter-spacing: 0; }
 .commandComingSoon h2 { margin: 12px 0 0; font-size: var(--text-sm); }
 .commandSettingsPane .commandComingSoon h2 { margin-top: 8px; }
 .commandComingSoon p { max-width: 72ch; margin: 8px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.55; }
@@ -468,13 +462,6 @@
 .repositoryInventoryHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .repositoryInventoryHeading h3 { margin: 0; font-size: var(--text-sm); }
 .repositoryInventoryHeading span { color: var(--command-muted); font-size: var(--text-xs); }
-.repositoryCategoryGrid { margin-top: 14px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--command-line); }
-.repositoryCategory { min-width: 0; min-height: 66px; padding: 11px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: center; gap: 6px 10px; }
-.repositoryCategory:not(:nth-child(3n + 1)) { border-inline-start: 1px solid var(--command-line); }
-.repositoryCategory:nth-child(n + 4) { border-top: 1px solid var(--command-line); }
-.repositoryCategory span { overflow: hidden; color: var(--command-muted); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
-.repositoryCategory strong { font: 600 var(--text-sm)/1 var(--font-data); }
-.repositoryCategory small { grid-column: 1 / -1; color: var(--command-muted); font: var(--text-xs)/1 var(--font-data); }
 .repositoryInventoryDetails { border-top: 1px solid var(--command-line); }
 .repositoryInventoryDetails > summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--command-brand-text); font-size: var(--text-xs); cursor: pointer; }
 .repositoryInventoryDetails > summary small { color: var(--command-muted); font-size: var(--text-xs); }
@@ -536,7 +523,6 @@
   .commandToolbar { align-items: stretch; flex-wrap: wrap; }
   .commandToolbar .commandSearch { width: 100%; }
   .commandToolbarCount { width: 100%; margin: 3px 0 0; }
-  .commandMetric { min-height: 92px; }
   .commandRepositoryHead, .commandRepositoryIcon, .commandRepositoryIdentity small, .commandRepositoryToolbar .commandToolbarCount { display: none; }
   .commandRepositoryRow { min-height: 76px; grid-template-columns: minmax(0, 1fr) 24px; gap: 10px; padding: 12px 14px; }
   .commandRepositoryBody { min-width: 0; display: grid; gap: 6px; }
@@ -559,11 +545,6 @@
   .repositoryCaptureConfirm { align-items: stretch; flex-direction: column; }
   .repositoryCaptureConfirm > span:last-child { display: grid; grid-template-columns: minmax(0, 1fr); }
   .repositoryCaptureConfirm button { width: auto; min-height: 44px; }
-  .repositoryCategoryGrid { grid-template-columns: 1fr 1fr; }
-  .repositoryCategory:not(:nth-child(3n + 1)) { border-inline-start: 0; }
-  .repositoryCategory:nth-child(n + 4) { border-top: 0; }
-  .repositoryCategory:nth-child(even) { border-inline-start: 1px solid var(--command-line); }
-  .repositoryCategory:nth-child(n + 3) { border-top: 1px solid var(--command-line); }
   .repositoryRevisionCompare { grid-template-columns: 1fr; }
   .repositoryRevisionCompare dl { grid-template-columns: 1fr; }
   .repositoryRevisionCompare dl div + div { border-top: 1px solid var(--command-line); border-inline-start: 0; }

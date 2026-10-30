@@ -31,7 +31,6 @@ it("renders revision evidence with fixed strings and the shipped allocation brea
   expect(container.querySelectorAll(".repositoryOverviewFacts > div")).toHaveLength(4);
   expect(container.querySelectorAll(".repositoryOverviewCards > .repositoryOverviewCard")).toHaveLength(3);
   expect(container.querySelector(".repositoryInventorySummary")).toHaveTextContent("25 Oct 2026, 12:00 UTC");
-  expect(container.querySelectorAll(".repositoryCategoryGrid > .repositoryCategory")).toHaveLength(3);
   for (const title of ["Loaded initially", "Deferred until needed", "Reserved capacity"]) {
     expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
   }

@@ -90,9 +90,6 @@ export function RevisionEvidenceSection() {
         <div><span>Captured</span><strong>25 Oct 2026, 12:00 UTC</strong></div><div><span>Model</span><strong>sample-model</strong></div>
         <div><span>Revision</span><strong>r1</strong></div><div className="repositoryInventoryInitial"><span>Estimated initial context</span><strong className="repositoryInventoryTokens">12k tokens</strong></div>
       </section></Sample>
-      <Sample label="Category grid" note="This shared category grid has no current production caller."><div className="repositoryCategoryGrid designSystemRepositoryFrame">
-        {CATEGORIES.map((category) => <div className="repositoryCategory" key={category.name}><span>{category.name}</span><strong>{category.tokens}</strong><small>{category.percentage}%</small></div>)}
-      </div></Sample>
       <Sample label="Context allocation"><div className="designSystemRepositoryFrame">
         <ContextAllocationBreakdown allocation={{ initialTokens: 12_000, deferredTokens: 6_000, reservedTokens: 2_000 }} categoryTotal={20_000} categories={CATEGORIES} />
       </div></Sample>

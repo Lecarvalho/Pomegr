@@ -71,7 +71,3 @@ export function CommandEmpty({ title, detail, icon = "spark" }: { title: string;
 export function CommandComingSoon({ title, detail, icon = "spark" }: { title: string; detail: string; icon?: CommandIconName }) {
   return <section className="commandComingSoon"><span className="commandComingSoonIcon"><CommandIcon name={icon} /></span><div><span className="commandChip">Coming soon</span><h2>{title}</h2><p>{detail}</p></div></section>;
 }
-
-export function CommandMetric({ label, value, detail }: { label: string; value: string; detail?: string }) {
-  return <div className="commandMetric"><span>{label}</span><strong>{value}</strong>{detail && <small>{detail}</small>}</div>;
-}

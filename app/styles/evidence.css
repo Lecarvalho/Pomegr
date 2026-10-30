@@ -253,20 +253,6 @@ html[data-theme="dark"] .sunIcon { display: block; }
 
 
 
-.dashboardDisclosurePanel { --disclosure-accent: var(--green); margin-bottom: 12px; }
-.dashboardDisclosurePanel > summary { min-height: 64px; padding: 14px 20px; display: grid; grid-template-columns: 24px max-content minmax(0, 1fr); align-items: center; gap: 12px; cursor: pointer; list-style: none; }
-.dashboardDisclosurePanel > summary::-webkit-details-marker { display: none; }
-.dashboardDisclosurePanel > summary:hover .dashboardDisclosureTitle { color: var(--disclosure-accent); }
-.dashboardDisclosurePanel > summary:focus-visible { outline: 2px solid var(--disclosure-accent); outline-offset: 3px; }
-.dashboardDisclosureIcon { width: 24px; height: 24px; overflow: visible; fill: none; stroke: var(--muted); stroke-width: 1.35; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.dashboardDisclosureIconVertical { transform-origin: center; transition: opacity .16s ease-out, transform .16s ease-out; }
-.dashboardDisclosurePanel[open] .dashboardDisclosureIconVertical { opacity: 0; transform: scaleY(0); }
-.dashboardDisclosureTitle { font-size: var(--text-sm); font-weight: 610; line-height: 1.2; transition: color .16s ease-out; }
-.dashboardDisclosurePanelBody { border-top: 1px solid var(--line); }
-.disclosureSummaryMetrics { min-width: 0; margin-inline-start: auto; display: flex; align-items: baseline; justify-content: flex-end; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font: var(--text-xs)/1.35 var(--font-ui); font-variant-numeric: tabular-nums; }
-.disclosureSummaryMetrics > span { white-space: nowrap; }
-.disclosureSummaryMetrics b { color: var(--ink); font-family: var(--font-inter), sans-serif; font-weight: 570; }
-.disclosureSummaryUnavailable { margin-inline-start: auto; color: var(--muted); font-size: var(--text-xs); }
 .visuallyHidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 .resourceCpuLine { stroke: var(--resource-cpu); }
 .resourceMemoryLine { stroke: var(--resource-memory); }
@@ -397,9 +383,6 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
   .contextScopeControl { width: 100%; grid-template-columns: 42px minmax(0, 1fr); }
   .displayPreferenceList { padding: 0 20px; }.displayPreferenceRow { min-height: 112px; gap: 18px; }.displayPreferenceRow label span { font-size: var(--text-xs); }
   .pullRequestPopover { position: fixed; top: auto; right: 14px; bottom: 14px; left: 14px; width: auto; max-height: calc(100vh - 28px); border-radius: var(--panel-radius); box-shadow: 0 24px 70px rgba(25,32,29,.28); }.pullRequestList { max-height: min(58vh, 420px); }.pullRequestRow { grid-template-columns: 36px minmax(0, 1fr); }.pullRequestTitle { align-items: flex-start; flex-direction: column; gap: 5px; }.pullRequestTitle strong { overflow: visible; white-space: normal; text-overflow: clip; line-height: 1.35; }.pullRequestStats { grid-column: 2; display: flex; justify-content: flex-start; min-width: 0; }.pullRequestStats i { margin: 0 0 0 auto; }
-  .dashboardDisclosurePanel > summary { grid-template-columns: 24px minmax(0, 1fr); padding: 14px; }
-  .disclosureSummaryMetrics, .disclosureSummaryUnavailable { grid-column: 2; margin-inline-start: 0; justify-content: flex-start; }
-  .disclosureSummaryMetrics { gap: 5px 12px; }
   .agentTreeCanvas { padding: 14px; }.agentTreeCard { gap: 6px 10px; padding: 11px; }.agentTreeEvidence { gap-inline: 8px; }.agentTreeNote { margin: 8px 14px 14px; }
   .resourceCardsGrid, .resourcesLowerGrid { grid-template-columns: 1fr; }
   /* A phone row has no room for the task beside the time and metric, so the task takes a second line under them. */
@@ -431,8 +414,6 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
   .displayPreferenceRow input::after,
   .limitTrack i,
   .machineryPopoverTrigger span,
-  .dashboardDisclosureIconVertical,
-  .dashboardDisclosureTitle,
   .desktopUpdateOffer button,
   .commandNotificationEntry { transition: none; }
 }

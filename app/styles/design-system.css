@@ -4,7 +4,7 @@
 .designSystemLede { max-width: 72ch; margin: var(--space-2) 0 0; color: var(--command-muted); font-size: var(--text-sm); line-height: 1.5; }
 .designSystemRole { margin-top: var(--space-4); padding: var(--space-4); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
 .designSystemRole > h3 { margin: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-2); font: 600 var(--text-base)/1.4 var(--font-ui); }
-.designSystemRole > h3 code, .designSystemSelector { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.designSystemRole > h3 code { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
 .designSystemRole > p { max-width: 84ch; margin: var(--space-1) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
 .designSystemStates { margin-top: var(--space-4); display: grid; grid-template-columns: repeat(auto-fit, minmax(176px, 1fr)); gap: var(--space-3); }
 .designSystemSample { min-width: 0; display: grid; align-content: start; gap: var(--space-2); padding: var(--space-3); border: 1px dashed var(--command-line); border-radius: var(--control-radius); }

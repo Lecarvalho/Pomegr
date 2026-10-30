@@ -639,7 +639,7 @@ The task board is in [Task board design](task-board.md).
 - It renders the expanded panel, with the log and the composer in their centered column.
 - It renders the proposal card pending, with a delete, in flight, applied, partly applied, with a task that was not found, with every result word, and dismissed.
 - It renders the session start proposed, held, failed, launched, and on a paired device.
-- It renders the queue change proposed for on and for off, on a paired device, turned on, turned on and held, turned off, and not changed.
+- It renders the queue change proposed for on and for off, turned on, turned on and held, turned off, and not changed.
 - It renders the panel with quick replies, answered, and waiting, and with a multiple-choice question, open and answered.
 - It renders the composer with a repository choice, with the model and the effort, with no known model, with an error, and over the limit.
 - It renders the composer as Home draws it, with the suggestion chips above it, and in focus mode, lifted, with the overlay shadow and the hint.

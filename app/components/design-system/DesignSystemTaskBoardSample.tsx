@@ -21,7 +21,6 @@ import {
 
 const LINES = featureLines({ ...BOARD_BLOCKED, tasks: [...BOARD_BLOCKED.tasks, T17_TAGGED] });
 const EDITS = inertEdits(BOARD_RUNNING);
-const EDITS_BLOCKED = inertEdits(BOARD_BLOCKED);
 const noop = () => undefined;
 const newTaskEntry = (): NewTaskEntry => ({ triggerRef: createRef<HTMLButtonElement>(), onOpen: noop });
 const BOARD_ENTRY = newTaskEntry();
@@ -149,11 +148,6 @@ export function TaskBoardSection() {
     <div className="designSystemGrid">
       <Sample label="Board, desktop app (queue on)" note="Cards open the Task modal and move by drag or keyboard, waiting cards of Ready join and leave a parallel group, and the footnote explains dragging. The first lane ends with + New task, shown while the lane is hovered or focused.">
         <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_RUNNING} edits={EDITS} onOpenTask={noop} newTask={BOARD_ENTRY} features={FEATURE_ENTRY} /></div></Frame>
-      </Sample>
-    </div>
-    <div className="designSystemGrid">
-      <Sample label="Board, desktop app (blocked queue)" note="The Board banner carries every action: the secondary Open T-n and Mark done and resume, and the quiet Requeue T-n in ink. A paused queue keeps only Open T-n.">
-        <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_BLOCKED} edits={EDITS_BLOCKED} onOpenTask={noop} newTask={newTaskEntry()} features={FEATURE_ENTRY} /></div></Frame>
       </Sample>
     </div>
     <div className="designSystemGrid">
