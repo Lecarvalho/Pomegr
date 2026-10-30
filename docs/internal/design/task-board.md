@@ -593,54 +593,11 @@ Each row below the tags shows only when it is set, in this order:
 
 ### Aril settings section
 
-- The section lives in Settings (`app/settings/ArilSettings.tsx`); its place, repository choice, and states are in [Settings design](settings.md#aril). It was the Queue settings side panel opened from the Board until 2026-10-29.
-- Its body keeps the Queue settings content without the side panel's frame (`.taskQueueSettings.arilSettingsBody`): the same sections, rows, fields, and button roles, in a column of at most 560px.
-- It has no heading bar, **Close**, **Cancel**, or Escape. The footer holds **Discard changes** (Quiet, unavailable until a field changed) and **Save** (Primary).
-- **Discard changes** puts every field back to the saved settings.
-- When the saved settings change under an open draft, a field the owner has not touched follows the saved value and a field the owner changed keeps the owner's value.
-- The sections are **Grant**, **Actions under a grant**, **Limits**, **Work rules**, **Reviewer**, **Paired devices**, and **Memory**.
-- Five action switches carry the caption “Aril uses these only while a grant you start is active.”
-- The **Merge method** field is a `CommandSelect` with **Repository default**, **Squash**, **Merge commit**, and **Rebase**; paired read-only clients see its saved value as text.
-- **Merge mode** follows it: **Not set**, **Merge when green**, and **Auto-merge when green**. **Delete branch after merge** follows that: **Repository default**, **Delete**, and **Keep**. Both read as text on a read-only client.
-- **Send follow-ups** closes Actions: a switch, on by default, with the caption "After grant actions, Aril adds a short line to this chat and sends a notification." It reads On or Off on a read-only client.
-- The Grant section summarizes the saved start, review, and merge actions, hours, tasks, tasks at a time, and usage limit.
-- Missing limits, all allowed actions, or work rules show one muted readiness reason and no Start grant button.
-- A missing limit reads “Set Hours, Tasks, Tasks at a time, and Usage limit % first.”
-- An allowed merge with no **Merge mode** reads “Choose how a grant merges first.”
-- Unsaved settings show “Save your changes first.” and disable starting a grant.
-- **Start grant** uses `commandPrimaryAction` and first shows an in-panel confirmation with the end time, **Start grant**, and **Cancel**; Cancel dismisses only the confirmation.
-- An active grant shows “Active until HH:MM · n of S tasks used”, with times and counts in the data font.
-- **Stop grant** uses `commandSecondaryAction`, needs no confirmation, and carries “Stopping takes effect at once. Running sessions continue.”
-- A paired device can always stop an active grant; starting requires the saved paired-device permission.
-- The latest ended grant has one muted line with its end time and the fixed reason: you stopped it, its time ran out, it used all its tasks, a start failed, or the app restarted.
-- Grant failures show fixed not-ready, conflict, or generic error text in the Grant section.
-- While active, the capacity strip shows “Aril grant until HH:MM” as muted caption-size text immediately before **Aril settings**, with no button behavior.
-- Each limit uses the threshold select pattern with the bounds in [Aril settings and memory](../architecture/tasks.md#aril-settings-and-memory).
-- An unset limit reads “Not settled: Aril will ask”.
-- Work rule rows show the kind and value, with feature titles and task IDs.
-- The add row selects a kind and accepts its value; feature values come from the board's features.
-- Tasks rules accept comma-separated IDs validated against the board.
-- The reviewer fields are provider, model identifier, and **Use a different provider than the builder**.
-- Only the desktop app shows **Allow paired devices to change Aril settings and memory** as a switch.
-- Paired devices show their permission as text and remain read-only unless the committed setting allows editing.
-- **Save** sends only changed settings sections; supplied sections include all nested fields.
-- A failed save preserves the draft and shows “Aril settings could not be saved. Try again.”.
-- Memory appears oldest first, with its text and an “n of 100” counter.
-- The memory caption reads “What Aril remembers about how you like this repository worked. Aril proposes entries; you can edit or delete any of them.”
-- Memory edits use a single-line field of at most 300 characters and save independently of settings.
-- **Delete** requires **Delete entry** inside the panel; **Keep entry** cancels deletion.
-- **Add entry** is unavailable when memory has 100 entries.
-- A failed memory action preserves the draft and shows “Memory could not be saved. Try again.”.
-- Read-only clients have no Save, memory edit, delete, or add actions.
-- **Effort routing** is the last section, drawn only by the desktop app: a paired device shows no heading, no state, and no field. The key belongs to the app, not to the repository chosen above it.
-- Its caption reads “With a Jev key, Aril may lower the effort you chose for simple replies, never raise it. Jev sees your message and the end of Aril's previous answer.”
-- A second caption says “Key set”, “No key set”, “Checking…” while the state is read, or “This computer cannot store the key safely.” with no field.
-- The key field is a masked single-line field of at most 512 characters, labeled **Jev key**, with browser autofill off, in the panel's usual field style.
-- **Save key** is a secondary button, unavailable until the field holds 8 to 512 characters without spaces; a shorter or spaced key shows “Use 8 to 512 characters without spaces.”.
-- **Remove key** is a quiet button, shown only while a key is set; it acts at once.
-- **Save key** and **Remove key** act at once and do not use the panel's **Save**. A saved key empties the field. The page never shows the key, only that one is set.
-- A failed action keeps what was typed and shows “The key could not be saved. Try again.” or “The key could not be removed. Try again.” as an alert.
-- Design-system samples cover desktop editable, paired read-only, paired allowed, empty memory, full memory, save failure, grants not ready, ready, confirming, active, last ended, and paired stop-only, and the effort routing section with a key set and not set.
+- The section lives in Settings (`app/settings/ArilSettings.tsx`); its cards and states are in [Settings design](settings.md#aril). It was the Queue settings side panel opened from the Board until 2026-10-29.
+- A grant's own sections (**Grant**, **Actions under a grant**, **Limits**, **Work rules**) left it on 2026-10-30. Phase 5 of the [Aril agent plan](../plans/aril-agent.md) replaces grants with agreements. The grant runtime is unchanged, and a grant that is still running keeps one line in the section with its end time and **Stop grant**.
+- While a grant is active, the capacity strip shows “Aril grant until HH:MM” as muted caption-size text immediately before **Aril settings**, with no button behavior.
+- The Board keeps one quiet **Aril settings** link to the section for the board's repository, in its capacity strip. The link opens the memory at that repository's tab.
+- The design-system samples of the section are in [Settings design](settings.md#samples).
 
 ### Scorecard panel
 

@@ -145,6 +145,17 @@ export function createAgentChatImages({ directory, filesystem = fs } = {}) {
       return located(repositoryId, conversationId) ? folder(repositoryId, conversationId) : null;
     },
 
+    /** Removes the files of the listed images of one conversation, and nothing else. Answers how many it removed. */
+    async removeImages(repositoryId, conversationId, list) {
+      if (!located(repositoryId, conversationId)) return 0;
+      let removed = 0;
+      for (const image of Array.isArray(list) ? list : []) {
+        if (normalizeChatImages([image]) === null) continue;
+        try { await filesystem.unlink(path.join(folder(repositoryId, conversationId), fileName(image))); removed += 1; } catch { /* already gone */ }
+      }
+      return removed;
+    },
+
     async removeConversation(repositoryId, conversationId) {
       if (!located(repositoryId, conversationId)) return;
       await filesystem.rm(folder(repositoryId, conversationId), { recursive: true, force: true }).catch(() => {});

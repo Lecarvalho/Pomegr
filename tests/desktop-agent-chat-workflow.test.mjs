@@ -9,7 +9,7 @@ import { chatHarness, finishTurn, pendingProposal, repositoryId, seed, send, unt
 
 const settledAt = "2026-10-20T12:00:00.000Z";
 const changedAt = "2026-10-21T12:00:00.000Z";
-const aril = { settings: { settledAt }, memory: [] };
+const aril = { settings: { settledAt }, memory: { text: "", previous: null, updatedAt: null, updatedBy: null } };
 async function fixture(t) {
   const root = await mkdtemp(path.join(process.cwd(), ".workflow-test-"));
   t.after(() => rm(root, { recursive: true, force: true, maxRetries: 5 }));
@@ -37,7 +37,7 @@ test("workflow discovery uses existing fixed sources and at most 40 workflow fil
   for (const name of ["../AGENTS.md", "/AGENTS.md", "README.md", ".github/workflows/../secret", ".github/workflows/x\n.yml", ".github/workflows/x\u0085.yml", `.github/workflows/${"a".repeat(201)}`]) assert.equal(chat.isWorkflowSourcePath(name), false, name);
 });
 
-test("temporary Git evidence detects strict commit dates, oldest memory time, staged and untracked changes", async (t) => {
+test("temporary Git evidence detects strict commit dates, the memory's last change, staged and untracked changes", async (t) => {
   const { root, write, git } = await fixture(t);
   git("init", "--quiet");
   await write("AGENTS.md");
@@ -46,22 +46,22 @@ test("temporary Git evidence detects strict commit dates, oldest memory time, st
   const changes = await chat.readWorkflowChanges(root, aril);
   assert.deepEqual(changes.map((entry) => entry.path).sort(), [".github/workflows/check [one].yml", "AGENTS.md"]);
   assert.ok(changes.every((entry) => entry.changedAt === changedAt && !entry.uncommitted));
-  assert.deepEqual(await chat.readWorkflowChanges(root, { settings: { settledAt: changedAt }, memory: [] }), []);
-  assert.deepEqual(await chat.readWorkflowChanges(root, { settings: { settledAt: changedAt }, memory: [{ updatedAt: Date.parse(settledAt) }] }), changes);
-  assert.deepEqual(await chat.readWorkflowChanges(root, { settings: { settledAt: null }, memory: [{ updatedAt: Date.parse(settledAt) }] }), changes);
+  assert.deepEqual(await chat.readWorkflowChanges(root, { settings: { settledAt: changedAt }, memory: { text: "", previous: null, updatedAt: null, updatedBy: null } }), []);
+  assert.deepEqual(await chat.readWorkflowChanges(root, { settings: { settledAt: changedAt }, memory: { text: "- Rule", previous: null, updatedAt: Date.parse(settledAt), updatedBy: "owner" } }), changes);
+  assert.deepEqual(await chat.readWorkflowChanges(root, { settings: { settledAt: null }, memory: { text: "- Rule", previous: null, updatedAt: Date.parse(settledAt), updatedBy: "owner" } }), changes);
   await write("AGENTS.md", "edited"); git("add", "AGENTS.md");
   await write("CLAUDE.md");
   for (const file of ["AGENTS.md", "CLAUDE.md"]) await utimes(path.join(root, file), new Date(changedAt), new Date(changedAt));
-  const dirty = await chat.readWorkflowChanges(root, { settings: { settledAt: "2099-01-01T00:00:00Z" }, memory: [] });
+  const dirty = await chat.readWorkflowChanges(root, { settings: { settledAt: "2099-01-01T00:00:00Z" }, memory: { text: "", previous: null, updatedAt: null, updatedBy: null } });
   assert.deepEqual(dirty.map((entry) => entry.path).sort(), ["AGENTS.md", "CLAUDE.md"]);
   assert.ok(dirty.every((entry) => entry.uncommitted && entry.changedAt === changedAt));
 });
 
 test("nothing settled skips discovery and omits the section; settled snapshots carry ISO times", async () => {
-  assert.equal(await chat.readWorkflowChanges("does-not-exist", { settings: { settledAt: null }, memory: [] }), undefined);
-  const board = { aril: { settings: { settledAt: null }, memory: [{ id: 1, text: "Rule", createdAt: 0, updatedAt: Date.parse(settledAt) }] } };
-  assert.equal(boardSnapshot(board).memory[0].updatedAt, settledAt);
-  assert.equal(boardSnapshot({ aril: { settings: {}, memory: [] } }).aril_settings.settledAt, null);
+  assert.equal(await chat.readWorkflowChanges("does-not-exist", { settings: { settledAt: null }, memory: { text: "", previous: null, updatedAt: null, updatedBy: null } }), undefined);
+  const board = { aril: { settings: { settledAt: null }, memory: { text: "- Rule", previous: null, updatedAt: Date.parse(settledAt), updatedBy: "owner" } } };
+  assert.equal(boardSnapshot(board).memory.updatedAt, settledAt);
+  assert.equal(boardSnapshot({ aril: { settings: {}, memory: { text: "", previous: null, updatedAt: null, updatedBy: null } } }).aril_settings.settledAt, null);
   assert.doesNotMatch(composePrompt({ board: {}, message: "hi" }), /\n<workflow_changes>\n/u);
   assert.match(composePrompt({ board, workflowChanges: [], message: "hi" }), /\n<workflow_changes>\nNo workflow source changed since your settings and memory were settled.\n<\/workflow_changes>/u);
   assert.match(composePrompt({ board, workflowChanges: [{ path: "AGENTS.md", changedAt, uncommitted: true }], message: "hi" }), /AGENTS\.md.*2026-10-21T12:00:00.000Z.*uncommitted/u);
@@ -150,10 +150,10 @@ test("the workflow reader starts no Git process while the key is the same, whate
   const full = counter.calls;
   assert.ok(full >= 3, "one log for each source and one status");
   assert.deepEqual(await reader.read(root, aril), first);
-  assert.deepEqual(await reader.read(root, { settings: { settledAt: changedAt }, memory: [] }), [], "the changes follow the settled time, which is not part of the key");
-  assert.deepEqual(await reader.read(root, { settings: { settledAt: null }, memory: [{ updatedAt: Date.parse(settledAt) }] }), first);
+  assert.deepEqual(await reader.read(root, { settings: { settledAt: changedAt }, memory: { text: "", previous: null, updatedAt: null, updatedBy: null } }), [], "the changes follow the settled time, which is not part of the key");
+  assert.deepEqual(await reader.read(root, { settings: { settledAt: null }, memory: { text: "- Rule", previous: null, updatedAt: Date.parse(settledAt), updatedBy: "owner" } }), first);
   assert.equal(counter.calls, full);
-  assert.equal(await reader.read(root, { settings: { settledAt: null }, memory: [] }), undefined);
+  assert.equal(await reader.read(root, { settings: { settledAt: null }, memory: { text: "", previous: null, updatedAt: null, updatedBy: null } }), undefined);
 });
 
 test("the workflow reader reads again after a source is edited, staged, or committed, and after one appears or goes", async (t) => {

@@ -31,6 +31,11 @@ const AGENT_CHAT_PATH = "/api/agent-chat";
 const AGENT_CHAT_IMAGE_ADD_PATH = "/api/agent-chat/image-add";
 const AGENT_CHAT_IMAGE_READ_PATH = "/api/agent-chat/image-read";
 const CONVERSATION_ID = /^chat-[0-9a-f]{12}$/u;
+// The Aril actions that a paired device may send only while the owner allows paired devices (`options.arilPairedOn()`, the one global permission of
+// the Aril switch): a repository's memory, Aril's settings, and a grant's start. The monitor does not know the switch, so desktop main judges it here,
+// before the web host. Stopping a grant, like turning Aril Off, is always allowed. With Aril Off the memory and the settings are read only too.
+const ARIL_PAIRED_ACTIONS = new Set(["aril_settings_set", "aril_memory_set", "grant_start"]);
+const ARIL_READ_ONLY_WHILE_OFF = new Set(["aril_settings_set", "aril_memory_set"]);
 // The 16 KiB action payload plus its fixed envelope, as the monitor bounds it.
 const MAX_TASK_ACTION_BODY_BYTES = 17 * 1024;
 const APP_PATHS = new Set(["/", "/sessions", "/tasks", "/agents", "/usage-limits", "/repositories", "/dashboards", "/settings"]);
@@ -578,6 +583,24 @@ export async function startLanGateway(options = {}) {
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       response.end(JSON.stringify({ status: TASK_START_STATUSES.includes(answer?.status) ? answer.status : "unavailable" }));
       return;
+    }
+    if (taskAction) {
+      // The one action named is judged here, before the web host: Aril Off makes the memory and the settings read only on a paired device too (409),
+      // and every Aril action that changes something needs the owner's permission for paired devices (403, and fail-closed without the question).
+      let named = null;
+      try { named = JSON.parse(actionBody.toString("utf8"))?.action; } catch { /* the web host refuses invalid JSON */ }
+      if (typeof named === "string" && ARIL_PAIRED_ACTIONS.has(named)) {
+        const off = ARIL_READ_ONLY_WHILE_OFF.has(named) && typeof options.arilOn === "function" && !options.arilOn();
+        let allowed = false;
+        if (!off) { try { allowed = typeof options.arilPairedOn === "function" && (await options.arilPairedOn()) === true; } catch { allowed = false; } }
+        if (!active || suspended || !authenticated(request) || response.destroyed) { if (!response.destroyed) fixed(response, 403); return; }
+        if (off || !allowed) {
+          noStore(response);
+          response.writeHead(off ? 409 : 403, { "Content-Type": "application/json; charset=utf-8" });
+          response.end(off ? '{"ok":false,"error":"conflict"}' : '{"ok":false,"error":"unavailable"}');
+          return;
+        }
+      }
     }
     if (agentChat) {
       // One fixed operation and its payload in; the chat's own bounded answer out. Nothing of it reaches the web host.

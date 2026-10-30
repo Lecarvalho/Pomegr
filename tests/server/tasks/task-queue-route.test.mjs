@@ -287,7 +287,7 @@ test("the route serves only the contract's four queue keys even when the store h
         limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
         workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,
       },
-      memory: [],
+      memory: { text: "", previous: null, updatedAt: null, updatedBy: null },
     },
   };
   const board = (queue) => ({ ...base, queue });

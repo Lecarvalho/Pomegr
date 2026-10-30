@@ -10,10 +10,12 @@ const TASK_ACTIONS = new Set([
   "feature_create", "feature_update", "feature_delete",
   "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings",
   "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set", "rework_declare", "rework_remove",
-  "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop",
+  "aril_settings_set", "aril_memory_set", "grant_start", "grant_stop",
 ]);
 const TASK_ISSUE_OPERATIONS = new Set(["status", "list", "promote", "create", "sign_in"]);
 const AGENT_CHAT_OPERATIONS = new Set(["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete", "warm"]);
+// Aril's own controls (agent-chat-aril.mjs): the On/Off switch, the owner's memory, and the space each thread takes. They need no repository.
+const ARIL_CONTROL_OPERATIONS = new Set(["aril_switch", "aril_switch_set", "aril_paired_on_set", "owner_memory", "owner_memory_set", "thread_space", "thread_limit_set", "thread_flush"]);
 const TASK_IMAGE_OPERATIONS = new Set(["add", "remove", "read"]);
 const TASK_FEATURE_ID = /^feat-[0-9a-f]{12}$/u;
 const SESSION_ID = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
@@ -212,6 +214,12 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
     if (!AGENT_CHAT_OPERATIONS.has(operation) || !plain || typeof payload.repositoryId !== "string" || !REPOSITORY_ID.test(payload.repositoryId)) {
       return Promise.resolve({ ok: false, error: "invalid" });
     }
+    return ipcRenderer.invoke("pomegr:agent-chat", operation, payload);
+  },
+  arilControl(operation, payload) {
+    const plain = payload && typeof payload === "object" && !Array.isArray(payload)
+      && (Object.getPrototypeOf(payload) === Object.prototype || Object.getPrototypeOf(payload) === null);
+    if (!ARIL_CONTROL_OPERATIONS.has(operation) || !plain) return Promise.resolve({ ok: false, error: "invalid" });
     return ipcRenderer.invoke("pomegr:agent-chat", operation, payload);
   },
   agentChatImage(operation, payload) {

@@ -49,6 +49,7 @@ import {
 import {
   BOARD_COLUMNS,
   BOARD_OPERATIONS,
+  LEGACY_MEMORY_OPERATIONS,
   PROPOSAL_FENCE,
   PROPOSAL_OPERATION_LIMIT,
 } from "../desktop/runtime/agent-chat-proposal.mjs";
@@ -620,7 +621,9 @@ test("a prompt past the limit is refused, and one at the limit is kept", () => {
 
 test("the instructions name every board operation, the proposal fence, and the seven observation tools and task read of the chat server", () => {
   assert.equal(POMEGR_READ_TOOLS.length, 9);
-  for (const operation of BOARD_OPERATIONS) assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(`{"op":"${operation}"`), true, operation);
+  // Memory is no longer a proposal: its three operations stay readable in saved conversations and are not in the instructions.
+  for (const operation of BOARD_OPERATIONS.filter((candidate) => !LEGACY_MEMORY_OPERATIONS.includes(candidate))) assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(`{"op":"${operation}"`), true, operation);
+  for (const operation of LEGACY_MEMORY_OPERATIONS) assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(operation), false, operation);
   assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(`\`\`\`${PROPOSAL_FENCE}\n{"summary"`), true);
   for (const tool of POMEGR_READ_TOOLS) assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(tool), true, tool);
   // update_feature and delete_feature are proposal operations of the same names, always written quoted, never tools.
@@ -670,7 +673,7 @@ test("capability answers cover the full scope and current grant authority", () =
   for (const capability of [
     "board, sessions, usage, and the repository", "see images",
     "board changes, a session start, and a queue change", "owner to apply",
-    "Aril settings and repository memory", "stay settled",
+    "Aril settings", "stay settled", "keep your memory and the repository's current yourself",
     "removing task worktrees", "applied only in the desktop app",
     "grant the owner started", "paired device the owner allowed",
     "hours, tasks, tasks at a time, send-backs, usage limit",
@@ -688,7 +691,7 @@ test("capability answers cover the full scope and current grant authority", () =
 });
 
 test("Start grant guidance includes permitted paired devices", () => {
-  assert.match(AGENT_CHAT_INSTRUCTIONS, /The owner presses Start grant in the desktop app, or on a paired device when pairedDevices is true\./u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /The owner presses Start grant in the desktop app, or on a paired device when the owner allows paired devices\./u);
 });
 
 test("the instructions keep the read-only promise and treat everything else as data", () => {

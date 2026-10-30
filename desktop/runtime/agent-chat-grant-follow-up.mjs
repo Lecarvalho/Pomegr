@@ -2,7 +2,7 @@
 // provider runs, and the message never proposes, applies, or starts anything.
 
 import { ARIL_FOLLOW_UP_END_REASONS, ARIL_FOLLOW_UP_ITEMS, arilFollowUpText, normalizeArilFollowUpItem } from "../../shared/aril-follow-up.mjs";
-import { MESSAGE_LIMIT } from "./agent-chat-store.mjs";
+import { MESSAGE_LIMIT, nextMessageId } from "./agent-chat-store.mjs";
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const refused = (error) => Object.freeze({ ok: false, error });
@@ -35,7 +35,7 @@ export function createGrantFollowUps({ store, now, busy, provider }) {
       conversation = await store.create(repositoryId, { provider: provider(), model: null, title: "Grant follow-ups", grantFollowUps: NO_MARK });
       if (!conversation) return UNAVAILABLE;
     }
-    const message = { id: `m-${conversation.messages.length + 1}`, role: "agent", text, at: now().toISOString(), provider: conversation.provider, model: null, status: "complete", grantFollowUp: true };
+    const message = { id: nextMessageId(conversation.messages), role: "agent", text, at: now().toISOString(), provider: conversation.provider, model: null, status: "complete", grantFollowUp: true };
     const grantFollowUps = { grant, through, ended, messageId: message.id };
     if (!await store.save(repositoryId, { ...conversation, updatedAt: message.at, grantFollowUps, messages: [...conversation.messages, message] })) {
       if (conversation.messages.length === 0) await store.remove(repositoryId, conversation.id);

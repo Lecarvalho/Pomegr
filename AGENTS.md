@@ -105,14 +105,19 @@ These rules always apply:
   or tool. The [Continue plan](docs/internal/architecture/privacy/session-evidence.md#continue-plan)
   carries the working folder to desktop main only. Managed messages remain deferred.
   A grant is the third owner-confirmed control action. Only the owner starts one, in the
-  desktop app or on a paired device the owner allowed. While it is active, the desktop
+  desktop app or on a paired device the owner allowed. While it is active and Aril is On, the desktop
   takes the fixed actions of [Aril grants](docs/internal/architecture/tasks.md#aril-grants)
   without asking each time. Stopping it takes effect at once and ends no running session.
+  Aril has one On/Off switch ([The switch](docs/internal/architecture/agent-chat.md#the-switch)):
+  only the owner turns it On, a paired device turns it Off at any time, and with Aril Off a grant does nothing.
   A session never marks its own task Done.
   Each other control action needs an explicit confirmation boundary.
 - Aril starts only its own read-only provider runs, and Pomegr may stop them. Aril
   changes nothing itself: each change goes through a fixed action, after the owner
-  applies Aril's proposal or while a grant is active. No proposal applies itself.
+  applies Aril's proposal, while a grant is active and Aril is On, or, for its memory, by
+  the one fixed update that desktop main validates and applies while Aril is On: at
+  most 6,000 characters, only the owner's memory and the thread's repository memory,
+  never a file written by the run. No proposal applies itself.
   [Agent chat](docs/internal/architecture/agent-chat.md) lists every run, every action,
   and their exceptions. A change that adds one updates that page in the same pull request.
 - Start processes with `execFile` or `spawn` and an argument array. Never put

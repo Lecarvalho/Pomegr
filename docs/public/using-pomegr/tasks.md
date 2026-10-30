@@ -68,16 +68,14 @@ and adds **Rework** to the log. Causes are declarations, not automatic detection
 
 ### Aril settings
 
-Open **Settings** and select **Aril** to edit action preferences, limits, work rules, and reviewer preferences.
-**Aril settings** above the board opens the same section for that board's repository. The settings belong to one
-repository: choose it in the **Repository** row, which Pomegr remembers. An unset limit means “Not settled: Aril will ask”.
-Select **Save** to save your changes, or **Discard changes** to go back to the saved ones.
+Open **Settings** and select **Aril** to turn Aril on or off, edit memory, and see the space conversations take.
+**Aril settings** above the board opens the same section, with the memory of that board's repository open.
 
-The **Memory** section lists repository preferences, oldest first. You can add, edit, or delete entries independently of settings.
-Each entry holds at most 300 characters; a repository holds at most 100 entries. Confirm deletion inside the panel.
+The **Memory** card has a tab for each repository: free text of at most 6,000 characters about how things are done there. Aril keeps it current
+and you can edit it; it is context and not permission (see [Aril's settings and memory](agent-chat.md#arils-settings-and-memory)).
 
-Paired devices can read these settings and entries. To allow changes, enable **Allow paired devices to change Aril settings and memory** in the desktop app.
-Only the desktop app can change that permission.
+Paired devices can read the memory. To let a phone also turn Aril on and change a repository's memory and Aril's settings, turn on the small switch under Aril's switch in the desktop app.
+One switch covers every repository, and only the desktop app can change it. Settings no longer has a card for each repository, and a grant's own settings (actions, limits, and work rules) are not in Settings either. The reviewer choice will move to an agreement, when agreements replace grants.
 
 ### Aril grants
 
@@ -85,15 +83,9 @@ A grant lets the desktop app run a repository's selected Ready tasks while you a
 start a grant, in the desktop app or on a paired phone you allow. Aril settings alone grant no
 action. A grant ends at its end time or when you quit Pomegr, and it never renews itself.
 
-To start a grant:
+Settings no longer offers a grant's actions, limits, or work rules, or a way to start one: a later version replaces grants with agreements you settle in the chat. A grant that is still running keeps one line in **Settings**, under **Aril**, with its end time and **Stop grant**. A phone can always stop a grant.
 
-1. In **Settings**, under **Aril**, under **Actions under a grant**, allow at least one of **Start tasks**,
-   **Start reviews**, or **Merge on green**. You can also allow **Send work back** and **Write tasks from plans**.
-2. Under **Limits**, set **Hours**, **Tasks**, **Tasks at a time**, and **Usage limit %**.
-   If **Send work back** is on, also set **Send-backs per task**.
-3. Under **Work rules**, add a rule that selects tasks. A grant starts nothing without one.
-   To write tasks, also allow **Start tasks** and add a **Plan** rule that names a Markdown file.
-4. Select **Save**. Then select **Start grant** in the **Grant** section, and confirm.
+How a grant that was started earlier counts its limits:
 
 | Limit | What it counts |
 | --- | --- |
@@ -154,7 +146,7 @@ sessions, and a review carries a **Review** label.
 The strip above the board shows **Aril grant until** the end time, and the **Aril** section of Settings shows the tasks used.
 Select **Stop grant** to stop every further grant action at once. Running sessions continue, because
 stopping a grant ends no session. A paired phone can always stop a grant. It can start one only when you allow
-paired devices in the **Aril** section of Settings. That section shows when the last grant ended and why.
+paired devices with the switch under Aril's switch in Settings. That section shows when the last grant ended and why.
 
 ## Before you start
 

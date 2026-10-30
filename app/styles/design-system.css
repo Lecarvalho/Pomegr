@@ -44,6 +44,8 @@
 /* Task compositions: a full-width stack inside a sample, standing in for the Tasks page column the real controls sit in. */
 .designSystemTaskFrame { flex: 1 1 100%; min-width: 0; display: grid; gap: var(--space-4); align-content: start; }
 .designSystemTaskFrame > * { min-width: 0; }
+.designSystemArilGrid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 700px), 1fr)); }
+.designSystemSwitches { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
 /* The task modal frame drawn over a static scrim, so the reference shows the chrome without opening a dialog. */
 .designSystemTaskModalStage { padding: var(--space-4); border-radius: var(--control-radius); background: color-mix(in srgb, var(--color-text) 40%, transparent); }
 .designSystemTaskModalStage .taskModal { justify-self: center; max-height: min(720px, calc(100dvh - 2 * var(--space-4))); }

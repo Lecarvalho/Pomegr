@@ -7,18 +7,21 @@ import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { CHAT_IMAGE_ID, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGES_PER_CONVERSATION, conversationImages, createAgentChatImages } from "./agent-chat-images.mjs";
+import { createArilControl } from "./agent-chat-aril.mjs";
 import { createGrantFollowUps } from "./agent-chat-grant-follow-up.mjs";
 import { createTaskBridge } from "./agent-chat-task-bridge.mjs";
 import { createGithubKeeper, prefetchGithubSettings } from "./agent-chat-github.mjs";
 import { createTurnPreparation } from "./agent-chat-prepare.mjs";
 import { agentChatMcpServer, prepareInstructionsFile } from "./agent-chat-provider-files.mjs";
 import { extractChoices, shownAnswer } from "./agent-chat-choices.mjs";
+import { extractMemory, recordMemory } from "./agent-chat-memory.mjs";
 import { createCompaction } from "./agent-chat-compaction.mjs";
 import { createChatJev, installJevKeyIpc, previousAnswer } from "./agent-chat-jev.mjs";
 import { composePrompt, composePromptParts, proposalOutcome } from "./agent-chat-prompt.mjs";
-import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, FEATURE_EDIT_OPERATIONS, proposalImages, queueProposalState, recordRework, START_FAILURES, startProposalTask, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
+import { createSessionStart, createWorktreeRemoval } from "./agent-chat-approved.mjs";
+import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, FEATURE_EDIT_OPERATIONS, proposalImages, queueProposalState, recordRework, startProposalTask } from "./agent-chat-proposal.mjs";
 import { CHAT_EFFORTS, runChatTurn, startChatProcess } from "./agent-chat-runner.mjs";
-import { AGENT_CHAT_DIRECTORY, ANSWER_LENGTH, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
+import { AGENT_CHAT_DIRECTORY, ANSWER_LENGTH, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId, nextMessageId } from "./agent-chat-store.mjs";
 import { createAgentChatSummaries, summarizedView } from "./agent-chat-summary.mjs";
 import { createAgentChatThread, currentConversation, LIST_LIMIT, lastRun } from "./agent-chat-thread.mjs";
 import { timingOf } from "./agent-chat-timing.mjs";
@@ -50,7 +53,7 @@ const PROVIDERS = new Set(["claude", "codex"]);
 const EFFORTS = new Set(CHAT_EFFORTS);
 // The effort a record carries: the field for a level, nothing for none, so an older record without one still reads as null.
 const effortField = (effort) => (typeof effort === "string" && EFFORTS.has(effort) ? { effort } : {});
-const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove"]);
+const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set", "aril_settings_set"]);
 // The canonical queue control of the Tasks page. The chat sends it only for an approved queue proposal, with the one setting `on`.
 const QUEUE_ACTION = "queue_settings";
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
@@ -78,10 +81,6 @@ function isPlainObject(value) {
 }
 
 const exactly = (value, keys) => isPlainObject(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
-
-function summary(meta) {
-  return { id: meta.id, title: meta.title, updatedAt: meta.updatedAt, messages: meta.messages };
-}
 
 /** Native-only owner of the chat. Every answer is built here from validated parts; no provider or monitor text passes through. */
 export function createAgentChat(options = {}) {
@@ -126,6 +125,12 @@ export function createAgentChat(options = {}) {
   // The follow-ups that wait for the one turn: `repositoryId/proposalId` to `{ repositoryId, conversationId, proposalId,
   // provider, model, queuedAt }`. A proposal has at most one here, so a second answer to it replaces the first.
   const followUps = new Map();
+  // The On/Off switch, the owner's memory, the thread space, and its limit (see agent-chat-aril.mjs). Off drops the follow-ups that wait. A thread is
+  // busy while a turn, a follow-up, a compaction, or the owner's Apply of a proposal of it runs: nothing flushes it then.
+  const aril = createArilControl({ dataRoot, now, store, images, arilSwitch: options.arilSwitch, ownerMemory: options.ownerMemory, threadLimit: options.threadLimit, space: options.threadSpace, pairedCarry: options.pairedCarry, onOff: () => followUps.clear(),
+    busy: (repositoryId) => turnBusy(repositoryId) || compaction.running(repositoryId) || [...applying].some((key) => key.startsWith(`${repositoryId}/`)) });
+  // Desktop main alone asks for it, a little after it starts: a thread that grew past the owner's limit while the app was closed is flushed then.
+  if (options.sweepThreads) void aril.sweep();
 
   async function monitor(pathname, init) {
     const response = await fetchImpl(`${monitorOrigin}${pathname}`, {
@@ -163,12 +168,18 @@ export function createAgentChat(options = {}) {
   });
 
   // The reads a turn makes before its process starts (see agent-chat-prepare.mjs): they begin together, and each is timed.
-  const preparation = createTurnPreparation({ monitor, postAction, worktreeInventory, workflowReader: options.workflowReader || createWorkflowReader({ execFile }), repositoryGithub, dataRoot: options.dataRoot, environment: runEnvironment, store, summaries: summaries ?? NO_SUMMARIES, clock });
+  const preparation = createTurnPreparation({ ownerMemory: aril.ownerMemory, monitor, postAction, worktreeInventory, workflowReader: options.workflowReader || createWorkflowReader({ execFile }), repositoryGithub, dataRoot: options.dataRoot, environment: runEnvironment, store, summaries: summaries ?? NO_SUMMARIES, clock });
   const { readBoard, repositoryRoot } = preparation;
+  // The two approved actions that are not task actions (agent-chat-approved.mjs).
+  const startSession = createSessionStart(startTask);
+  const removeWorktree = createWorktreeRemoval({ readBoard, monitor, repositoryRoot, worktrees, worktreeInventory });
   // Desktop main alone asks for it, a little after it starts: the facts of every repository with a board are read before the first message.
   const worktreePrefetch = options.prefetchWorktrees ? prefetchWorktreeFacts({ inventory: worktreeInventory, readHome: () => monitor("/api/tasks?view=home", { method: "GET" }), rootOf: repositoryRoot, ...(typeof options.prefetchWorktrees === "object" ? options.prefetchWorktrees : {}) }) : null;
   // Desktop main alone asks for it too: the repositories Aril was used for recently have their GitHub settings read before the first message.
   const githubPrefetch = repositoryGithub && store && options.prefetchGithub ? prefetchGithubSettings({ keeper: repositoryGithub, readHome: () => monitor("/api/tasks?view=home", { method: "GET" }), rootOf: repositoryRoot, store, ...(typeof options.prefetchGithub === "object" ? options.prefetchGithub : {}) }) : null;
+
+  // Desktop main alone asks for it too: the old per-repository permission for paired devices is carried to the global one, once (aril-paired-carry.mjs).
+  const pairedCarry = options.carryPaired && aril.pairedCarry ? aril.pairedCarry.start({ readHome: () => monitor("/api/tasks?view=home", { method: "GET" }), readBoard }) : null;
 
   // The chat's own MCP server reads a task of the turn's repository through a bridge that lives only while the turn runs.
   const taskReadServer = createTaskBridge({ mcpServer, monitor, current: (turn) => active === turn && !disposed });
@@ -250,7 +261,7 @@ export function createAgentChat(options = {}) {
   // next proposal waits for owner approval. Desktop main asks once per stored outcome, so no click, reconnect, or redraw of a
   // client can ask for a second one.
   function requestFollowUp(repositoryId, conversation, proposalId) {
-    if (disposed) return;
+    if (disposed || !aril.isOn()) return;
     const key = `${repositoryId}/${proposalId}`;
     followUps.delete(key);
     followUps.set(key, { repositoryId, conversationId: conversation.id, proposalId, provider: conversation.provider, model: conversation.model, effort: conversation.effort ?? null, queuedAt: now().toISOString() });
@@ -292,7 +303,7 @@ export function createAgentChat(options = {}) {
       const conversation = await store.read(turn.repositoryId, turn.conversationId);
       const proposal = conversation?.messages.find((entry) => entry.role === "agent" && entry.proposal?.id === turn.followUp)?.proposal;
       // The conversation is gone or full, or the app is closing: nothing is asked and nothing is stored.
-      if (!proposal || conversation.messages.length >= MESSAGE_LIMIT || disposed) return release(turn);
+      if (!proposal || conversation.messages.length >= MESSAGE_LIMIT || disposed || !aril.isOn()) return release(turn);
       // No provider, no board, or no repository root: the follow-up is stored as failed. The proposal keeps its outcome.
       const command = executable(turn.provider);
       if (!command) return await finishTurn(turn, null);
@@ -336,7 +347,7 @@ export function createAgentChat(options = {}) {
     if (!last || last.role !== "user" || (active && active.repositoryId === repositoryId && (active.reserved || active.conversationId === conversation.id))) return conversation;
     const at = now().toISOString();
     const repaired = { ...conversation, updatedAt: at, messages: [...conversation.messages, {
-      id: `m-${conversation.messages.length + 1}`, role: "agent", text: "", at, provider: conversation.provider, model: conversation.model, ...effortField(conversation.effort), status: "interrupted",
+      id: nextMessageId(conversation.messages), role: "agent", text: "", at, provider: conversation.provider, model: conversation.model, ...effortField(conversation.effort), status: "interrupted",
     }] };
     return await store.save(repositoryId, repaired) ? repaired : conversation;
   }
@@ -347,8 +358,9 @@ export function createAgentChat(options = {}) {
       void postAction("log-ack", turn.repositoryId, { consumer: "aril", through: turn.logThrough }).catch(() => {});
     }
     const answer = typeof outcome?.text === "string" ? outcome.text : "";
-    // The choices block comes out of the answer first; the proposal is read from the text that is left.
-    const offered = status === "complete" ? extractChoices(answer) : null;
+    // The memory block comes out of the answer first, then the choices block; the proposal is read from the text that is left.
+    const memoryRead = status === "complete" ? extractMemory(answer) : null;
+    const offered = memoryRead ? extractChoices(memoryRead.text) : null;
     let read = offered ? extractProposal(offered.text, { grantWrite: Boolean(turn.grantPlans) }) : { text: shownAnswer(answer), proposal: null, unreadable: false };
     try {
       const conversation = await store.read(turn.repositoryId, turn.conversationId);
@@ -363,7 +375,13 @@ export function createAgentChat(options = {}) {
       read = await recordRework(read, (payload) => disposed || turn.stopped ? UNAVAILABLE : monitor("/internal/tasks/aril-declare-rework", { method: "POST",
         headers: { "content-type": "application/json" }, body: JSON.stringify({ repositoryId: turn.repositoryId, ...payload }),
       }), ANSWER_LENGTH);
-      const message = { id: `m-${conversation.messages.length + 1}`, role: "agent", text: read.text, at: now().toISOString(), provider: turn.provider, model: turn.model, ...effortField(turn.effort), status };
+      // Only an owner's message can carry a memory update. Each update goes to its own memory, applied by desktop main with no Apply (agent-chat-memory.mjs).
+      if (memoryRead && turn.promptSections) {
+        const apply = { owner: (update) => aril.ownerMemory.apply(update), repository: (update) => disposed || turn.stopped ? UNAVAILABLE : monitor("/internal/tasks/aril-memory-update", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ repositoryId: turn.repositoryId, ...update }) }) };
+        read = await recordMemory(read, memoryRead, { on: () => aril.isOn() && !disposed, apply }, ANSWER_LENGTH);
+      }
+      const message = { id: nextMessageId(conversation.messages), role: "agent", text: read.text, at: now().toISOString(), provider: turn.provider, model: turn.model, ...effortField(turn.effort), status };
       // How long the run took, how large its prompt was, and how long each step of its preparation took, as numbers, for an owner's message.
       const timing = turn.promptSections ? timingOf(turn.timing?.(), turn.promptSections, turn.prepare, turn.route) : null;
       if (timing) message.timing = timing;
@@ -403,12 +421,13 @@ export function createAgentChat(options = {}) {
     } catch { /* The conversation keeps the owner's message; the next read marks the answer as interrupted. */ }
     finally {
       release(turn);
-      if (status === "complete") {
-        const compacted = compaction.afterTurn(turn.repositoryId);
-        // The next message of the thread finds a run ready: the owner's message has just been answered, and the same run is the likely next one.
-        // It waits for a compaction of the thread to end, and a turn that has started by then makes the request a no-op.
-        if (turn.promptSections) void compacted.then(() => warm.request(turn.repositoryId, { provider: turn.provider, model: turn.model ?? null, effort: turn.ownerEffort ?? null }));
-      }
+      const compacted = status === "complete" ? compaction.afterTurn(turn.repositoryId) : Promise.resolve();
+      // A thread over the owner's limit is flushed once nothing of it runs: now, or when the compaction that may follow has ended. A turn,
+      // a follow-up, or a compaction that is still running makes the flush wait for the next time the thread is idle.
+      void compacted.then(() => aril.autoFlush(turn.repositoryId));
+      // The next message of the thread finds a run ready: the owner's message has just been answered, and the same run is the likely next one.
+      // It waits for a compaction of the thread to end, and a turn that has started by then makes the request a no-op.
+      if (status === "complete" && turn.promptSections) void compacted.then(() => warm.request(turn.repositoryId, { provider: turn.provider, model: turn.model ?? null, effort: turn.ownerEffort ?? null }));
     }
   }
 
@@ -427,7 +446,8 @@ export function createAgentChat(options = {}) {
       || !text || text.length > MESSAGE_LENGTH || !MESSAGE_TEXT.test(text) || !PROVIDERS.has(provider)
       || !(model === null || (typeof model === "string" && MODEL.test(model)))
       || !(effort === null || (typeof effort === "string" && EFFORTS.has(effort)))) return INVALID;
-    if (active) return refused("busy");
+    // A message waits for a flush of its thread, so a flush never works on a conversation that the message's turn is saving.
+    if (active || aril.flushing(repositoryId)) return refused("busy");
     const prep = preparation.begin(repositoryId, entered);
     const reservation = { reserved: true, repositoryId, conversationId };
     active = reservation;
@@ -471,7 +491,7 @@ export function createAgentChat(options = {}) {
       const prompt = composed?.prompt;
       if (!prompt) return abandoned(INVALID);
       const at = now().toISOString();
-      const message = { id: `m-${conversation.messages.length + 1}`, role: "user", text, at, ...(attached.length > 0 ? { images: attached } : {}) };
+      const message = { id: nextMessageId(conversation.messages), role: "user", text, at, ...(attached.length > 0 ? { images: attached } : {}) };
       const next = { ...conversation, provider, model, effort, updatedAt: at, messages: [...conversation.messages, message] };
       if (!await prep.time("store", () => store.save(repositoryId, next))) return abandoned(UNAVAILABLE);
       // The run may read the folder of this conversation's images, and nothing else outside the repository.
@@ -515,7 +535,7 @@ export function createAgentChat(options = {}) {
   // Internal grant action only. Its promise holds the runner's slot until the answer and outcome are stored.
   async function grantWrite({ repositoryId, plans }) {
     if (active) return refused("busy");
-    if (disposed || !store || !monitorOrigin || !authorizationToken) return UNAVAILABLE;
+    if (disposed || !store || !monitorOrigin || !authorizationToken || !aril.isOn()) return UNAVAILABLE;
     if (!REPOSITORY_ID.test(String(repositoryId)) || !Array.isArray(plans) || plans.length === 0 || plans.length > 20
       || !plans.every((plan) => typeof plan === "string" && plan.length <= 200 && /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\.md$/u.test(plan)
         && !plan.split("/").some((part) => part === "." || part === ".."))) return INVALID;
@@ -571,7 +591,7 @@ export function createAgentChat(options = {}) {
     const conversations = (await store.index(payload.repositoryId)).slice(0, LIST_LIMIT);
     const running = active && !active.reserved && active.repositoryId === payload.repositoryId ? active.conversationId : null;
     const summarized = summarizedView(await summaries?.read(payload.repositoryId));
-    return { ok: true, conversations: conversations.map(summary), running, ...(summarized ? { summarizedAt: summarized.at } : {}) };
+    return { ok: true, conversations: conversations.map((meta) => ({ id: meta.id, title: meta.title, updatedAt: meta.updatedAt, messages: meta.messages })), running, ...(summarized ? { summarizedAt: summarized.at } : {}) };
   }
 
   async function located(payload, keys) {
@@ -634,44 +654,6 @@ export function createAgentChat(options = {}) {
     return bytes ? { ok: true, type: image.type, bytes } : refused("not_found");
   }
 
-  // An approved start goes to the manual start of the Tasks page and to nothing else: the same start plan, gates, and
-  // launch slot and native confirmation. Only a confirmed launch answers
-  // the proposal; a start that was held or failed keeps it pending with the fixed status, so the owner may apply it
-  // again. Null when the start was cancelled (the app is closing), which stores nothing.
-  async function startSession(event, repositoryId, taskId, proposal) {
-    let status;
-    try { status = (await startTask(event, repositoryId, taskId))?.status; } catch { status = "failed"; }
-    if (status === "cancelled") return null;
-    if (status === "started") return { ...proposal, state: "applied", results: [{ ok: true, start: "started" }] };
-    return { ...proposal, state: "pending", results: [{ ok: false, error: "not_started", start: START_FAILURES.includes(status) ? status : "unavailable" }] };
-  }
-
-  async function removeWorktree(repositoryId, operation) {
-    try {
-      const board = await readBoard(repositoryId);
-      if (!board) return "failed";
-      const task = board.tasks.find(({ id }) => id === operation.id);
-      if (task?.review?.state === "running") return "in_use";
-      // A task with no outcome yet may have a session or a live dispatch.
-      if (task && !["needs_review", "stalled", "blocked", "done"].includes(task.state)) {
-        if (task.session) return "in_use";
-        // The board omits dispatch tokens. Its existing private task read also checks an unbound live dispatch.
-        const read = await monitor(`/internal/agent-chat/task?${new URLSearchParams({ repositoryId, taskId: task.id })}`, { method: "GET" });
-        if (read?.ok !== true || typeof read.task?.editable !== "boolean") return "failed";
-        if (!read.task.editable) return "in_use";
-      }
-      const root = await repositoryRoot(repositoryId);
-      if (!root) return "failed";
-      const request = { repositoryRoot: root, repositoryId, taskId: operation.id };
-      // The removal reads the live tree and the live commits itself (`remove` in task-worktree.mjs); the turns' cached facts are never asked.
-      if (!await worktrees.locate(request)) { worktreeInventory.changed(repositoryId, operation.id); return "not_found"; }
-      const result = await worktrees.remove({ ...request, deleteBranch: operation.branch, detailed: true });
-      // A removed worktree leaves the cached rows at once; any other answer means the cached facts were out of date.
-      worktreeInventory.changed(repositoryId, result === "removed" ? operation.id : null);
-      return WORKTREE_RESULTS.includes(result) ? result : "failed";
-    } catch { return "failed"; }
-  }
-
   // Apply and Dismiss are the owner's answer to one proposal; each proposal takes one answer.
   async function resolve(payload, approve, origin) {
     const found = await located(payload, ["repositoryId", "conversationId", "proposalId"]);
@@ -709,9 +691,11 @@ export function createAgentChat(options = {}) {
       } else if (approve) {
         const board = await readBoard(repositoryId);
         if (!board) return UNAVAILABLE;
-        // Only the trusted window edits a feature, and applies Aril settings or memory freely; those need the paired-device switch.
-        if (!origin?.event && message.proposal.operations.some(({ op }) => FEATURE_EDIT_OPERATIONS.includes(op)
-          || (ARIL_OPERATIONS.includes(op) && board.aril?.settings?.pairedDevices !== true))) return refused("desktop_only");
+        // Only the trusted window edits a feature, and applies Aril settings freely; a paired device needs the owner's one permission for paired devices.
+        if (!origin?.event) {
+          const pairedAllowed = await aril.pairedAllowed();
+          if (message.proposal.operations.some(({ op }) => FEATURE_EDIT_OPERATIONS.includes(op) || (ARIL_OPERATIONS.includes(op) && !pairedAllowed))) return refused("desktop_only");
+        }
         const results = await applyOperations(message.proposal.operations, {
           board, post: (action, body) => taskAction(repositoryId, action, body),
           attach: (taskId, imageId) => attachImage(repositoryId, found.conversation, taskId, imageId),
@@ -746,7 +730,7 @@ export function createAgentChat(options = {}) {
     return { ok: true };
   }
 
-  const handlers = { list, read, thread: chatThread.thread, search: chatThread.search, send, stop, delete: remove, warm: warmThread, apply: (payload, origin) => resolve(payload, true, origin), dismiss: (payload) => resolve(payload, false) };
+  const handlers = { list, read, thread: chatThread.thread, search: chatThread.search, send, stop, delete: remove, warm: warmThread, ...aril.handlers, apply: (payload, origin) => resolve(payload, true, origin), dismiss: (payload) => resolve(payload, false) };
 
   /**
    * One operation for the owner: from the desktop window, or from a paired device through the LAN gateway. `origin`
@@ -774,9 +758,9 @@ export function createAgentChat(options = {}) {
     handle,
     image,
     grantWrite,
-    grantFollowUp: (request) => (disposed ? Promise.resolve(UNAVAILABLE) : grantFollowUp(request)), jevKey,
+    grantFollowUp: (request) => (disposed ? Promise.resolve(UNAVAILABLE) : grantFollowUp(request)), jevKey, arilOn: aril.isOn, arilPairedOn: aril.pairedAllowed,
     /** Ends Pomegr's own running turn; no session the owner started is touched. */
-    dispose() { disposed = true; followUps.clear(); compaction.dispose(); warm.dispose(); worktreeInventory.close?.(); worktreePrefetch?.cancel(); githubPrefetch?.cancel(); repositoryGithub?.close(); try { active?.stop?.(); } catch { /* already gone */ } },
+    dispose() { disposed = true; followUps.clear(); compaction.dispose(); warm.dispose(); worktreeInventory.close?.(); worktreePrefetch?.cancel(); githubPrefetch?.cancel(); pairedCarry?.cancel(); repositoryGithub?.close(); try { active?.stop?.(); } catch { /* already gone */ } },
   });
 }
 

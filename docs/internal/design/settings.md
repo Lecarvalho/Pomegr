@@ -13,7 +13,7 @@ This page states how each Settings section looks and how the user operates it.
 - Settings shows the sections in this order: **Providers**, **GitHub**, **Aril**, **Storage**, **Data display**.
 - **Providers** is present in the desktop app and the browser.
 - **GitHub**, **Aril**, and **Storage** are always present.
-- `/settings?section=aril` opens **Aril**, and `&repository=<repository ID>` opens it for that repository. A value that is no repository ID is no choice.
+- `/settings?section=aril` opens **Aril**, and `&repository=<repository ID>` opens the memory at that repository's tab. A value that is no repository ID is no choice.
 - Each section is a feature composition of existing controls. It is not a new shared control or visual authority.
 
 ## Providers
@@ -152,31 +152,94 @@ This page states how each Settings section looks and how the user operates it.
 
 ## Aril
 
+The owner approved the mockup `ArilSettings.dc.html` on 2026-10-30. The section is cards of one column, at most 820px wide, 20px apart. A card is a one-pixel `--command-line` panel with the 6px panel radius.
+
 ### Layout
 
-- The section reuses the GitHub section's header: an `h2` **Aril** and one muted line, “What Aril may do under a grant you start, and what it remembers. These settings belong to one repository.”
-- Under the header, one bordered panel holds the **Repository** row (`SettingRow`).
-- Under the panel, the body is the [Aril settings content](task-board.md#aril-settings-section) in a column of at most 560px, with no frame of its own.
-- Its sections keep their `h3` headings: Grant, Actions under a grant, Limits, Work rules, Reviewer, Paired devices, Memory, and, in the desktop app only, Effort routing.
-- The section is a feature composition of existing controls. It adds no shared control.
+- The section has no header of its own. The `h2` **Aril** is the heading of the top card, so it is the only Aril on the page.
+- The cards come in this order: the top card, a line for each grant that is still running, the notice that appears only while Aril is off, then **Memory**, **Conversation space**, and **Effort routing** (desktop app only) in one wrapper. There is no per-repository settings card: the reviewer choice moves to an agreement's Review action in phase 5 of the [Aril plan](../plans/aril-agent.md), and the one paired-device permission is in the top card.
+- A card head holds an `h3` in the section type step (650, 16px) and at most one control on the right. A card body is 24px from its edges (16px on a phone).
+- Muted captions use the metadata step in `--command-muted`.
+- The section is a feature composition of existing controls and the shared [switch](../../../DESIGN.md#switch). It adds no other shared control.
 
-### Repository
+### Top card
 
-- Aril's settings, memory, and grants belong to one repository, so the section holds a choice, as the chat does.
-- The row's control is a `CommandSelect` named **Repository**, listing every known repository by its display name.
-- With one repository, the control is its name in the data font.
-- The section opens at the repository the link names, else the last one the owner chose in the chat or here, else the first listed.
-- Choosing a repository is remembered in the browser's storage as the repository ID alone, under the key the chat uses.
-- Changing the repository reads that repository's board. An unsaved draft is discarded, and the new draft starts from that repository's saved settings.
-- With no repository, the section says “No repositories observed yet.” while a read says “Reading repositories…”.
+- It holds a 48px mark, the heading **Aril** with the state word, one state line, and the shared switch, centered vertically on the right.
+- The mark is a rounded square with the 6px panel radius, with the Aril glyph in `currentColor`.
+- While On, the state word and the mark are green, the mark sits on `--color-green-soft`, and a soft glow fills the card: a one-pixel inner line of `--command-green` at 33% and a radial gradient of `--color-green-soft`. The glow fades in over 400ms and the mark recolors over 300ms. Reduced motion removes both.
+- While Off, the state word and the mark are neutral. Off is never amber: it is not a fault.
+- The On line reads “Keeping work moving as you settled it. Turn off to stop every action at once; running sessions keep going.” The Off line reads “Takes no action of its own. The chat still answers when you write.”
+- The switch is named **Let Aril act**, acts at once in either direction, and asks for no confirmation. Turning it off grays the cards under it (see [While Aril is off](#while-aril-is-off)). While a change is sent it is unavailable. A failed change keeps the state it had and shows the alert “Aril could not be changed. Try again.” in a row under the card.
+- Nothing of the state is drawn until the desktop has answered: the card shows the heading and “Reading Aril…” as a status, with no word, no glow, and no switch. It never shows Off and then On.
+- The desktop app adds one row under the card, divided by a one-pixel rule: “A paired phone can always turn Aril off. Let it also turn Aril on and change Aril's repository memory and settings.”, with the small switch on the right, aligned to the main switch. It is the only paired-device permission on the page, for every repository, and it is off until the owner turns it on.
+- The row says repository memory, not memory: the owner's own memory is edited in the desktop app only, and a phone reads it whatever the row allows.
+- A paired device has no such row. While Aril is Off and the desktop app has not allowed it, its switch is unavailable and the row says “Turning Aril on needs the desktop app.”
+- A browser that is neither the desktop app nor a paired device shows the heading and one muted line, “Turn Aril on or off in the desktop app or on a paired device.”, and no switch.
+- The state is also the chip beside Aril's name in the [panel header](agent-chat.md#header).
 
-### States
+### While Aril is off
 
-- While the board is read, the section says “Reading Aril settings…” as a status. A board that is not ready or holds no Aril settings says “Aril settings are unavailable.” and draws nothing else.
-- In the desktop app the section edits. On a paired device it edits only when the saved **Allow paired devices to change Aril settings and memory** permits, and it can always stop an active grant.
-- A browser with neither reads the saved values as text.
-- The Effort routing section, its key field, and its state are drawn only by the desktop app. A paired device shows no heading, no state, and no field, and never asks the desktop whether a key is set.
-- The Board keeps one quiet **Aril settings** link to this section for the board's repository, in its capacity strip.
+- With Aril off, everything under the top card is read only and gray: both memory tabs, the conversation space (the limit and every flush), and the effort routing.
+- The top card and its paired-device row stay active, so Aril can be turned on again. The line of a running grant stays active too, because a grant can always be stopped.
+- The cards sit in one wrapper, `.arilBelow.isLocked`, with `opacity: 0.55`, `filter: grayscale(1)`, `pointer-events: none`, and `aria-disabled="true"`. Opacity and filter change over 260ms; reduced motion removes the motion.
+- Every real control under the wrapper is also `disabled`, so the keyboard and a screen reader meet the same state: the tabs, the memory field and **Show change**, the limit select, **Flush oldest**, and **Replace key** and **Remove**.
+- A neutral notice sits between the top card and the wrapper: a 14px lock, then “Aril is off, so everything below is read only. Turn Aril on to change it.” It has the raised `--command-panel-2` fill, the 6px panel radius, 10px by 14px padding, and application text. It is a status and never amber.
+- Turning Aril off closes any open edit: a memory draft is dropped, a flush question closes, and the key field closes and empties. Nothing is saved on the way.
+- Until the desktop has answered the switch, the cards read as gray with no notice, so the page never shows them editable and then takes that back. A plain browser has no switch and its cards are never gray.
+- Desktop main refuses the same writes while Aril is off, including a change to Aril's settings ([Agent chat: The switch](../architecture/agent-chat.md#the-switch)), so the page and the app agree even when Aril is turned off on another device.
+
+### Running grant
+
+- Phase 5 of the Aril plan replaces grants with agreements, so the section no longer has a grant's sections. A grant that is still running keeps one line, in a panel of its own under the top card: “A grant in <repository> is active until HH:MM.” with the time in the data font.
+- With Aril Off the line adds “Aril is off, so it does nothing.”
+- **Stop grant** is a Secondary action named “Stop grant in <repository>”. It needs no confirmation. A paired device can always stop a grant; a browser reads the line with no button. A failed stop shows “The grant could not be stopped. Try again.” as an alert.
+- A grant that has ended, or none, draws no line.
+
+### Memory
+
+- One card with the `h3` **Memory**, drawn by the desktop app, a paired device, and a browser that can read a repository's board. A plain browser has no **You** tab.
+- The head holds a tab list in a ground-colored frame: **You** first, then one tab for each known repository by its display name. The tab list scrolls sideways when the tabs do not fit, and is not drawn when there is only one tab. Arrow keys, Home, and End move between tabs.
+- A selected tab has the `--command-panel-2` fill and application text; the others are muted. The memory opens on **You**, or on the repository a link names.
+- The **You** caption reads “How you like things done, in every repository. Context for Aril, not permission: it lets Aril do nothing new. Aril keeps it current; edit anything.” A repository's caption reads “How things are done in <repository>. Context for Aril, not permission. Aril keeps it current; edit anything.” Both say that memory is context and not an agreement.
+- The body is one free-text field in the data font on the ground fill, with the 4px control radius, no border, at least 188px tall, and resizable vertically. It stops at 6,000 characters.
+- The field shows no focus ring: the caret marks focus ([DESIGN.md](../../../DESIGN.md#agent-chat-exceptions)).
+- The field saves when the owner leaves it. While the text differs the footer says “Saves when you leave the field”, and while it is sent “Saving…”. A refused save keeps what was typed and shows the alert “Memory could not be saved. Try again.”
+- The footer holds a 6px coral dot, a sentence, **Show change**, and the live count “n / 6,000” in the data font. The sentence says who changed the memory last and when: “You edited this 3 days ago”, “Aril added a line 2 h ago”, “Aril removed 2 lines yesterday”, “Aril updated this just now”, or “Nothing saved yet”. Times read “just now”, “n min ago”, “n h ago”, “yesterday”, and “n days ago”.
+- **Show change** is a Quiet action, drawn only when there is a text before the last change. It opens two columns, **Before** and **Now**, in the field's type; a line the other side does not have carries a coral bar. **Hide change** closes it. There is no undo.
+- Only the desktop app edits the owner's memory. A paired device reads it. A repository's memory is edited in the desktop app, and on a paired device only while the top card's paired-device permission is on, for every repository. A field that cannot be edited is read-only with the same look.
+- Until the memory is read, the card says “Reading memory…” as a status. A board that holds no Aril data says “Memory is unavailable.”
+
+### Conversation space
+
+- One card with the `h3` **Conversation space**, drawn only by the desktop app; a paired device shows nothing and asks nothing. The sizes are read when the section opens and after each flush; nothing is drawn for them before they are read.
+- The head holds **Flush oldest at**, a `CommandSelect` with **2 MB**, **5 MB**, **10 MB**, **25 MB**, and **Never**, 5 MB by default. A failed change shows the alert “The limit could not be changed. Try again.”
+- The caption reads “<total> in all. At 5 MB, Aril removes a conversation's oldest messages and their images, down to 75% of that. Its summary and newest message stay.” With Never it reads “<total> in all. Nothing is removed unless you flush it.”
+- Each known repository with a thread has one row, largest first: its name in the data font, a bar, its size and message count, and a Quiet action. A repository with no thread is not listed.
+- The bar is an 8px track on `--command-panel-2` with the control radius, a fill, and a 2px tick of `--command-line-strong` at the limit. It carries `role="meter"` named “<repository> conversation size”, with a text such as “4.3 MB of 5 MB”.
+- The fill is `--command-muted` and turns brand coral, `--command-brand-text`, at 80% of the limit or more. It is never amber. It grows over 520ms; reduced motion removes the motion.
+- With Never the bars are scaled to the largest thread plus a quarter and have no tick.
+- The size reads “1.9 MB” and the count “· 401 messages” in muted text. The action is **Flush oldest** (accessible name “Flush oldest messages of <repository>”), or an unavailable **Nothing to flush** for a thread of one message.
+- The flush asks under the row first: “Remove the oldest 200 of 401 messages and their images?” with a Secondary **Flush messages** and a Quiet **Cancel**. Cancel changes nothing.
+- The result is one quiet status line under the row, “Removed 20 messages and freed 700 KB.” A repository where Aril is answering says “Aril is answering in this repository. Try again when it is done.”, and any other failure shows the alert “The messages could not be flushed. Try again.” While a flush runs, every flush action is unavailable.
+- On a phone the row stacks: the name and the action on the first line, then the bar, then the size.
+
+### Effort routing
+
+- One compact row in its own card, drawn only by the desktop app: a paired device shows no heading, no state, and no field, and never asks the desktop whether a key is set.
+- It holds the `h3` **Effort routing**, the status beside it, the caption “Jev may lower the effort you chose for simple replies, never raise it. It sees your message and the end of Aril's last answer.”, a Secondary **Replace key** (**Add key** without a key), and a Quiet **Remove** (accessible name “Remove Jev key”) while a key is set.
+- The status reads “Jev key set” in green, “No Jev key”, “Checking…” while it is read, or “This computer cannot store the key safely” with no button.
+- **Replace key** opens one row under the card: a masked field named **Jev key** (at most 512 characters, autofill off), a Secondary **Save key**, and a Quiet **Cancel**. **Save key** is unavailable until the field holds 8 to 512 characters without spaces; a shorter or spaced key shows “Use 8 to 512 characters without spaces.”
+- **Remove** acts at once. A saved key empties the field and closes the row. The page never shows the key, only that one is set.
+- A failed action keeps what was typed and shows “The key could not be saved. Try again.” or “The key could not be removed. Try again.” as an alert.
+
+### What the section keeps from the grant era
+
+- The card **Per repository** is gone, with its repository choice. The memory has one tab for each repository, and nothing else on the page is about one repository.
+- The card held **Reviewer**, **Different provider than the builder**, and **Paired devices**. Each has no control now.
+- The reviewer settings serve only grant reviews, and grants are being decommissioned. Phase 5 of the [Aril plan](../plans/aril-agent.md) puts the reviewer choice on the Review action of an agreement.
+- The stored reviewer values stay as they were, and the grant runtime reads them as before.
+- The top card's one permission replaces **Paired devices**, for every repository. The stored per-repository values stay unused, except for the one-time carry-over in [Agent chat: The switch](../architecture/agent-chat.md#the-switch).
+- **Follow-ups**, the limits, the work rules, and the grant actions have no control. Their stored values stay, and the grant runtime reads them as before.
 
 ## About pane
 
@@ -186,6 +249,6 @@ This page states how each Settings section looks and how the user operates it.
 ## Samples
 
 - `/design-system` renders every GitHub state from static data.
-- `/design-system` renders the Aril section's body from static data in each state listed in the [Task board design](task-board.md#aril-settings-section).
+- `/design-system` renders the shared switch, every state of the top card, the memory (yours, a repository's, with the change shown, read-only, a failed save, and reading), the conversation space (with a limit, with Never, a flush question, flushed, and not flushed), the effort routing (key set, no key, and the key field), and the running-grant line. It has no sample of a per-repository card.
 - `/design-system` renders the storage usage meter.
 - `/design-system` renders the settings tab rail (`.commandSettingsNav`) with its pane.

@@ -22,7 +22,7 @@ export type AgentChatOperationName = "list" | "read" | "thread" | "search" | "se
 export const AGENT_CHAT_OPERATIONS: readonly AgentChatOperationName[] = ["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete", "warm"];
 
 // Why an operation was refused.
-// `desktop_only` refuses a non-desktop session start or worktree removal, or a paired settings/memory Apply without pairedDevices enabled.
+// `desktop_only` refuses a non-desktop session start or worktree removal, or a paired settings Apply while the owner has not allowed paired devices.
 export type AgentChatError = "invalid" | "not_found" | "busy" | "limit" | "cli_missing" | "conflict" | "unavailable" | "desktop_only";
 export const AGENT_CHAT_ERRORS: readonly AgentChatError[] = ["invalid", "not_found", "busy", "limit", "cli_missing", "conflict", "unavailable", "desktop_only"];
 
@@ -272,3 +272,22 @@ export const AGENT_CHAT_CONVERSATION_ID_PATTERN = /^chat-[0-9a-f]{12}$/u;
 export const AGENT_CHAT_PROPOSAL_ID_PATTERN = /^p-[0-9a-f]{12}$/u;
 export const AGENT_CHAT_IMAGE_ID_PATTERN = /^img-[0-9a-f]{12}$/u;
 export const AGENT_CHAT_MESSAGE_ID_PATTERN = /^m-[1-9][0-9]{0,5}$/u;
+
+// Aril's own controls, beside the chat's operations: the On/Off switch, the owner's memory, the space each thread takes on disk, and the
+// limit that flushes a thread by itself. The rules live in `desktop/runtime/agent-chat-aril.mjs`. None needs a repository except the flush;
+// a paired device may read the switch and the memory and may turn Aril Off, and may turn it On only when the owner allowed it on the
+// desktop; the rest is for the desktop window.
+export type ArilControlOperationName = "aril_switch" | "aril_switch_set" | "aril_paired_on_set" | "owner_memory" | "owner_memory_set" | "thread_space" | "thread_limit_set" | "thread_flush";
+export const ARIL_CONTROL_OPERATIONS: readonly ArilControlOperationName[] = ["aril_switch", "aril_switch_set", "aril_paired_on_set", "owner_memory", "owner_memory_set", "thread_space", "thread_limit_set", "thread_flush"];
+// `on` is the switch; `pairedOn` is the owner's one permission for paired devices, for every repository: they may then turn Aril On and change a
+// repository's memory and Aril's settings. A paired device may always turn Aril Off and stop a grant.
+export type ArilSwitchState = { on: boolean; pairedOn: boolean };
+// The owner's memory: free text of at most 6,000 characters (`shared/aril-memory.mjs`), the text before the last change, and who wrote it last
+// and when, in milliseconds since the epoch. A repository's memory has the same shape (`ArilMemory` in the task contract).
+export type OwnerMemory = { text: string; previous: string | null; updatedAt: number | null; updatedBy: "owner" | "aril" | null };
+// "Flush oldest at", in megabytes: 2, 5, 10, 25, or 0 for Never. A thread over it is flushed by itself down to 75% of it when it is idle.
+export const THREAD_LIMIT_MEGABYTES: readonly number[] = [2, 5, 10, 25, 0];
+// What one repository's thread takes on disk (its conversations and images) and how many messages it holds. Never a path or a text.
+export type ThreadSpace = { repositoryId: string; bytes: number; messages: number };
+// What a flush removed: messages, whole conversations among them, their images, and the bytes freed.
+export type ThreadFlushed = { messages: number; conversations: number; images: number; freed: number };

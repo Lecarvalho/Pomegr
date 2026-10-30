@@ -16,7 +16,7 @@ export const TASK_ACTION_NAMES = Object.freeze([
   "feature_create", "feature_update", "feature_delete",
   "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings",
   "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set", "rework_declare", "rework_remove",
-  "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop",
+  "aril_settings_set", "aril_memory_set", "grant_start", "grant_stop",
 ]);
 export const TASK_ACTION_ERRORS = Object.freeze([
   "invalid", "not_found", "limit", "conflict", "unsupported", "not_ready", "unavailable",
@@ -29,6 +29,9 @@ const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const INVALID = Object.freeze({ ok: false, error: "invalid" });
 const UNAVAILABLE = Object.freeze({ ok: false, error: "unavailable" });
+const CONFLICT = Object.freeze({ ok: false, error: "conflict" });
+// With Aril Off, a repository's memory and Aril's settings are read only: these two actions answer `conflict` without a request.
+const READ_ONLY_WHILE_OFF = new Set(["aril_memory_set", "aril_settings_set"]);
 
 function trustedMonitorOrigin(value) {
   try {
@@ -76,6 +79,8 @@ export function createTaskAction(options = {}) {
   const monitorOrigin = trustedMonitorOrigin(options.monitorOrigin);
   const authorizationToken = options.authorizationToken;
   const timeoutMs = options.timeoutMs ?? 10_000;
+  // `arilOn()` is desktop main's switch. With Aril Off a repository's memory and Aril's settings are read only, so `aril_memory_set` and `aril_settings_set` answer `conflict` without a request.
+  const arilOn = typeof options.arilOn === "function" ? options.arilOn : null;
   let disposed = false;
 
   async function run(event, repositoryId, action, payload) {
@@ -85,6 +90,7 @@ export function createTaskAction(options = {}) {
     const body = requestBody(repositoryId, payload);
     if (body === null) return INVALID;
     if (!monitorOrigin || !authorizationToken || disposed) return UNAVAILABLE;
+    if (READ_ONLY_WHILE_OFF.has(action) && arilOn !== null && !arilOn()) return CONFLICT;
     try {
       const response = await fetchImpl(`${monitorOrigin}/internal/tasks/${action}`, {
         method: "POST",

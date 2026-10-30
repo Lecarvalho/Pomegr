@@ -30,6 +30,7 @@
 .agentChatGlyph { display: inline-grid; flex: 0 0 auto; color: var(--command-brand-text); }
 .agentChatGlyph > .commandIcon { width: 16px; height: 16px; }
 .agentChatTitle { margin: 0; font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.agentChatState { flex: 0 0 auto; margin-left: var(--space-1); }
 .agentChatHeader .commandIconAction { flex: 0 0 auto; }
 .agentChatHeader .commandIconAction[aria-pressed="true"] { background: var(--command-panel-2); color: var(--command-ink); }
 

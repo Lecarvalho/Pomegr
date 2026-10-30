@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type Ref } from "react";
 import { useAgentChat, WARM_DEBOUNCE_MS, type AgentChatAvailability } from "../../agent-chat-client";
 import { useAgentChatSearch } from "../../agent-chat-search";
+import { useArilSwitch } from "../../aril-control-client";
 import type { AgentChatImage, AgentChatProvider } from "../../../shared/agent-chat-contract";
 import type { CommandSelectOption } from "../command-center/CommandSelect";
 import { DEFAULT_RUN, NO_MODELS } from "../tasks/task-fields";
@@ -23,13 +24,15 @@ type Shared = {
   expanded: boolean;
   onToggleExpanded(): void;
   onClose(): void;
+  /** Whether Aril is On, or null while that is not known. */
+  arilOn: boolean | null;
 };
 
 // A message to open: a follow-up's. `nonce` changes for each opening, so the same link opens it again.
 type ChatFocus = { conversationId: string | null; messageId: string | null; nonce: number };
 
 /** One repository's chat. Mounted once for each repository (a `key`), so no message of one repository is shown under another. */
-function AgentChatBody({ repositoryId, availability, open, repositories, onRepositoryChange, expanded, onToggleExpanded, onClose, onAnswering, onAnswered, focus, outgoing, onOutgoingTaken }: Shared & {
+function AgentChatBody({ repositoryId, availability, open, repositories, onRepositoryChange, expanded, onToggleExpanded, onClose, arilOn, onAnswering, onAnswered, focus, outgoing, onOutgoingTaken }: Shared & {
   repositoryId: string;
   focus: ChatFocus | null;
   availability: Exclude<AgentChatAvailability, "pending" | "absent">;
@@ -150,7 +153,7 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
 
   return <>
     <AgentChatHeader searchOpen={searchOpen} onToggleSearch={() => (searchOpen ? closeSearch() : setSearchOpen(true))} searchRef={searchToggle} searchControls={searchId}
-      expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} />
+      expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} arilOn={arilOn} />
     {searchOpen && <AgentChatSearch id={searchId} query={search.query} onQueryChange={search.setQuery} matches={search.matches} failed={search.failed}
       onChoose={(match) => { closeSearch(); bring(match.conversationId, match.messageId); }} onClose={closeSearch} />}
     <div className="agentChatBody">
@@ -171,10 +174,10 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
 }
 
 /** The panel while no repository can be chosen: the inventory is loading, or Pomegr has observed none. */
-function AgentChatWithoutRepository({ loading, expanded, onToggleExpanded, onClose }: { loading: boolean; expanded: boolean; onToggleExpanded(): void; onClose(): void }) {
+function AgentChatWithoutRepository({ loading, expanded, onToggleExpanded, onClose, arilOn }: { loading: boolean; expanded: boolean; onToggleExpanded(): void; onClose(): void; arilOn: boolean | null }) {
   const options = useMemo(() => chatModelOptions(NO_MODELS, initialChatRun(NO_MODELS, null)), []);
   return <>
-    <AgentChatHeader searchOpen={false} onToggleSearch={() => undefined} expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} disabled />
+    <AgentChatHeader searchOpen={false} onToggleSearch={() => undefined} expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} arilOn={arilOn} disabled />
     <div className="agentChatBody">
       <div className="agentChatLogFrame"><div className="agentChatLog">
         <p className="agentChatLoading">{loading ? "Loading…" : "No repositories observed yet."}</p>
@@ -185,7 +188,7 @@ function AgentChatWithoutRepository({ loading, expanded, onToggleExpanded, onClo
   </>;
 }
 
-export function AgentChatPanel({ id, panelRef, mounted, availability, repositoryId, repositoriesLoading, repositories, open, onRepositoryChange, expanded, onToggleExpanded, onClose, onAnswering, onAnswered, focus = null, outgoing = null, onOutgoingTaken, entering = false }: Shared & {
+export function AgentChatPanel({ id, panelRef, mounted, availability, repositoryId, repositoriesLoading, repositories, open, onRepositoryChange, expanded, onToggleExpanded, onClose, onAnswering, onAnswered, focus = null, outgoing = null, onOutgoingTaken, entering = false }: Omit<Shared, "arilOn"> & {
   focus?: ChatFocus | null;
   /** A message written on Home, waiting for the body of its repository to send it. */
   outgoing?: AgentChatHandoff | null;
@@ -202,6 +205,8 @@ export function AgentChatPanel({ id, panelRef, mounted, availability, repository
   onAnswering(answering: boolean): void;
   onAnswered(): void;
 }) {
+  // The switch is read while the panel is open and not otherwise, so a closed panel asks nothing.
+  const arilOn = useArilSwitch(open && mounted).state?.on ?? null;
   // Escape closes the panel unless a layer inside the panel (an open list, a delete question) took the key first.
   const keyDown = useCallback((event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing) return;
@@ -211,8 +216,8 @@ export function AgentChatPanel({ id, panelRef, mounted, availability, repository
   return <AgentChatPanelFrame id={id} panelRef={panelRef} open={open} expanded={expanded} entering={entering} onKeyDown={keyDown}>
     {mounted && (repositoryId !== null
       ? <AgentChatBody key={repositoryId} repositoryId={repositoryId} availability={availability} open={open} repositories={repositories}
-        onRepositoryChange={onRepositoryChange} expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} onAnswering={onAnswering} onAnswered={onAnswered} focus={focus}
+        onRepositoryChange={onRepositoryChange} expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} arilOn={arilOn} onAnswering={onAnswering} onAnswered={onAnswered} focus={focus}
         outgoing={outgoing !== null && outgoing.repositoryId === repositoryId ? outgoing : null} onOutgoingTaken={onOutgoingTaken} />
-      : <AgentChatWithoutRepository loading={repositoriesLoading} expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} />)}
+      : <AgentChatWithoutRepository loading={repositoriesLoading} expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} arilOn={arilOn} />)}
   </AgentChatPanelFrame>;
 }

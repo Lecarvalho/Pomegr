@@ -57,7 +57,7 @@ const defaults = () => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false, markDone: false },
   mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: 80 },
-  workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,
+  workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, followUps: true,
 });
 
 test("grant writing routes keep exact payloads and fixed answers, and serve write steps", async (t) => {
@@ -80,6 +80,27 @@ test("grant writing routes keep exact payloads and fixed answers, and serve writ
 test("grant writing never returns an arbitrary store failure", async (t) => {
   const { port } = await setup(t, { taskStore: { writeGrantTasks: () => ({ ok: false, error: "unavailable", detail: "private" }) } });
   fixedError(await post(port, "grant-write-tasks", { repositoryId: REPOSITORY_ID, plan: "next.md", tasks: [{ text: "work" }] }), 400, "invalid");
+});
+
+test("Aril memory route is desktop-main-only, exact, and applies the lines to the text as it is", async (t) => {
+  const { port, store } = await setup(t);
+  const body = { repositoryId: REPOSITORY_ID, add: ["Docs in English."], remove: [] };
+  for (const headers of [{ "content-type": "application/json" }, { ...DESKTOP, origin: "http://localhost" }, { "x-pomegr-agent-authorization": AGENT_TOKEN, "content-type": "application/json" }]) {
+    assert.equal((await post(port, "aril-memory-update", body, headers)).status, 401);
+  }
+  for (const marker of ["1", "0", ""]) fixedError(await post(port, "aril-memory-update", body, { ...DESKTOP, "x-pomegr-lan-gateway": marker }), 403, "unavailable");
+  for (const invalid of [{ ...body, scope: "owner" }, { repositoryId: REPOSITORY_ID, add: ["x"] }, { ...body, repositoryId: "bad" }, { ...body, add: "x" }, { ...body, add: [], remove: [] }, { ...body, add: ["x".repeat(301)] }, envelope(body)]) {
+    fixedError(await post(port, "aril-memory-update", invalid), 400, "invalid");
+  }
+  fixedError(await send(port, { path: "/internal/tasks/aril-memory-update?x=1", body: JSON.stringify(body) }), 400, "invalid");
+  assert.deepEqual((await post(port, "aril-memory-update", body)).json, { ok: true, added: 1, removed: 0 });
+  assert.deepEqual((await post(port, "aril-memory-update", body)).json, { ok: true, added: 0, removed: 0 });
+  assert.equal(store.readBoard(REPOSITORY_ID).aril.memory.updatedBy, "aril");
+  fixedError(await post(port, "aril-memory-update", { ...body, add: [], remove: ["A line that is not there."] }), 404, "not_found");
+  assert.equal(store.apply(REPOSITORY_ID, "aril_memory_set", { text: Array.from({ length: 20 }, () => `- ${"x".repeat(297)}`).join("\n") }).ok, true);
+  fixedError(await post(port, "aril-memory-update", { ...body, add: ["y".repeat(300)] }), 409, "limit");
+  const board = await send(port, { method: "GET", path: `/api/tasks?repositoryId=${REPOSITORY_ID}`, headers: DESKTOP });
+  assert.deepEqual(Object.keys(board.json.aril.memory).sort(), ["previous", "text", "updatedAt", "updatedBy"], "the board serves the memory in its one shape");
 });
 
 test("Aril rework route is desktop-main-only, exact, and answers fixed recording results", async (t) => {
@@ -127,21 +148,21 @@ test("grant actions use fixed envelopes and the start grant is not ready by defa
   assert.deepEqual(await post(port, "grant_stop", envelope({})).then((response) => response.json), { ok: true });
 });
 
-test("paired-device marker can stop a grant, never start one, and needs the paired setting", async (t) => {
+test("a paired-device marker reaches grant start and stop like the desktop: the owner's one permission is judged by desktop main's gateway", async (t) => {
   const { port, store } = await setup(t);
-  fixedError(await post(port, "grant_start", envelope({}), PAIRED), 403, "unavailable");
+  // The monitor does not know the permission, and a repository's old pairedDevices grants nothing here: a marked start meets the grant's own rules.
+  fixedError(await post(port, "grant_start", envelope({}), PAIRED), 409, "not_ready");
   assert.deepEqual(await post(port, "grant_stop", envelope({}), PAIRED).then((response) => response.json), { ok: true });
-  assert.equal(store.apply(REPOSITORY_ID, "aril_settings_set", { settings: { pairedDevices: true } }).ok, true);
   const readySettings = defaults();
   readySettings.actions.start = true;
   readySettings.actions.review = true;
   readySettings.limits = { ...readySettings.limits, hours: 1, tasks: 1, tasksAtATime: 1 };
-  readySettings.pairedDevices = true;
   assert.equal(store.apply(REPOSITORY_ID, "aril_settings_set", { settings: readySettings }).ok, true);
   const started = await post(port, "grant_start", envelope({}), PAIRED);
   assert.equal(started.status, 200);
   assert.deepEqual(Object.keys(started.json), ["ok", "grant"]);
   assert.deepEqual(started.json.grant, store.readBoard(REPOSITORY_ID).aril.grant);
+  assert.deepEqual(await post(port, "grant_stop", envelope({}), PAIRED).then((response) => response.json), { ok: true });
 });
 
 test("grant runner routes require desktop authorization and reject paired requests", async (t) => {

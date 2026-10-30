@@ -100,10 +100,13 @@ export type ArilSettings = {
   limits: { hours: number | null; tasks: number | null; tasksAtATime: number | null; sendBacks: number | null; usagePercent: number | null };
   workRules: ({ kind: "tag" | "text" | "feature" | "plan"; value: string } | { kind: "tasks"; value: string[] })[];
   reviewer: { provider: TaskProvider | null; model: string | null; differentFromBuilder: boolean };
+  /** The first version's per-repository permission for paired devices. Stored and served only for the one-time carry-over to the Aril switch's `pairedOn`; it grants nothing and no action sets it. */
   pairedDevices: boolean;
   followUps: boolean; // while a grant works, a fixed follow-up line goes to the chat and a notification
 };
-export type ArilMemoryEntry = { id: number; text: string; createdAt: number; updatedAt: number };
+// A repository's memory: free text of at most 6,000 characters, the text before the last change, and who changed it last and when (milliseconds
+// since the epoch). `updatedAt` and `updatedBy` are null while the memory was never written.
+export type ArilMemory = { text: string; previous: string | null; updatedAt: number | null; updatedBy: "owner" | "aril" | null };
 export type ArilGrant = {
   startedAt: number; endsAt: number; startsUsed: number;
   actions: ArilSettings["actions"]; limits: ArilSettings["limits"];
@@ -120,7 +123,7 @@ export type TaskBoard = {
   // Last committed Codex client-catalog models for the Run on list; never entitlement.
   runModels?: TaskRunModels;
   // Present on a ready repository board; settings grant no actions.
-  aril?: { settings: ArilSettings & { settledAt?: string | null }; memory: ArilMemoryEntry[]; grant?: ArilGrant | null };
+  aril?: { settings: ArilSettings & { settledAt?: string | null }; memory: ArilMemory; grant?: ArilGrant | null };
 };
 
 export type TaskRunModels = { codex: { id: string; label: string | null }[] };

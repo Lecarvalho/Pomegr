@@ -5,7 +5,7 @@ import path from "node:path";
 import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-store.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
-import { arilMemoryAdd, arilMemoryRemove, arilMemoryUpdate, arilSettingsSet, ensureArilSettings, pruneArilTask, readAril } from "./task-aril-settings.mjs";
+import { arilMemoryApply, arilMemorySet, arilSettingsSet, ensureArilSettings, migrateArilMemory, pruneArilTask, readAril } from "./task-aril-settings.mjs";
 import { followUpOperations } from "./task-aril-follow-ups.mjs";
 import { ensureArilGrants, grantOperations, grantStart, grantStartAllowed, grantStartGates, grantStop, readGrant } from "./task-aril-grant.mjs";
 import { TASK_HOME_BOARD_LIMIT, summarizeTaskHome } from "./task-home.mjs";
@@ -124,7 +124,7 @@ function runTransaction(database, work) {
 function ensureAdditionalTables(database) {
   for (const ensure of [
     ensureTaskEvents, ensureTaskOutcomes, ensureScorecardSnapshots, ensureTaskLog,
-    ensureTaskRework, ensureTaskReviews, ensureArilSettings, ensureArilGrants,
+    ensureTaskRework, ensureTaskReviews, ensureArilSettings, ensureArilGrants, migrateArilMemory,
   ]) ensure(database);
 }
 function createFreshStore(database) {
@@ -511,7 +511,7 @@ function removeFromQueue({ database, repositoryId, now }, payload) {
 }
 // Actions by name.
 const ACTIONS = Object.freeze({
-  grant_start: grantStart, grant_stop: grantStop, aril_settings_set: arilSettingsSet, aril_memory_add: arilMemoryAdd, aril_memory_update: arilMemoryUpdate, aril_memory_remove: arilMemoryRemove,
+  grant_start: grantStart, grant_stop: grantStop, aril_settings_set: arilSettingsSet, aril_memory_set: arilMemorySet,
   create: createTask, update: updateTask, delete: deleteTask, move: moveTask,
   feature_create: createFeature, feature_update: updateFeature, feature_delete: deleteFeature,
   queue_add: addToQueue, queue_remove: removeFromQueue, queue_group: groupTasks, queue_ungroup: ungroupTasks, queue_settings: queueSettings,
@@ -796,5 +796,5 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const ackLog = (repositoryId, consumer, through) => link(() => runTransaction(database, () => ackTaskLog(database, repositoryId, consumer, through)));
   const declareArilRework = (repositoryId, payload) => dispatch(({ database, transaction }) => transaction(() => declareArilTaskRework({ database, repositoryId, now }, payload)), {});
   return Object.freeze({ ...grantOperations(dispatch, loadRows, now, createTask), ...followUpOperations(dispatch, now), ...reviewOperations(dispatch, now), readBoard, hasBoard: (repositoryId) => { try { return Boolean(database) && isRepositoryId(repositoryId) && repositoryExists(repositoryId); } catch { return false; } }, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, bindStart, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
-    addImage, removeImage, readImage, readScorecard, readLog, ackLog, declareArilRework, sessionTasks, sessionAssignedTasks: sessionAssigned, sessionReviews: (sessionIds) => link(sessionReviewReferences, { sessionIds }), readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
+    addImage, removeImage, readImage, readScorecard, readLog, ackLog, declareArilRework, updateArilMemory: (repositoryId, payload) => (isRepositoryId(repositoryId) ? dispatch(({ database, transaction }) => transaction(() => arilMemoryApply({ database, repositoryId, ensureRepository, now }, payload)), {}) : { ok: false, error: "invalid" }), sessionTasks, sessionAssignedTasks: sessionAssigned, sessionReviews: (sessionIds) => link(sessionReviewReferences, { sessionIds }), readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

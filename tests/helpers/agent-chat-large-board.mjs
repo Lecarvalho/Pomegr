@@ -145,10 +145,11 @@ export function largeBoard() {
         limits: { hours: 8, tasks: 20, tasksAtATime: 2, sendBacks: 2, usagePercent: 80 }, workRules: [{ kind: "tag", value: "aril" }, { kind: "feature", value: "feat-1" }],
         reviewer: { provider: "codex", model: null, differentFromBuilder: true }, followUps: true, pairedDevices: true, settledAt: iso(LARGE_NOW.getTime() - 200 * hour),
       },
-      memory: Array.from({ length: 12 }, (_, index) => ({
-        id: index + 1, text: `${["Run focused tests before the full suite.", "A new task action passes through the store, the route, the preload allow-list, and the client parser.", "Plan-only pull requests merge at once; no CI wait."][index % 3]} (${index + 1})`,
-        createdAt: LARGE_NOW.getTime() - (300 - index) * hour, updatedAt: LARGE_NOW.getTime() - (300 - index) * hour,
-      })),
+      // Free text of the owner's lines, as Aril keeps it: a dozen lines.
+      memory: {
+        text: Array.from({ length: 12 }, (_, index) => `- ${["Run focused tests before the full suite.", "A new task action passes through the store, the route, the preload allow-list, and the client parser.", "Plan-only pull requests merge at once; no CI wait."][index % 3]} (${index + 1})`).join("\n"),
+        previous: null, updatedAt: LARGE_NOW.getTime() - (300 - 11) * hour, updatedBy: "owner",
+      },
       grant: { active: true, endsAt: LARGE_NOW.getTime() + 3 * hour, startsUsed: 3, limits: { hours: 8, tasks: 20, tasksAtATime: 2, sendBacks: 2, usagePercent: 80 }, actions: { start: true, review: true, sendBack: true, merge: true, writeTasks: false, markDone: true } },
     },
   };

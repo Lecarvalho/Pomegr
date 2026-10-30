@@ -1,8 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { ArilGrant, ArilSettings as Settings, TaskQueue } from "../../../shared/task-contract";
-import { ArilSettings } from "../../settings/ArilSettings";
+import type { ArilGrant, TaskQueue } from "../../../shared/task-contract";
+import { GrantLine } from "../../settings/ArilSettings";
+import { ArilControlSamples } from "./DesignSystemArilControlsSample";
 import { CapacityStrip } from "../tasks/CapacityStrip";
 import { CommandSelect } from "../command-center/CommandSelect";
 import { NewFeatureAction } from "../tasks/FeatureActions";
@@ -26,30 +27,26 @@ const QUEUE_WITH_STOP: TaskQueue = { ...BOARD_RUNNING.queue, schedule: { startAt
 const SCHEDULED: TaskQueue = { ...QUEUE_IDLE, schedule: { startAt: SAMPLE_FUTURE, stopAfter: SAMPLE_FUTURE_STOP } };
 const STOP_ONLY: TaskQueue = { ...QUEUE_RUNNING, schedule: { startAt: null, stopAfter: SAMPLE_FUTURE_STOP } };
 const NO_GATES: TaskQueue = { status: "idle", blockedBy: null, pauseReason: null, order: [] };
-const ARIL_SETTINGS: Settings = {
-  actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false, markDone: false },
-  mergeMethod: null, mergeMode: null, deleteBranch: null,
-  limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
-  workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,
-};
+const GRANT_ACTIONS: ArilGrant["actions"] = { start: false, review: false, sendBack: false, merge: false, writeTasks: false, markDone: false };
+const GRANT_LIMITS: ArilGrant["limits"] = { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null };
 
+/** The one line for a grant that is still running, and the Board's link to Settings › Aril. Settings › Aril has no per-repository settings card. */
 export function ArilSettingsSamples() {
-  return <div className="designSystemGrid">{["desktop editable", "paired read-only", "paired allowed", "empty memory", "full memory", "save failure", "not ready", "ready", "confirm", "active", "last ended", "paired stop-only", "jev key set", "jev key not set"].map((state) => {
-    const memory = Array.from({ length: state === "empty memory" ? 0 : state === "full memory" ? 100 : 1 }, (_, id) => ({ id: id + 1, text: `Repository habit ${id + 1}: keep changes focused.`, createdAt: id, updatedAt: id }));
-    const ready = ["paired allowed", "ready", "confirm", "active", "last ended", "paired stop-only"].includes(state);
-    const settings: Settings = { ...ARIL_SETTINGS, pairedDevices: state === "paired allowed", ...(ready ? {
-      actions: { ...ARIL_SETTINGS.actions, start: true, review: true }, limits: { ...ARIL_SETTINGS.limits, hours: 2, tasks: 5, tasksAtATime: 2, usagePercent: 80 }, workRules: [{ kind: "tag", value: "backend" }],
-    } : {}) };
-    const active: ArilGrant = { active: true, startedAt: Date.parse(SAMPLE_FUTURE), endsAt: Date.parse(SAMPLE_FUTURE_STOP), startsUsed: 2, actions: settings.actions, limits: settings.limits };
-    const grant: ArilGrant | null = state === "last ended" ? { ...active, active: false, endedAt: active.endsAt, endReason: "expired" } : ["active", "paired stop-only"].includes(state) ? active : null;
-    const board = { ...BOARD_RUNNING, aril: { settings, memory, grant } };
-    return <Sample key={state} label={`Aril settings, ${state}`} note="The body of the Aril section of Settings: the Queue settings rows and sections, existing fields and button roles. Settings and memory grant no actions.">
-      <Frame>{state === "active" && <CapacityStrip queue={board.queue} grant={grant} onOpenSettings={noop} arilHref="/settings?section=aril" />}
-        <ArilSettings board={board} desktop={!state.startsWith("paired")} editable={state !== "paired read-only"}
-        initialConfirm={state === "confirm" && Date.parse(SAMPLE_FUTURE_STOP)} initialFailure={state === "save failure" ? "settings" : null} onAction={async () => ({ ok: false, error: "unavailable" })}
-        jev={state.startsWith("jev") ? { state: state === "jev key set" ? "set" : "unset", save: async () => false, remove: async () => false } : undefined} /></Frame>
-    </Sample>;
-  })}</div>;
+  const grant: ArilGrant = { active: true, startedAt: Date.parse(SAMPLE_FUTURE), endsAt: Date.parse(SAMPLE_FUTURE_STOP), startsUsed: 2, actions: GRANT_ACTIONS, limits: GRANT_LIMITS };
+  return <div className="designSystemGrid designSystemArilGrid">
+    <Sample label="Grant line, active" note="A grant that is still running keeps one line with its end time and Stop grant. Phase 5 of the Aril plan replaces grants with agreements.">
+      <div className="designSystemTaskFrame arilSettings"><GrantLine name="upload-service" grant={grant} arilOn editable onStop={noop} /></div>
+    </Sample>
+    <Sample label="Grant line, Aril off" note="With Aril off the grant does nothing, and the line says so. Stop grant stays.">
+      <div className="designSystemTaskFrame arilSettings"><GrantLine name="upload-service" grant={grant} arilOn={false} editable onStop={noop} /></div>
+    </Sample>
+    <Sample label="Grant line, browser" note="A browser that cannot stop a grant shows the line without the button.">
+      <div className="designSystemTaskFrame arilSettings"><GrantLine name="upload-service" grant={grant} arilOn editable={false} onStop={noop} /></div>
+    </Sample>
+    <Sample label="Capacity strip, grant active" note="The Board's capacity strip keeps its quiet link to this section.">
+      <Frame><CapacityStrip queue={BOARD_RUNNING.queue} grant={grant} onOpenSettings={noop} arilHref="/settings?section=aril" /></Frame>
+    </Sample>
+  </div>;
 }
 
 function Frame({ children }: { children: ReactNode }) {
@@ -98,6 +95,7 @@ export function QueueControlsSection() {
       </Sample>
     </div>
     <ArilSettingsSamples />
+    <ArilControlSamples />
   </Section>;
 }
 

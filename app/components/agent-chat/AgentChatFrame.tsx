@@ -22,7 +22,7 @@ export function AgentChatPanelFrame({ id, open = true, isStatic = false, expande
   return <section ref={panelRef} id={id} className={`agentChatPanel${isStatic ? " isStatic" : ""}${expanded ? " isExpanded" : ""}${entering ? " isEntering" : ""}`} aria-label={PANEL_LABEL} hidden={!open} onKeyDown={onKeyDown}>{children}</section>;
 }
 
-export function AgentChatHeader({ searchOpen, onToggleSearch, searchRef, searchControls, expanded, onToggleExpanded, onClose, disabled = false }: {
+export function AgentChatHeader({ searchOpen, onToggleSearch, searchRef, searchControls, expanded, onToggleExpanded, onClose, disabled = false, arilOn = null }: {
   searchOpen: boolean;
   onToggleSearch(): void;
   searchRef?: Ref<HTMLButtonElement>;
@@ -32,10 +32,13 @@ export function AgentChatHeader({ searchOpen, onToggleSearch, searchRef, searchC
   onToggleExpanded(): void;
   onClose(): void;
   disabled?: boolean;
+  /** Whether Aril is On, shown beside its name. Null while that is not known: nothing is drawn for a state that may be retracted. */
+  arilOn?: boolean | null;
 }) {
   return <header className="agentChatHeader">
     <span className="agentChatGlyph"><CommandIcon name="spark" /></span>
     <h2 className="agentChatTitle">Aril</h2>
+    {arilOn !== null && <span className={`commandChip agentChatState${arilOn ? " positive" : ""}`}>{arilOn ? "On" : "Off"}</span>}
     <span className="agentChatSpacer" />
     <button ref={searchRef} type="button" className="commandIconAction" aria-label="Search" title="Search" aria-pressed={searchOpen} aria-controls={searchOpen ? searchControls : undefined} disabled={disabled} onClick={onToggleSearch}><CommandIcon name="search" /></button>
     <button type="button" className="commandIconAction agentChatExpand" aria-label={expanded ? "Dock" : "Expand"} title={expanded ? "Dock" : "Expand"} aria-pressed={expanded} onClick={onToggleExpanded}><CommandIcon name={expanded ? "dock" : "expand"} /></button>

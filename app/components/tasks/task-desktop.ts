@@ -73,7 +73,7 @@ export function useTaskEditAvailability(): TaskEditAvailability {
 }
 
 type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "feature_delete" | "queue_add" | "queue_remove" | "queue_group" | "queue_ungroup" | "queue_settings" | "resolve_done" | "resolve_requeue" | "session_assign" | "session_unassign" | "after_set" | "rework_declare" | "rework_remove"
-  | "aril_settings_set" | "aril_memory_add" | "aril_memory_update" | "aril_memory_remove";
+  | "aril_settings_set" | "aril_memory_set";
 
 /** Sends one fixed task action through the bridge, or from a paired device through its route. */
 export function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult>;

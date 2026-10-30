@@ -50,10 +50,9 @@ const REF = /^refs\/[A-Za-z0-9._/-]+$/u;
 // What the key cannot see (an ignore rule outside the files it reads, for one) ends here at the latest.
 const FACTS_MAX_AGE_MS = 5 * 60_000;
 
-// The settled time: the oldest of the settings' and the memory entries' times; `undefined` when nothing is settled.
+// The settled time: the older of the settings' time and the memory's last change; `undefined` when nothing is settled.
 function settledSince(aril) {
-  const settled = [Date.parse(aril?.settings?.settledAt), ...(Array.isArray(aril?.memory) ? aril.memory : [])
-    .map((entry) => (typeof entry?.updatedAt === "number" ? entry.updatedAt : Number.NaN))].filter(Number.isFinite);
+  const settled = [Date.parse(aril?.settings?.settledAt), typeof aril?.memory?.updatedAt === "number" ? aril.memory.updatedAt : Number.NaN].filter(Number.isFinite);
   return settled.length === 0 ? undefined : Math.min(...settled);
 }
 
@@ -159,7 +158,7 @@ async function readChanges(root, aril, { execFile, timeoutMs }, kept = null, { n
 }
 
 /**
- * The sources that changed after the oldest time the owner settled the settings or a memory entry: a last commit after
+ * The sources that changed after the older of the time the owner settled the settings and the memory's last change: a last commit after
  * it, or uncommitted changes. `undefined` when nothing is settled, `null` when Git fails or the total time runs out.
  * `{ path, changedAt, uncommitted }` each; `changedAt` is the last commit, or the last edit of an uncommitted file.
  */

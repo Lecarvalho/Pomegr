@@ -15,7 +15,7 @@ const settings: ArilSettings = {
 
 describe("the Aril settings link on the Tasks page", () => {
   it("is a quiet link to the board's repository in Settings, before Log, with no dialog behind it", () => {
-    render(<TaskBoardView board={{ ...BOARD_RUNNING, aril: { settings, memory: [] } }} readTaskLog={async () => ({ ok: false })} />);
+    render(<TaskBoardView board={{ ...BOARD_RUNNING, aril: { settings, memory: { text: "", previous: null, updatedAt: null, updatedBy: null } } }} readTaskLog={async () => ({ ok: false })} />);
     const link = screen.getByRole("link", { name: "Aril settings" });
     expect(link).toHaveAttribute("href", `/settings?section=aril&repository=${BOARD_RUNNING.repositoryId}`);
     expect(arilSettingsHref(BOARD_RUNNING.repositoryId)).toBe(link.getAttribute("href"));
@@ -28,7 +28,7 @@ describe("the Aril settings link on the Tasks page", () => {
   it("follows the active-grant caption, which has no button behavior", () => {
     const endsAt = Date.parse("2026-10-30T18:30:00Z");
     const grant: ArilGrant = { active: true, startedAt: endsAt - 7_200_000, endsAt, startsUsed: 2, actions: settings.actions, limits: settings.limits };
-    render(<TaskBoardView board={{ ...BOARD_RUNNING, aril: { settings, memory: [], grant } }} />);
+    render(<TaskBoardView board={{ ...BOARD_RUNNING, aril: { settings, memory: { text: "", previous: null, updatedAt: null, updatedBy: null }, grant } }} />);
     const strip = screen.getByRole("region", { name: "Provider capacity" });
     const link = within(strip).getByRole("link", { name: "Aril settings" });
     expect(link.previousElementSibling).toHaveTextContent(`Aril grant until ${timeOfDay(new Date(endsAt).toISOString())}`);

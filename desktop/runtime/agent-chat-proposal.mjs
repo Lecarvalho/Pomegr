@@ -8,7 +8,10 @@ export const BOARD_OPERATIONS = Object.freeze([
 ]);
 // The operations that edit a feature already on the board. Only the desktop window applies them, as only it edits features.
 export const FEATURE_EDIT_OPERATIONS = Object.freeze(["update_feature", "delete_feature"]);
-export const ARIL_OPERATIONS = Object.freeze(["set_aril_settings", "add_memory", "update_memory", "remove_memory"]);
+export const ARIL_OPERATIONS = Object.freeze(["set_aril_settings"]);
+// Memory was once changed by a proposal with Apply. Aril now keeps it current by itself (agent-chat-memory.mjs), and a new answer with one of
+// these is outside the contract. A saved conversation may still hold one, and it reads back as it was written; its Apply no longer does anything.
+export const LEGACY_MEMORY_OPERATIONS = Object.freeze(["add_memory", "update_memory", "remove_memory"]);
 export const WORKTREE_RESULTS = Object.freeze(["removed", "not_found", "dirty", "unique_commits", "in_use", "failed"]);
 // The one operation that puts images the owner sent in the chat on a task that is already on the board.
 export const IMAGE_OPERATION = "attach_images";
@@ -193,7 +196,7 @@ function placement(source) {
 }
 
 /** One operation as the agent wrote it, normalized to the stored shape; null when it is outside the contract. */
-export function normalizeOperation(source, { grantWrite = false } = {}) {
+export function normalizeOperation(source, { grantWrite = false, stored = false } = {}) {
   if (!isPlainObject(source) || typeof source.op !== "string" || !BOARD_OPERATIONS.includes(source.op)) return null;
   const { op } = source;
   if (grantWrite && (op !== "create_task" || !only(source, ["op", "text", "complete_when", "own_condition", "runs_after"]))) return null;
@@ -206,7 +209,8 @@ export function normalizeOperation(source, { grantWrite = false } = {}) {
     const settings = arilSettings(source.settings);
     return only(source, ["op", "settings"]) && settings ? { op, settings } : null;
   }
-  if (ARIL_OPERATIONS.includes(op)) {
+  if (LEGACY_MEMORY_OPERATIONS.includes(op)) {
+    if (!stored) return null;
     const hasId = op !== "add_memory";
     const hasText = op !== "remove_memory";
     if (!only(source, ["op", ...(hasId ? ["id"] : []), ...(hasText ? ["text"] : [])])
@@ -327,7 +331,6 @@ export function normalizeProposal(source, options = {}) {
   const pending = operations.filter(({ op }) => op !== "declare_rework");
   if (operations.length - pending.length > 5) return null;
   if (pending.length > 1 && pending.some((operation) => [START_OPERATION, QUEUE_OPERATION, "set_aril_settings"].includes(operation.op))) return null;
-  if (pending.some((operation) => ARIL_OPERATIONS.includes(operation.op)) && !pending.every((operation) => ARIL_OPERATIONS.includes(operation.op))) return null;
   if (pending.some(({ op }) => op === "remove_worktree") && (pending.length > 30 || !pending.every(({ op }) => op === "remove_worktree"))) return null;
   return { summary, operations };
 }
@@ -487,11 +490,10 @@ export async function applyOperations(operations, { post, board, attach }) {
     const { op } = operation;
     // A start is never a task action, and a queue change has its own one request. The chat never sends either here.
     if (op === START_OPERATION || op === QUEUE_OPERATION || op === "remove_worktree" || op === "declare_rework") { results.push(failure("unsupported")); continue; }
-    if (ARIL_OPERATIONS.includes(op)) {
-      const action = { set_aril_settings: "aril_settings_set", add_memory: "aril_memory_add", update_memory: "aril_memory_update", remove_memory: "aril_memory_remove" }[op];
-      const payload = op === "set_aril_settings" ? { settings: operation.settings }
-        : { ...(op !== "add_memory" ? { id: operation.id } : {}), ...(op !== "remove_memory" ? { text: operation.text } : {}) };
-      results.push((await act(action, payload)).answer);
+    // A memory proposal saved before Aril kept its memory by itself: it changes nothing now.
+    if (LEGACY_MEMORY_OPERATIONS.includes(op)) { results.push(failure("unsupported")); continue; }
+    if (op === "set_aril_settings") {
+      results.push((await act("aril_settings_set", { settings: operation.settings })).answer);
       continue;
     }
     if (op === "create_feature") {
