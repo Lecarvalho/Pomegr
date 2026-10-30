@@ -34,6 +34,9 @@ export function HomeUpdateCard({ title, summary, description, highlights, illust
   const showDialog = useCallback((node: HTMLDialogElement | null) => {
     dialog.current = node;
     if (!node || node.open) return;
+    // Centered over the Home column the card sits in, not the whole window, so the side navigation does not pull it off center.
+    const column = trigger.current?.closest("aside")?.getBoundingClientRect();
+    if (column && column.width > 0) node.style.setProperty("--dialog-center", `${Math.round(column.left + column.width / 2)}px`);
     node.showModal();
     node.focus();
   }, []);

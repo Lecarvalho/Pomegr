@@ -167,6 +167,22 @@
 .agentChatError { color: var(--command-error); }
 .agentChatNote { color: var(--command-muted); }
 
+/* Home draws the composer in its column, with the suggestion chips above it. On Home there is no panel to sit inset from. A chip is the Quiet
+   role on the raised fill with the composer radius; it fills the message field and sends nothing. */
+.agentChatHome .agentChatComposer { margin: 0; }
+.agentChatSuggestionChip.commandQuietAction { width: auto; max-width: 100%; min-height: var(--control-compact); padding: var(--space-1) var(--space-3); border-radius: var(--composer-radius); background: var(--command-panel-2); color: var(--command-ink); white-space: normal; text-align: left; overflow-wrap: anywhere; }
+.agentChatSuggestionChip.commandQuietAction:hover:not(:disabled) { background: color-mix(in srgb, var(--command-ink) 10%, var(--command-panel-2)); }
+
+/* A panel opened from Home: the messages of the thread fade in one after another, the newest last, and the composer settles to the bottom. */
+.agentChatPanel.isEntering .agentChatLog > * { opacity: 0; animation: agentChatMessageIn 420ms ease forwards; }
+.agentChatPanel.isEntering .agentChatLog > :nth-last-child(n+6) { animation-delay: 0ms; }
+.agentChatPanel.isEntering .agentChatLog > :nth-last-child(5) { animation-delay: 80ms; }
+.agentChatPanel.isEntering .agentChatLog > :nth-last-child(4) { animation-delay: 160ms; }
+.agentChatPanel.isEntering .agentChatLog > :nth-last-child(3) { animation-delay: 240ms; }
+.agentChatPanel.isEntering .agentChatLog > :nth-last-child(2) { animation-delay: 320ms; }
+.agentChatPanel.isEntering .agentChatLog > :nth-last-child(1) { animation-delay: 400ms; }
+@keyframes agentChatMessageIn { from { opacity: 0; transform: translateY(var(--space-2)); } to { opacity: 1; transform: none; } }
+
 /* Images the owner sends: small pictures under a message, in a proposal row, and above the composer's row. */
 .agentChatImages { margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; }
 .agentChatImage { position: relative; display: inline-flex; }
@@ -208,8 +224,9 @@
 @media (max-width: 760px), (pointer: coarse) {
   .agentChatAttach, .agentChatImageRemove, .agentChatSend.commandIconAction { width: 44px; height: 44px; }
   .agentChatImagePicture { width: 96px; height: 96px; }
-  .agentChatLauncher, .agentChatField, .agentChatSearchField, .agentChatSearchResult, .agentChatComposer .commandSelectTrigger, .agentChatReply.commandQuietAction, .agentChatChoice.commandQuietAction { min-height: 44px; }
+  .agentChatLauncher, .agentChatField, .agentChatSearchField, .agentChatSearchResult, .agentChatSuggestionChip.commandQuietAction, .agentChatComposer .commandSelectTrigger, .agentChatReply.commandQuietAction, .agentChatChoice.commandQuietAction { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .agentChatPanel, .agentChatScrim { animation: none; }
+  .agentChatPanel.isEntering .agentChatLog > * { opacity: 1; animation: none; }
 }

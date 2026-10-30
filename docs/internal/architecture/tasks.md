@@ -1381,6 +1381,15 @@ it looks.
   is visible, and keeps the last home until a complete answer replaces it.
 - **Queue paused.** A paused queue is not an attention item: its row in Boards says
   **Paused**, and the board's banner names the task and the reason.
+- **Home.** The Home page draws this read too, in its Needs you list, as one line for each
+  kind and repository (finished, stalled, and blocked tasks, and paused queues). A line names
+  no task and shows no title or ID, so Home draws none of the titles this read serves. Home
+  lists a paused queue with the fixed pause reason, because a failed start waits for the owner.
+  Where the client can read a task log, Home also reads the log of the 12 boards that changed
+  last, once a minute, and draws counts and a failure word from it. To name the task of a
+  running session, Home reads the board of that session's repository (`GET /api/tasks?repositoryId=`,
+  through the Tasks page's store) and draws the first line of that one task's text. Home adds no
+  route and stores no board value. [Home design](../design/home.md#needs-you) owns the rule.
 
 ## Start gates
 
@@ -3226,6 +3235,11 @@ fixed values.
   after the task text's leading tags, which may sit on several leading lines, and a text
   of only tags is its own title. It is still one line of at most 160 characters. No own condition,
   block reason, attention line, feature name, image, model, or session ID enters it.
+- The Home page draws that read, the task log (fixed kinds, times, and task IDs only), and, for
+  the sessions it shows as running, one line of the text of the task each was started for. All
+  come from reads the same clients already have, under the same gates. Home keeps none of them in
+  browser storage, and a client that may not read them gets nothing drawn
+  ([Home design](../design/home.md#what-home-reads)).
 - A feature's description and app version live only in the task store and are served
   only by `POST /api/agent/v1/tasks/feature-get`, to an agent whose session is bound to
   that board (task T-33, 2026-10-10). This is a deliberate widening: an agent could

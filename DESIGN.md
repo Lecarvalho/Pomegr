@@ -127,6 +127,13 @@ components:
     rounded: "{rounded.round}"
     padding: "0"
     height: "32px"
+  agent-chat-suggestion:
+    backgroundColor: "{colors.light-raised}"
+    textColor: "{colors.text}"
+    typography: "{typography.metadata}"
+    rounded: "{rounded.composer}"
+    padding: "0 12px"
+    height: "32px"
 ---
 
 # Design System: Pomegr
@@ -162,14 +169,14 @@ Each product surface has its own page. See [Find the page](#find-the-page).
 | Token values | `app/styles/tokens.css` |
 | Usage limits and provider connection help | [Usage limits design](docs/internal/design/usage-limits.md) |
 | Settings sections and the storage usage meter | [Settings design](docs/internal/design/settings.md) |
-| Home and the What's new card | [Home design](docs/internal/design/home.md) |
+| Home: the greeting, the Aril line, Needs you, Continue, the What's new card and dialog, the composer and its focus mode | [Home design](docs/internal/design/home.md) |
 | Sessions directory, session header, Overview, Events, Signals | [Sessions design](docs/internal/design/sessions.md) |
 | Agents panel, inspector, grid, tree, the Agents route, role tint | [Agents design](docs/internal/design/agents.md) |
 | Activities feed and the Requests chart | [Activities design](docs/internal/design/activities.md) |
 | Repositories index and detail, file tree, file history | [Repositories design](docs/internal/design/repositories.md) |
 | Tasks page, board, cards, queue, session task surfaces | [Task board design](docs/internal/design/task-board.md) |
 | Task modal, task fields, Promote issues page | [Task modal design](docs/internal/design/task-modal.md) |
-| Aril chat launcher, panel, thread, search, messages, proposal card, composer | [Agent chat design](docs/internal/design/agent-chat.md) |
+| Aril chat launcher, panel, thread, search, messages, proposal card, composer, and the suggestion chips and composer on Home | [Agent chat design](docs/internal/design/agent-chat.md) |
 | Public website: home, download, and documentation pages, shared header and footer, landing tokens and motion | [Landing design](docs/internal/design/landing.md) |
 | `CommandTable` integration | [Command table](docs/internal/development/command-table.md) |
 
@@ -336,10 +343,18 @@ These are exceptions to the 4px and 6px radius rule and to the six button roles.
 - Send and Stop are one round 32px action, `.agentChatSend`, with a 50% radius, the brand fill, and `--command-on-brand` ink.
 - Send and Stop are 44px on coarse pointers and phone, and stay round.
 - Send and Stop compose the Icon role with a local look. They are not a seventh role.
+- The suggestion chips above the composer on Home, `.agentChatSuggestionChip`, use the composer radius, token `--composer-radius`.
+- A suggestion chip has the raised `--command-panel-2` fill and no border, and it is 32px high.
+- A suggestion chip composes the Quiet role with a local fill and radius. It is not a seventh role.
+- The composer on Home is the chat composer, drawn in the Home column. It keeps every exception in this list.
+- In Home's focus mode the composer block lifts to the vertical middle of the content area over 480ms, and the rest of Home fades out over 280ms. [Home design](docs/internal/design/home.md#focus-mode) owns the motion.
+- The lifted Home composer takes the overlay shadow. It is the only part of the chat but the launcher that does.
+- The panel that Home opens settles its composer from the place of the Home composer to the bottom over 480ms. [Agent chat design](docs/internal/design/agent-chat.md#panel-opened-from-home) owns it.
+- Every one of these motions is removed under reduced motion.
 - The Aril panel is docked to the right edge, with a one-pixel left line, no radius, and no shadow.
 - The panel lays over the page and does not move it.
 - The panel is not a floating card, so it takes no overlay shadow.
-- Only the Aril launcher takes the overlay shadow among the surfaces of the chat.
+- Only the Aril launcher, and the Home composer while focus mode lifts it, take the overlay shadow among the surfaces of the chat.
 - While the panel is open on a desktop width, a scrim covers the page below the header and behind the panel, with the `--command-scrim` fill and no blur.
 - A click on the scrim closes the panel as Close does.
 - The scrim is not drawn at 760px and narrower, where the panel is a sheet.
@@ -448,6 +463,7 @@ These controls keep their own contracts on purpose. They are not counted among t
 | Copy-transcript button | | Its copied and error states carry meaning |
 | Desktop session-header ID chip | `button.sessionIdChip` | Keeps the chip look and copies the full session ID on click. It shows the stronger line on hover. It turns positive after a copy and negative after a failure. |
 | Aril composer Send and Stop | `.agentChatSend` on an Icon action | Round 32px, brand fill, `--command-on-brand` ink, and an `aria-label` of Send or Stop. See [Agent chat exceptions](#agent-chat-exceptions). |
+| Home suggestion chip | `.agentChatSuggestionChip` on a Quiet action | Raised fill, composer radius, 32px, and no border. It fills the message field and sends nothing. See [Agent chat exceptions](#agent-chat-exceptions). |
 
 Compositions that are not a seventh role:
 

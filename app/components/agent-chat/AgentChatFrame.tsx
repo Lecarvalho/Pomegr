@@ -6,18 +6,20 @@ import { CommandIcon } from "../command-center/CommandIcon";
 export const PANEL_LABEL = "Aril, the Pomegr agent";
 
 /** The panel: a non-modal region docked to the right edge, below the shell header (or expanded over the content area), or a full-screen sheet on a phone. */
-export function AgentChatPanelFrame({ id, open = true, isStatic = false, expanded = false, panelRef, onKeyDown, children }: {
+export function AgentChatPanelFrame({ id, open = true, isStatic = false, expanded = false, entering = false, panelRef, onKeyDown, children }: {
   id?: string;
   open?: boolean;
   /** Draws in the page's flow instead of fixed to the window; for the design-system reference. */
   isStatic?: boolean;
   /** Covers the content area, with the log and the composer in a centered column. */
   expanded?: boolean;
+  /** Opened from Home: the messages of the thread fade in one after another, the newest last. */
+  entering?: boolean;
   panelRef?: Ref<HTMLElement>;
   onKeyDown?: KeyboardEventHandler<HTMLElement>;
   children?: ReactNode;
 }) {
-  return <section ref={panelRef} id={id} className={`agentChatPanel${isStatic ? " isStatic" : ""}${expanded ? " isExpanded" : ""}`} aria-label={PANEL_LABEL} hidden={!open} onKeyDown={onKeyDown}>{children}</section>;
+  return <section ref={panelRef} id={id} className={`agentChatPanel${isStatic ? " isStatic" : ""}${expanded ? " isExpanded" : ""}${entering ? " isEntering" : ""}`} aria-label={PANEL_LABEL} hidden={!open} onKeyDown={onKeyDown}>{children}</section>;
 }
 
 export function AgentChatHeader({ searchOpen, onToggleSearch, searchRef, searchControls, expanded, onToggleExpanded, onClose, disabled = false }: {

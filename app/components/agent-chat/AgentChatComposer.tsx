@@ -51,6 +51,8 @@ export type AgentChatComposerProps = {
   /** Absent where no image can be added. */
   onAttach?(files: File[]): void;
   onRemoveImage?(imageId: string): void;
+  /** An ID for the message field, where something outside the composer returns focus. */
+  fieldId?: string;
   ref?: Ref<AgentChatComposerHandle>;
 };
 
@@ -60,7 +62,7 @@ export type AgentChatComposerHandle = {
 };
 
 /** The message field, the repository, model, and effort choices, and Send, or Stop while an answer is being written. */
-export function AgentChatComposer({ value, onChange, onSend, onStop, onFieldFocusChange, modelOptions, modelValue, onModelChange, effort, onEffortChange, repositories = NO_REPOSITORIES, repositoryId, onRepositoryChange, disabled = false, running, busy, error, images = NO_IMAGES, imageUrls = NO_URLS, uploading = false, imageError = null, onAttach, onRemoveImage, ref }: AgentChatComposerProps) {
+export function AgentChatComposer({ value, onChange, onSend, onStop, onFieldFocusChange, modelOptions, modelValue, onModelChange, effort, onEffortChange, repositories = NO_REPOSITORIES, repositoryId, onRepositoryChange, disabled = false, running, busy, error, images = NO_IMAGES, imageUrls = NO_URLS, uploading = false, imageError = null, onAttach, onRemoveImage, fieldId, ref }: AgentChatComposerProps) {
   const own = useRef<HTMLTextAreaElement | null>(null);
   const length = value.length;
   const over = length > MESSAGE_LIMIT;
@@ -102,7 +104,7 @@ export function AgentChatComposer({ value, onChange, onSend, onStop, onFieldFocu
     }}>
     {error && <p className="agentChatError" role="alert">{error}</p>}
     {imageError && <p className="agentChatError" role="alert">{imageError}</p>}
-    <textarea ref={own} className="agentChatField" aria-label="Message Aril" placeholder="Ask Aril…" rows={1}
+    <textarea ref={own} id={fieldId} className="agentChatField" aria-label="Message Aril" placeholder="Ask Aril…" rows={1}
       value={value} disabled={disabled} onChange={(event) => onChange(event.currentTarget.value)} onKeyDown={keyDown} onFocus={() => onFieldFocusChange?.(true)} onBlur={() => onFieldFocusChange?.(false)}
       onPaste={(event) => {
         const files = imageFiles(event.clipboardData?.files);

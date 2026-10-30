@@ -1,6 +1,6 @@
 import {
   AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_MESSAGE_ID_PATTERN,
-  type AgentChatActivity, type AgentChatBoardOperation, type AgentChatError, type AgentChatMessage,
+  type AgentChatActivity, type AgentChatBoardOperation, type AgentChatError, type AgentChatImage, type AgentChatMessage,
   type AgentChatOperationResult, type AgentChatProposal, type AgentChatProposalState, type AgentChatProvider, type AgentChatQueueResult, type AgentChatStartFailure,
   type AgentChatPrepareStep, type AgentChatRoutePhase, type AgentChatRouteReason, type AgentChatTiming, type AgentChatTurnStatus,
 } from "../../../shared/agent-chat-contract";
@@ -37,6 +37,21 @@ export const SUGGESTIONS: readonly string[] = [
   "Is any task too big for one session?",
   "Which model fits this kind of task: ",
 ];
+
+/** The suggestion chips above the composer on Home: fixed words, and the condition under which each is offered. */
+export const HOME_SUGGESTIONS: readonly { text: string; when: "attention" | "work" | "always" }[] = [
+  { text: "What needs my attention first?", when: "attention" },
+  { text: "Which task should run first, and why?", when: "work" },
+  { text: "Is any task too big for one session?", when: "work" },
+  { text: "Break this feature into tasks: ", when: "always" },
+  { text: "Which model fits this kind of task: ", when: "always" },
+];
+export const HOME_SUGGESTION_LIMIT = 3;
+
+/** The first three suggestions whose condition holds: a fixed rule over the board counts Home already read, never a model. */
+export function homeSuggestions(facts: { attention: boolean; work: boolean }): string[] {
+  return HOME_SUGGESTIONS.filter((suggestion) => suggestion.when === "always" || facts[suggestion.when]).slice(0, HOME_SUGGESTION_LIMIT).map((suggestion) => suggestion.text);
+}
 
 export const UNREADABLE_PROPOSAL = "Aril wrote a proposal that Pomegr could not read, so there is nothing to apply. Ask for it again.";
 
@@ -205,6 +220,30 @@ export function agentChatLink(pathname: string, search: string): AgentChatLink |
   if (!repositoryId || aril === null) return null;
   if (aril === "open") return message === null ? { repositoryId, conversationId: null, messageId: null } : null;
   return AGENT_CHAT_CONVERSATION_ID_PATTERN.test(aril) && message !== null && AGENT_CHAT_MESSAGE_ID_PATTERN.test(message) ? { repositoryId, conversationId: aril, messageId: message } : null;
+}
+
+// A message written on Home: the dock opens the maximized panel on its repository's thread, and the panel sends it as if it were typed there.
+// `fromTop` is where the composer of Home was on the screen, so the composer of the panel settles from there to the bottom.
+export const AGENT_CHAT_SEND_EVENT = "pomegr:send-aril-chat";
+export type AgentChatSend = { repositoryId: string; text: string; provider: AgentChatProvider; model: string | null; effort: TaskEffort; images: readonly AgentChatImage[]; fromTop?: number };
+export type AgentChatHandoff = AgentChatSend & { nonce: number };
+/** The panel closed. Home listens, to leave the thread it handed its message to and come back to itself. */
+export const AGENT_CHAT_CLOSED_EVENT = "pomegr:aril-chat-closed";
+/** How long the thread's messages take to fade in on a panel opened from Home, and how long its composer takes to settle. */
+export const HOME_ENTRY_MS = 2_200;
+export const HOME_SETTLE_MS = 480;
+export const HOME_SETTLE_CURVE = "cubic-bezier(.2, .8, .2, 1)";
+
+export function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+/** The ID of the message field of the composer on Home. */
+export const HOME_COMPOSER_FIELD_ID = "home-aril-message";
+/** The ID of the Home page itself, where focus returns when the panel closes there: back to Home, not into its composer, which would lift it again. */
+export const HOME_SECTION_ID = "home-page";
+
+export function sendAgentChatFromHome(message: AgentChatSend): void {
+  window.dispatchEvent(new CustomEvent<AgentChatSend>(AGENT_CHAT_SEND_EVENT, { detail: message }));
 }
 
 /** Opens the chat at a follow-up from inside the app, as the follow-up's link does when the page loads. */

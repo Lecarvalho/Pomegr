@@ -25,7 +25,8 @@ describe("Aril chat visual contract", () => {
     expect(styles).toMatch(/--composer-radius:\s*12px/);
     expect(styles).toMatch(/--color-on-brand:\s*#ffffff/);
     expect(styles).toMatch(/--command-on-brand:\s*var\(--color-on-brand\)/);
-    expect(chatStyles.match(/border-radius: var\(--composer-radius\)/g)).toHaveLength(1);
+    // The composer and the suggestion chips of Home are the only two rules with the composer radius.
+    expect(chatStyles.match(/border-radius: var\(--composer-radius\)/g)).toHaveLength(2);
     // The launcher: shell chrome fixed to the corner, the panel fill, the strong line, the control radius, and the overlay shadow, above the header and below the inspector sheet.
     expect(chatStyles).toMatch(/\.agentChatLauncher \{[^}]*position: fixed; z-index: 85;[^}]*min-height: var\(--control-height\);[^}]*border: 1px solid var\(--command-line-strong\); border-radius: var\(--control-radius\); background: var\(--command-panel\); box-shadow: var\(--command-overlay-shadow\)/);
     expect(chatStyles).toMatch(/\.agentChatLauncherDot \{[^}]*background: var\(--command-brand\)/);

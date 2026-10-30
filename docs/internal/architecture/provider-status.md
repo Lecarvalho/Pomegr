@@ -36,7 +36,7 @@ The response contains both provider rows with independent readiness and freshnes
 `checkedAt` is the last successful local check; `updatedAt` is the latest relevant
 provider update available from the public source. These are different timestamps.
 
-The frontend's single shared store supplies compact status on Home and Usage limits
+The frontend's single shared store supplies compact status on Usage limits
 and a conditional notice in live session details. No status is added to the global
 header, historical session evidence, quota errors, or exported session reports.
 

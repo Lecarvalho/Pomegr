@@ -15,6 +15,9 @@ const sessions: SessionSummary[] = [
   { id: "claude:report", provider: "claude", source: "Claude Code", title: "Review report", project: "Other project", updatedAt: "2026-08-29T12:00:00Z", isLive: false, needsInput: false, activityStatus: "unknown", summaryReadiness: "ready", agentCount: 1, activeAgentCount: 0, latestContextTotal: 67890, progress: null, currentActivity: null },
 ];
 
+// The same sessions with nothing running: the last viewed session shows then.
+const idleSessions: SessionSummary[] = sessions.map((session) => ({ ...session, isLive: false, activityStatus: "unknown" }));
+
 // Seeds the current update as already seen, so only the auto-open test starts with the dialog open.
 function seed(pins: object[] = [], lastViewedSessionId: string | null = null) {
   window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, JSON.stringify({ version: 1, pins, lastViewedSessionId, seenUpdateId: "aril-grants-v1" }));
@@ -38,8 +41,9 @@ describe("personal Home", () => {
     const update = screen.getByRole("complementary", { name: "What’s new" });
     expect(within(update).getByRole("heading", { name: "Let Aril run your backlog" })).toBeInTheDocument();
     expect(within(update).queryByRole("link")).not.toBeInTheDocument();
-    const navigation = screen.getByRole("region", { name: "Sessions" });
-    expect(update.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The What's new card is at the foot of Home, after Continue.
+    const navigation = screen.getByRole("region", { name: /^Continue/ });
+    expect(navigation.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Dismiss this update" }));
     expect(screen.queryByRole("heading", { name: "What’s new" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Browse sessions" })).toHaveFocus();
@@ -96,24 +100,30 @@ describe("personal Home", () => {
     expect(screen.getByRole("button", { name: "See what’s new" })).toBeInTheDocument();
   });
 
-  it("offers navigation with a compact local provider-status exception", async () => {
+  it("is one column: a greeting, Continue, and the What’s new card, with no guides, roadmap, provider status, or session metrics", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Local test monitor unavailable"));
     const { container } = home();
-    expect(screen.getByRole("heading", { name: "Welcome to Pomegr" })).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "Sessions" })).getByRole("heading", { name: "Pinned destinations", level: 3 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^Good (morning|afternoon|evening)$/);
+    expect(within(screen.getByRole("region", { name: /^Continue/ })).getByText("Add pins")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "What’s new" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Choose a session" })).toHaveAttribute("href", "/sessions");
+    for (const name of ["Choose a session", "Inspect a session", "Session coach", "On the horizon", "Understand your sessions"]) {
+      expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText(/Coming soon/)).not.toBeInTheDocument();
     for (const name of ["Usage & activity", "Active now", "Open · Idle", "All-agent context", "Active agents"]) expect(screen.queryByText(name)).not.toBeInTheDocument();
     expect(container.querySelector("progress")).not.toBeInTheDocument();
     expect(screen.queryByText("12,345")).not.toBeInTheDocument();
-    expect(screen.queryByText("Build Home")).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Session coach" })).toHaveTextContent("Coming soon");
-    expect(screen.getByRole("region", { name: "Session coach" })).toHaveTextContent("opt-in");
-    expect(within(screen.getByRole("region", { name: "Session coach" })).queryByRole("button")).not.toBeInTheDocument();
-    expect(within(screen.getByRole("complementary", { name: "Provider status" })).getByRole("heading", { name: "Provider status", level: 2 })).toBeInTheDocument();
+    // Where the client is not known to reach the chat, nothing of Aril is drawn: no line, no Needs you, no composer.
+    expect(screen.queryByRole("textbox", { name: "Message Aril" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/task logs/)).not.toBeInTheDocument();
+    // Home does not show the provider status.
+    expect(screen.queryByText(/Provider status/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Provider service status" })).not.toBeInTheDocument();
     await act(async () => { window.dispatchEvent(new Event("focus")); document.dispatchEvent(new Event("visibilitychange")); });
     expect(fetchMock).toHaveBeenCalled();
-    for (const [input] of fetchMock.mock.calls) expect(String(input)).toMatch(/^\/api\/provider-status(?:\?revision=\d+)?$/);
+    // Home reads the Tasks home and the repository inventory, and nothing else: no provider status.
+    for (const [input] of fetchMock.mock.calls) expect(String(input)).toMatch(/^\/api\/(?:tasks\?view=home|repositories(?:\?.*)?)$/);
   });
 
   it("pins a selected session, persists only its identity, and can unpin it", async () => {
@@ -121,7 +131,7 @@ describe("personal Home", () => {
     const view = home();
     await user.click(screen.getByText("Add pins"));
     await user.click(screen.getByRole("button", { name: "Pin Build Home" }));
-    expect(screen.getByRole("list", { name: "Pinned destinations" })).toHaveTextContent("Build Home");
+    expect(screen.getByRole("list", { name: "Pinned" })).toHaveTextContent("Build Home");
     expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({ version: 1, pins: [{ kind: "session", id: "codex:build-home" }], lastViewedSessionId: null, seenUpdateId: "aril-grants-v1" });
     await user.click(screen.getByRole("button", { name: "Done" }));
     expect(screen.getByText("Add pins")).toHaveFocus();
@@ -129,7 +139,7 @@ describe("personal Home", () => {
     home();
     expect(screen.getByRole("link", { name: "Build Home · Pomegr · Codex" })).toHaveAttribute("href", "/sessions/codex-build-home");
     await user.click(screen.getByRole("button", { name: "Unpin Build Home" }));
-    expect(screen.queryByRole("list", { name: "Pinned destinations" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Pinned" })).not.toBeInTheDocument();
     expect(screen.getByText("Add pins")).toHaveFocus();
   });
 
@@ -145,7 +155,7 @@ describe("personal Home", () => {
   it("keeps views pinnable without a catalog and does not claim no sessions while loading", async () => {
     const user = userEvent.setup();
     home([], { loading: true });
-    expect(screen.getByRole("heading", { name: "Session coach" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Continue" })).toBeInTheDocument();
     await user.click(screen.getByText("Add pins"));
     expect(screen.getByText("Loading destinations from the local monitor…")).toBeInTheDocument();
     chooseCommandOption(screen.getByLabelText("Destination type"), "view");
@@ -157,19 +167,30 @@ describe("personal Home", () => {
   it("retains unavailable pins through catalog failure and restores their labels on recovery", () => {
     seed([{ kind: "session", id: sessions[0].id }], sessions[0].id);
     const view = home([], { connected: false });
-    expect(screen.getByText("Not in the current catalog")).toBeInTheDocument();
+    expect(screen.getByTitle("Not in the current catalog")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Unpin Pinned session 1" })).toBeEnabled();
     expect(screen.queryByRole("link", { name: /Open last viewed/ })).not.toBeInTheDocument();
-    view.rerender(<SessionCatalogProvider sessions={sessions}><HomeDashboard /></SessionCatalogProvider>);
+    view.rerender(<SessionCatalogProvider sessions={idleSessions}><HomeDashboard /></SessionCatalogProvider>);
     expect(screen.getByRole("link", { name: "Open last viewed session: Build Home" })).toHaveAttribute("href", "/sessions/codex-build-home");
     expect(screen.getByRole("button", { name: "Unpin Build Home" })).toBeInTheDocument();
   });
 
-  it("uses last-viewed history rather than newest or currently active work", () => {
+  it("uses last-viewed history rather than newest work when no session runs", () => {
     seed([], sessions[1].id);
-    home();
+    home(idleSessions);
     expect(screen.getByRole("link", { name: "Open last viewed session: Review report" })).toHaveAttribute("href", "/sessions/claude-report");
     expect(screen.queryByRole("link", { name: /Open last viewed session Build Home/ })).not.toBeInTheDocument();
+  });
+
+  it("shows the sessions that run in place of the last viewed one", () => {
+    seed([], sessions[1].id);
+    home();
+    const running = screen.getByRole("list", { name: "Running sessions" });
+    expect(within(running).getAllByRole("link")).toHaveLength(1);
+    expect(within(running).getByRole("link")).toHaveTextContent("Build HomeWorking");
+    expect(within(running).getByRole("link")).toHaveAttribute("href", "/sessions/codex-build-home");
+    expect(screen.queryByRole("link", { name: /Open last viewed session/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^Continue/ })).toHaveTextContent("Continue · 1 running");
   });
 
   it("reflects updated catalog labels without changing saved identities", () => {

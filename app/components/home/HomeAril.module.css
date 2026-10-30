@@ -1,0 +1,31 @@
+/* The composer block of Home: the chips and the composer. In focus mode it moves to the middle of the content area (the shift is measured by
+   the component), takes the overlay shadow, and shows the hint under it. After Send it stays there under the maximized panel until the panel closes. */
+.aril { position: relative; z-index: 3; display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; transition: transform 480ms cubic-bezier(.2, .8, .2, 1); }
+.aril.isFocus, .aril.isThread { transform: translateY(var(--focus-shift, 0px)); }
+.aril :global(.agentChatComposer) { transition: box-shadow 480ms ease; }
+.aril.isFocus :global(.agentChatComposer) { box-shadow: var(--command-overlay-shadow); }
+
+/* The chips collapse after Send with the grid-rows pattern, so no layout property is animated: the block is one grid row that goes from its content to nothing. */
+.chipBlock { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 300ms ease, opacity 220ms ease; }
+.chipInner { min-height: 0; overflow: hidden; }
+.isThread .chipBlock { grid-template-rows: 0fr; opacity: 0; pointer-events: none; }
+.chips { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-3); }
+.chipList { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; margin: 0; padding: 0; list-style: none; }
+
+.hint { position: absolute; inset-inline: 0; top: 100%; margin: 0; padding-top: var(--space-2); color: var(--command-muted); font: 400 var(--text-caption)/1.4 var(--font-ui); text-align: center; opacity: 0; pointer-events: none; transition: opacity 280ms ease; }
+.isFocus .hint { opacity: 1; }
+/* Only a phone shows it: a keyboard without Escape needs a way back. */
+.back { display: none; width: auto; }
+.note { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); }
+
+/* A phone: focus mode fills the screen, and the block sits at the bottom, above the keyboard. */
+@media (max-width: 760px) {
+  .aril.isFocus { position: fixed; z-index: 85; inset-inline: var(--space-3); bottom: calc(var(--keyboard-inset, 0px) + max(var(--space-3), env(safe-area-inset-bottom))); transform: none; }
+  .aril.isThread { transform: none; }
+  .hint { display: none; }
+  .aril.isFocus .back { display: inline-flex; align-self: flex-start; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aril, .aril :global(.agentChatComposer), .chipBlock, .hint { transition: none; }
+}
