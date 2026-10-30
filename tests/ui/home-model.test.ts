@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { homeSuggestions } from "../../app/components/agent-chat/agent-chat-presentation";
-import { HOME_LOG_BOARDS, arilLine, greetingFor, logBoards, needsDetail, needsYou, suggestionFacts, type HomeLogReads } from "../../app/components/home/home-model";
+import { HOME_LOG_BOARDS, arilLine, greetingFor, isWaiting, isWorking, logBoards, needsDetail, needsYou, runningFor, runningSessions, suggestionFacts, type HomeLogReads, type NeedsLine } from "../../app/components/home/home-model";
 import type { TaskLog } from "../../app/components/tasks/task-desktop";
-import type { TaskHome, TaskHomeBoard } from "../../shared/task-contract";
+import type { SessionSummary } from "../../shared/monitor-contract";
+import type { TaskBoard, TaskHome, TaskHomeBoard } from "../../shared/task-contract";
 
 // The fixed rules behind Home: no model, only numbers and fixed kinds in, fixed words out.
 const NOW = Date.parse("2026-10-30T12:00:00.000Z");
@@ -84,62 +85,161 @@ describe("the detail of a Needs review task", () => {
   });
 });
 
+const session = (id: string, overrides: Partial<SessionSummary> = {}): SessionSummary => ({
+  id, provider: "claude", source: "Claude Code", title: `Session ${id}`, project: "Some project", createdAt: new Date(NOW - 12 * 60_000).toISOString(), updatedAt: new Date(NOW - 60_000).toISOString(),
+  isLive: true, needsInput: false, activityStatus: "working", summaryReadiness: "ready", agentCount: 1, activeAgentCount: 1, latestContextTotal: null, progress: null, currentActivity: null, repositoryId: POMEGR, ...overrides,
+});
+const needs = (served: TaskHome, logs: HomeLogReads = new Map(), sessions: SessionSummary[] = []) => needsYou({ home: served, names: NAMES, logs, sessions });
+const words = (lines: NeedsLine[]) => lines.map((line) => `${line.action}${line.detail ? ` [${line.detail.words}${line.detail.urgent ? ", amber" : ""}]` : ""} | ${line.repository}`);
+
 describe("Needs you", () => {
-  it("lists paused queues first, then the tasks the Tasks home serves, with fixed words for the reason", () => {
+  it("is one line for each thing to do, grouped by kind and repository and phrased as the action, in a fixed order", () => {
     const served = home({
       boards: [board(POMEGR), board(CLAPLINE, { queue: { status: "paused", blockedBy: null, pauseReason: "cli_missing" } })],
       attention: [
         { repositoryId: POMEGR, taskId: "T-41", title: "Retry the upload", state: "needs_review" },
+        { repositoryId: CLAPLINE, taskId: "T-12", title: "Move the settings page", state: "needs_review" },
+        { repositoryId: CLAPLINE, taskId: "T-13", title: "Rename the export", state: "needs_review" },
         { repositoryId: POMEGR, taskId: "T-35", title: "Cut the work into tasks", state: "stalled" },
-        { repositoryId: CLAPLINE, taskId: "T-9", title: "Rename the export", state: "blocked" },
+        { repositoryId: POMEGR, taskId: "T-36", title: "Cut the other work", state: "stalled" },
+        { repositoryId: CLAPLINE, taskId: "T-9", title: "Rename the thing", state: "blocked" },
       ],
-      attentionTotal: 3,
+      attentionTotal: 6,
     });
-    const logs: HomeLogReads = new Map([[POMEGR, log(entry(1, "T-41", "review", 1), entry(2, "T-41", "checks_failed", 2), entry(3, "T-35", "checks_failed", 3))]]);
-    const { items, total } = needsYou(served, NAMES, logs);
-    expect(total).toBe(4);
-    expect(items.map((item) => (item.kind === "queue" ? `queue ${item.repositoryName}: ${item.reason}` : `${item.taskId} ${item.state} ${item.detail?.words ?? "-"}`)))
-      .toEqual(["queue clapline: CLI not found", "T-41 needs_review CI failed", "T-35 stalled -", "T-9 blocked -"]);
+    const logs: HomeLogReads = new Map([[POMEGR, log(entry(1, "T-41", "review", 1), entry(2, "T-41", "checks_failed", 2))]]);
+    const { lines, total } = needs(served, logs, [session("claude:one", { repositoryId: CLAPLINE, activityStatus: "needs_input", needsInput: true })]);
+    expect(total).toBe(lines.length);
+    expect(words(lines)).toEqual([
+      "Answer a session that is waiting for you | clapline",
+      "Review 2 finished tasks | clapline",
+      "Review 1 finished task [CI failed, amber] | pomegr",
+      "Check 2 stalled tasks | pomegr",
+      "Unblock 1 task | clapline",
+      "Restart the paused queue [CLI not found, amber] | clapline",
+    ]);
+    // A line names no task and no title, and links to the board of its repository, or to the session.
+    expect(JSON.stringify(lines)).not.toMatch(/T-\d|Retry the upload|Move the settings|Cut the/);
+    expect(lines.map((line) => line.href)).toEqual(["/sessions/claude-one", `/tasks?repository=${CLAPLINE}`, `/tasks?repository=${POMEGR}`, `/tasks?repository=${POMEGR}`, `/tasks?repository=${CLAPLINE}`, `/tasks?repository=${CLAPLINE}`]);
   });
 
-  it("words each pause reason, and a queue that is not paused is not an item", () => {
+  it("puts a failure in its own line and joins a passed result, or none, to the plain line of its repository", () => {
+    const served = home({ attention: [
+      { repositoryId: POMEGR, taskId: "T-1", title: "A", state: "needs_review" },
+      { repositoryId: POMEGR, taskId: "T-2", title: "B", state: "needs_review" },
+      { repositoryId: POMEGR, taskId: "T-3", title: "C", state: "needs_review" },
+      { repositoryId: POMEGR, taskId: "T-4", title: "D", state: "needs_review" },
+      { repositoryId: POMEGR, taskId: "T-5", title: "E", state: "needs_review" },
+    ], attentionTotal: 5 });
+    const logs: HomeLogReads = new Map([[POMEGR, log(
+      entry(1, "T-1", "review", 1), entry(2, "T-1", "checks_failed", 2), entry(3, "T-2", "review", 1), entry(4, "T-2", "review_passed", 2),
+      entry(5, "T-3", "review", 1), entry(6, "T-3", "grant_merge_refused", 2), entry(7, "T-4", "review", 1), entry(8, "T-4", "merged", 2),
+    )]]);
+    expect(words(needs(served, logs).lines)).toEqual(["Review 3 finished tasks | pomegr", "Review 1 finished task [CI failed, amber] | pomegr", "Review 1 finished task [Merge refused, amber] | pomegr"]);
+  });
+
+  it("uses amber only for a failure: a failed check, a failed review, a refused merge, and the reason a queue is paused", () => {
     const reasons = ["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked", "worktree_dirty", "environment_invalid"] as const;
     const served = home({ boards: reasons.map((reason, index) => board(`repo-${String(index).repeat(24)}`, { queue: { status: "paused", blockedBy: null, pauseReason: reason } })) });
     const names = new Map(served.boards.map((entry, index) => [entry.repositoryId, `r${index}`]));
-    expect(needsYou(served, names, new Map()).items.map((item) => (item.kind === "queue" ? item.reason : ""))).toEqual([
+    const queues = needsYou({ home: served, names, logs: new Map(), sessions: [] }).lines;
+    expect(queues.map((line) => line.detail)).toEqual([
       "CLI not found", "Plugin missing", "Windows only", "A start failed", "Session not linked", "Worktree has changes", "Environment invalid",
-    ]);
+    ].map((words) => ({ words, urgent: true })));
+    expect(queues.every((line) => line.action === "Restart the paused queue")).toBe(true);
     const noReason = home({ boards: [board(POMEGR, { queue: { status: "paused", blockedBy: null, pauseReason: null } })] });
-    expect(needsYou(noReason, NAMES, new Map()).items.map((item) => (item.kind === "queue" ? item.reason : ""))).toEqual(["Paused"]);
+    expect(words(needs(noReason).lines)).toEqual(["Restart the paused queue [Paused, amber] | pomegr"]);
+    // No other line has a detail, so no other line is amber.
+    const others = needs(home({ attention: [{ repositoryId: POMEGR, taskId: "T-1", title: "A", state: "needs_review" }, { repositoryId: POMEGR, taskId: "T-2", title: "B", state: "stalled" }, { repositoryId: POMEGR, taskId: "T-3", title: "C", state: "blocked" }], attentionTotal: 3 }),
+      new Map([[POMEGR, log(entry(1, "T-1", "review", 1), entry(2, "T-1", "checks_passed", 2))]]), [session("claude:w", { needsInput: true })]).lines;
+    expect(others.map((line) => line.detail)).toEqual([null, null, null, null]);
+  });
+
+  it("is nothing when nothing waits: a running queue, a blocked queue, a session that works or idles, and a task in a quiet state are no lines", () => {
     const running = home({ boards: [
       board(POMEGR, { queue: { status: "running", blockedBy: null, pauseReason: null } }),
       board(CLAPLINE, { queue: { status: "blocked", blockedBy: "T-3", pauseReason: null } }),
     ] });
-    expect(needsYou(running, NAMES, new Map())).toEqual({ items: [], total: 0 });
+    const quiet = [session("claude:a"), session("claude:b", { activityStatus: "idle" }), session("claude:c", { activityStatus: "open" }), session("claude:d", { isLive: false, needsInput: true, activityStatus: "needs_input" })];
+    expect(needs(running, new Map(), quiet)).toEqual({ lines: [], total: 0 });
   });
 
-  it("leaves out the items of a repository the inventory no longer lists, and takes them out of the count", () => {
-    const served = home({
-      attention: [
-        { repositoryId: GONE, taskId: "T-1", title: "Gone", state: "stalled" },
-        { repositoryId: POMEGR, taskId: "T-2", title: "Kept", state: "blocked" },
-      ],
-      attentionTotal: 61,
+  it("groups the sessions that wait by repository, with one link to the session or to the repository's sessions", () => {
+    const waiting = (id: string, repositoryId: string | null, project = "Some project") => session(id, { repositoryId, project, needsInput: true, activityStatus: "needs_input" });
+    const { lines } = needs(home(), new Map(), [waiting("claude:a", POMEGR), waiting("codex:b", POMEGR), waiting("claude:c", CLAPLINE), waiting("claude:d", null, "Loose project")]);
+    expect(words(lines)).toEqual([
+      "Answer 2 sessions that are waiting for you | pomegr", "Answer a session that is waiting for you | clapline", "Answer a session that is waiting for you | Loose project",
+    ]);
+    expect(lines.map((line) => line.href)).toEqual([`/sessions?repository=${POMEGR}`, "/sessions/claude-c", "/sessions/claude-d"]);
+  });
+
+  it("leaves out the tasks of a repository the inventory no longer lists", () => {
+    const served = home({ attention: [{ repositoryId: GONE, taskId: "T-1", title: "Gone", state: "stalled" }, { repositoryId: POMEGR, taskId: "T-2", title: "Kept", state: "blocked" }], attentionTotal: 2, boards: [board(GONE, { queue: { status: "paused", blockedBy: null, pauseReason: "cli_missing" } })] });
+    expect(words(needs(served).lines)).toEqual(["Unblock 1 task | pomegr"]);
+  });
+
+  it("adds a failure detail only where the log of the task's repository was read", () => {
+    const served = home({ attention: [{ repositoryId: POMEGR, taskId: "T-1", title: "A", state: "needs_review" }, { repositoryId: CLAPLINE, taskId: "T-2", title: "B", state: "needs_review" }], attentionTotal: 2 });
+    const logs: HomeLogReads = new Map([[POMEGR, log(entry(1, "T-1", "review", 1), entry(2, "T-1", "review_failed", 2))], [CLAPLINE, null]]);
+    expect(words(needs(served, logs).lines)).toEqual(["Review 1 finished task | clapline", "Review 1 finished task [Review failed, amber] | pomegr"]);
+  });
+});
+
+describe("the running sessions", () => {
+  const board = (repositoryId: string, tasks: { id: string; text: string; session?: string; assigned?: string[] }[], readiness: TaskBoard["readiness"] = "ready") => ({
+    version: 1, readiness, repositoryId, columns: [], features: [], queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] },
+    tasks: tasks.map((task) => ({ id: task.id, text: task.text, session: task.session ? { id: task.session, title: null, state: "working", observedModel: null, observedEffort: null } : null, ...(task.assigned ? { assigned: task.assigned.map((id) => ({ id, title: null, state: "working", observedModel: null, observedEffort: null })) } : {}) })),
+  }) as unknown as TaskBoard;
+  const boards = (...entries: TaskBoard[]): ReadonlyMap<string, TaskBoard> => new Map(entries.map((entry) => [entry.repositoryId, entry]));
+
+  it("are the live sessions that work or wait, a waiting one first, at most four, with the total counted", () => {
+    const sessions = [
+      session("claude:idle", { activityStatus: "idle" }), session("claude:open", { activityStatus: "open" }), session("claude:old", { isLive: false }),
+      session("claude:a", { updatedAt: new Date(NOW - 10 * 60_000).toISOString() }), session("claude:b", { updatedAt: new Date(NOW - 5 * 60_000).toISOString() }),
+      session("claude:c", { updatedAt: new Date(NOW - 1 * 60_000).toISOString() }), session("claude:d", { updatedAt: new Date(NOW - 20 * 60_000).toISOString() }),
+      session("codex:waiting", { provider: "codex", source: "Codex", activityStatus: "needs_input", needsInput: true, updatedAt: new Date(NOW - 30 * 60_000).toISOString() }),
+    ];
+    const running = runningSessions(sessions, NAMES, boards(board(POMEGR, [])), NOW);
+    expect(running.total).toBe(5);
+    expect(running.shown.map((entry) => [entry.key, entry.waiting])).toEqual([["codex:waiting", true], ["claude:c", false], ["claude:b", false], ["claude:a", false]]);
+  });
+
+  it("show the title of the task a session was started for or assigned to, and a session's own title for any other, a review session included", () => {
+    const sessions = [session("claude:started"), session("claude:assigned"), session("claude:review"), session("claude:none", { repositoryId: null })];
+    const tasks = board(POMEGR, [
+      { id: "T-1", text: "[ui] Build the new Home\nWith the details below.", session: "claude:started" },
+      { id: "T-2", text: "Assigned work", assigned: ["claude:assigned"] },
+    ]);
+    const shown = runningSessions(sessions, NAMES, boards(tasks), NOW).shown;
+    expect(Object.fromEntries(shown.map((entry) => [entry.key, entry.title]))).toEqual({
+      "claude:started": "Build the new Home", "claude:assigned": "Assigned work", "claude:review": "Session claude:review", "claude:none": "Session claude:none",
     });
-    const { items, total } = needsYou(served, NAMES, new Map());
-    expect(items).toHaveLength(1);
-    // The monitor serves at most 50 and counts them all: 61 tasks wait, and one of the served 50 is not listed.
-    expect(total).toBe(60);
   });
 
-  it("adds a detail only to a Needs review task, and only where its log was read", () => {
-    const served = home({ attention: [
-      { repositoryId: POMEGR, taskId: "T-1", title: "A", state: "needs_review" },
-      { repositoryId: CLAPLINE, taskId: "T-2", title: "B", state: "needs_review" },
-      { repositoryId: POMEGR, taskId: "T-3", title: "C", state: "blocked" },
-    ], attentionTotal: 3 });
-    const logs: HomeLogReads = new Map([[POMEGR, log(entry(1, "T-1", "review", 1), entry(2, "T-1", "review_passed", 2), entry(3, "T-3", "review", 1), entry(4, "T-3", "checks_failed", 2))], [CLAPLINE, null]]);
-    expect(needsYou(served, NAMES, logs).items.map((item) => (item.kind === "task" ? item.detail?.words ?? null : "queue"))).toEqual(["Review passed", null, null]);
+  it("are not settled while a board a title comes from has not answered, so no title is drawn and then replaced", () => {
+    const sessions = [session("claude:a"), session("claude:b", { repositoryId: CLAPLINE })];
+    expect(runningSessions(sessions, NAMES, boards(board(POMEGR, [])), NOW).settled).toBe(false);
+    expect(runningSessions(sessions, NAMES, boards(board(POMEGR, [], "loading"), board(CLAPLINE, [])), NOW).settled).toBe(false);
+    expect(runningSessions(sessions, NAMES, boards(board(POMEGR, [], "desktop_only"), board(CLAPLINE, [], "unavailable")), NOW).settled).toBe(true);
+    expect(runningSessions([session("claude:x", { repositoryId: null })], NAMES, boards(), NOW).settled).toBe(true);
+  });
+
+  it("describe where and for how long: the repository, the provider, and the time since the session started", () => {
+    const [first] = runningSessions([session("claude:a")], NAMES, boards(board(POMEGR, [])), NOW).shown;
+    expect(first.meta).toBe("pomegr · Claude Code · 12 min");
+    const [project] = runningSessions([session("codex:b", { source: "Codex", repositoryId: null, project: "Loose project", createdAt: null })], NAMES, boards(), NOW).shown;
+    expect(project.meta).toBe("Loose project · Codex");
+    expect(runningFor(new Date(NOW - 20_000).toISOString(), NOW)).toBe("<1 min");
+    expect(runningFor(new Date(NOW - 59 * 60_000).toISOString(), NOW)).toBe("59 min");
+    expect(runningFor(new Date(NOW - 60 * 60_000).toISOString(), NOW)).toBe("1 h");
+    expect(runningFor(new Date(NOW - 135 * 60_000).toISOString(), NOW)).toBe("2 h 15 min");
+    expect(runningFor(new Date(NOW - 50 * 3_600_000).toISOString(), NOW)).toBe("2 d");
+    expect(runningFor(null, NOW)).toBeNull();
+    expect(runningFor("not a date", NOW)).toBeNull();
+  });
+
+  it("treat a session that needs input as waiting whichever field says so, and one that works as working", () => {
+    expect([isWaiting(session("a", { needsInput: true })), isWaiting(session("b", { activityStatus: "needs_input" })), isWaiting(session("c")), isWaiting(session("d", { isLive: false, needsInput: true }))]).toEqual([true, true, false, false]);
+    expect([isWorking(session("a")), isWorking(session("b", { needsInput: true })), isWorking(session("c", { activityStatus: "idle" }))]).toEqual([true, false, false]);
   });
 });
 

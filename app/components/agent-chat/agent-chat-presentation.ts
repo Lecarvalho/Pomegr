@@ -222,20 +222,28 @@ export function agentChatLink(pathname: string, search: string): AgentChatLink |
   return AGENT_CHAT_CONVERSATION_ID_PATTERN.test(aril) && message !== null && AGENT_CHAT_MESSAGE_ID_PATTERN.test(message) ? { repositoryId, conversationId: aril, messageId: message } : null;
 }
 
-// A message written on Home: the dock opens the panel on its repository's thread, and the panel sends it as if it were typed there.
+// A message written on Home: the dock opens the maximized panel on its repository's thread, and the panel sends it as if it were typed there.
+// `fromTop` is where the composer of Home was on the screen, so the composer of the panel settles from there to the bottom.
 export const AGENT_CHAT_SEND_EVENT = "pomegr:send-aril-chat";
-export type AgentChatSend = { repositoryId: string; text: string; provider: AgentChatProvider; model: string | null; effort: TaskEffort; images: readonly AgentChatImage[] };
+export type AgentChatSend = { repositoryId: string; text: string; provider: AgentChatProvider; model: string | null; effort: TaskEffort; images: readonly AgentChatImage[]; fromTop?: number };
 export type AgentChatHandoff = AgentChatSend & { nonce: number };
-/** The ID of the message field of the composer on Home, where focus returns when the panel closes there. */
+/** The panel closed. Home listens, to leave the thread it handed its message to and come back to itself. */
+export const AGENT_CHAT_CLOSED_EVENT = "pomegr:aril-chat-closed";
+/** How long the thread's messages take to fade in on a panel opened from Home, and how long its composer takes to settle. */
+export const HOME_ENTRY_MS = 2_200;
+export const HOME_SETTLE_MS = 480;
+export const HOME_SETTLE_CURVE = "cubic-bezier(.2, .8, .2, 1)";
+
+export function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+/** The ID of the message field of the composer on Home. */
 export const HOME_COMPOSER_FIELD_ID = "home-aril-message";
+/** The ID of the Home page itself, where focus returns when the panel closes there: back to Home, not into its composer, which would lift it again. */
+export const HOME_SECTION_ID = "home-page";
 
 export function sendAgentChatFromHome(message: AgentChatSend): void {
   window.dispatchEvent(new CustomEvent<AgentChatSend>(AGENT_CHAT_SEND_EVENT, { detail: message }));
-}
-
-/** Opens the chat on a repository's thread without sending anything, as a follow-up's link does. */
-export function openAgentChat(repositoryId: string): void {
-  window.dispatchEvent(new CustomEvent<AgentChatLink>(AGENT_CHAT_OPEN_EVENT, { detail: { repositoryId, conversationId: null, messageId: null } }));
 }
 
 /** Opens the chat at a follow-up from inside the app, as the follow-up's link does when the page loads. */

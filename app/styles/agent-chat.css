@@ -173,6 +173,16 @@
 .agentChatSuggestionChip.commandQuietAction { width: auto; max-width: 100%; min-height: var(--control-compact); padding: var(--space-1) var(--space-3); border-radius: var(--composer-radius); background: var(--command-panel-2); color: var(--command-ink); white-space: normal; text-align: left; overflow-wrap: anywhere; }
 .agentChatSuggestionChip.commandQuietAction:hover:not(:disabled) { background: color-mix(in srgb, var(--command-ink) 10%, var(--command-panel-2)); }
 
+/* A panel opened from Home: the messages of the thread fade in one after another, the newest last, and the composer settles to the bottom. */
+.agentChatPanel.isEntering .agentChatLog > * { opacity: 0; animation: agentChatMessageIn 420ms ease forwards; }
+.agentChatPanel.isEntering .agentChatLog > :nth-last-child(n+6) { animation-delay: 0ms; }
+.agentChatPanel.isEntering .agentChatLog > :nth-last-child(5) { animation-delay: 80ms; }
+.agentChatPanel.isEntering .agentChatLog > :nth-last-child(4) { animation-delay: 160ms; }
+.agentChatPanel.isEntering .agentChatLog > :nth-last-child(3) { animation-delay: 240ms; }
+.agentChatPanel.isEntering .agentChatLog > :nth-last-child(2) { animation-delay: 320ms; }
+.agentChatPanel.isEntering .agentChatLog > :nth-last-child(1) { animation-delay: 400ms; }
+@keyframes agentChatMessageIn { from { opacity: 0; transform: translateY(var(--space-2)); } to { opacity: 1; transform: none; } }
+
 /* Images the owner sends: small pictures under a message, in a proposal row, and above the composer's row. */
 .agentChatImages { margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; }
 .agentChatImage { position: relative; display: inline-flex; }
@@ -218,4 +228,5 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .agentChatPanel, .agentChatScrim { animation: none; }
+  .agentChatPanel.isEntering .agentChatLog > * { opacity: 1; animation: none; }
 }

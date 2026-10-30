@@ -1,21 +1,33 @@
 /* Home: one centered column. The composer block sits at the foot of the content area when the column is shorter than the window. */
 .home { display: flex; flex-direction: column; min-height: 100%; color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); }
+.home:focus { outline: 0; }
 
 .column { display: flex; flex-direction: column; flex: 1 1 auto; gap: var(--space-8); width: min(720px, 100%); min-width: 0; margin: 0 auto; }
+
+/* Everything but the composer: in focus mode and while the thread is open it fades out and rises a little; the composer block lifts on its own (HomeAril). */
+.content { display: flex; flex-direction: column; gap: var(--space-8); min-width: 0; transition: opacity 280ms ease, transform 280ms ease; }
+.content.isHidden { opacity: 0; transform: translateY(-10px); pointer-events: none; }
+
+/* In focus mode a transparent layer over the content area catches the click outside; the composer block is above it. A phone covers the whole screen. */
+.dim { position: fixed; z-index: 2; inset: var(--command-header-height) 0 0 var(--command-rail-width); }
 
 /* The title is empty until the client knows the hour, so it keeps its height and nothing moves when the greeting arrives. */
 .home h1 { min-height: 1.25em; }
 
 .note { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); }
 
-/* The status line: provider status, then the What's new line. */
+/* The status line: the provider dots, then the What's new line. */
 .status { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); min-width: 0; padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
-.home .providerStatus { margin: 0; padding: 0; border: 0; }
 
 .composer { margin-top: auto; min-width: 0; }
 
 .home :is(a, button, summary):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 @media (max-width: 760px) {
-  .column { gap: var(--space-6); }
+  .column, .content { gap: var(--space-6); }
+  .dim { z-index: 84; inset: 0; background: var(--command-ground); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content { transition: none; }
 }

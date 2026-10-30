@@ -347,10 +347,14 @@ These are exceptions to the 4px and 6px radius rule and to the six button roles.
 - A suggestion chip has the raised `--command-panel-2` fill and no border, and it is 32px high.
 - A suggestion chip composes the Quiet role with a local fill and radius. It is not a seventh role.
 - The composer on Home is the chat composer, drawn in the Home column. It keeps every exception in this list.
+- In Home's focus mode the composer block lifts to the vertical middle of the content area over 480ms, and the rest of Home fades out over 280ms. [Home design](docs/internal/design/home.md#focus-mode) owns the motion.
+- The lifted Home composer takes the overlay shadow. It is the only part of the chat but the launcher that does.
+- The panel that Home opens settles its composer from the place of the Home composer to the bottom over 480ms. [Agent chat design](docs/internal/design/agent-chat.md#panel-opened-from-home) owns it.
+- Every one of these motions is removed under reduced motion.
 - The Aril panel is docked to the right edge, with a one-pixel left line, no radius, and no shadow.
 - The panel lays over the page and does not move it.
 - The panel is not a floating card, so it takes no overlay shadow.
-- Only the Aril launcher takes the overlay shadow among the surfaces of the chat.
+- Only the Aril launcher, and the Home composer while focus mode lifts it, take the overlay shadow among the surfaces of the chat.
 - While the panel is open on a desktop width, a scrim covers the page below the header and behind the panel, with the `--command-scrim` fill and no blur.
 - A click on the scrim closes the panel as Close does.
 - The scrim is not drawn at 760px and narrower, where the panel is a sheet.

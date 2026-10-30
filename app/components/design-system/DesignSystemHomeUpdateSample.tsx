@@ -1,12 +1,15 @@
 "use client";
 
+import type { ProviderServiceStatus } from "../../../shared/monitor-contract";
+import { ProviderStatusQuiet } from "../ProviderStatus";
 import type { TaskLog } from "../tasks/task-desktop";
 import { HomeArilLine } from "../home/HomeArilLine";
-import { HomeChips } from "../home/HomeAril";
+import { HomeChips, HomeComposerShell } from "../home/HomeAril";
+import { HomeRunningList } from "../home/HomeContinue";
 import { HomeNeedsYou } from "../home/HomeNeedsYou";
 import { HomeUpdateCard } from "../home/HomeUpdateCard";
 import { HomeUpdateIllustration } from "../home/HomeUpdateIllustration";
-import { arilLine, type HomeLogReads, type NeedsItem } from "../home/home-model";
+import { arilLine, type HomeLogReads, type NeedsLine, type RunningSession } from "../home/home-model";
 import { homeSuggestions } from "../agent-chat/agent-chat-presentation";
 import { SampleComposer } from "./DesignSystemAgentChatSample";
 import { SAMPLE_TIME, Sample, Section } from "./DesignSystemKit";
@@ -27,16 +30,25 @@ export function HomeUpdateSection() {
   </Section>;
 }
 
-const REPOSITORY = `repo-${"a".repeat(24)}`;
-const OTHER = `repo-${"b".repeat(24)}`;
-const NEEDS: NeedsItem[] = [
-  { kind: "queue", key: "queue", repositoryId: OTHER, repositoryName: "clapline", reason: "A start failed" },
-  { kind: "task", key: "t1", repositoryId: REPOSITORY, repositoryName: "pomegr", taskId: "T-41", title: "Retry the upload with backoff", state: "needs_review", detail: { words: "CI failed", urgent: true } },
-  { kind: "task", key: "t2", repositoryId: REPOSITORY, repositoryName: "pomegr", taskId: "T-38", title: "Show the retry count in the upload log", state: "needs_review", detail: { words: "Review passed", urgent: false } },
-  { kind: "task", key: "t3", repositoryId: OTHER, repositoryName: "clapline", taskId: "T-12", title: "Move the settings page to the new shell", state: "needs_review", detail: null },
-  { kind: "task", key: "t4", repositoryId: REPOSITORY, repositoryName: "pomegr", taskId: "T-35", title: "Cut the upload work into tasks", state: "stalled", detail: null },
-  { kind: "task", key: "t5", repositoryId: OTHER, repositoryName: "clapline", taskId: "T-9", title: "Rename the export action", state: "blocked", detail: null },
+// One line for each thing the owner has to do. No task ID and no title: the action, a failure detail in amber, and the repository.
+const NEEDS: NeedsLine[] = [
+  { key: "s", action: "Answer a session that is waiting for you", detail: null, repository: "clapline", href: "/sessions" },
+  { key: "r1", action: "Review 5 finished tasks", detail: null, repository: "clapline", href: "/tasks" },
+  { key: "r2", action: "Review 1 finished task", detail: { words: "CI failed", urgent: true }, repository: "pomegr", href: "/tasks" },
+  { key: "t", action: "Check 2 stalled tasks", detail: null, repository: "pomegr", href: "/tasks" },
+  { key: "q", action: "Restart the paused queue", detail: { words: "CLI not found", urgent: true }, repository: "waymark", href: "/tasks" },
 ];
+
+const RUNNING: RunningSession[] = [
+  { key: "a", title: "Storage allowance pricing decision", waiting: true, meta: "clapline · Codex · 2 min", href: "/sessions" },
+  { key: "b", title: "Rough overlay and animatic player polish", waiting: false, meta: "clapline · Claude Code · 12 min", href: "/sessions" },
+  { key: "c", title: "Build the new Home", waiting: false, meta: "pomegr · Claude Code · 4 min", href: "/sessions" },
+];
+
+const provider = (id: "claude" | "codex", source: string, status: ProviderServiceStatus["status"]): ProviderServiceStatus => ({
+  provider: id, source: source as ProviderServiceStatus["source"], statusPageUrl: id === "claude" ? "https://status.claude.com" : "https://status.openai.com", status, readiness: "ready", freshness: "fresh",
+  checkedAt: new Date(SAMPLE_TIME).toISOString(), updatedAt: new Date(SAMPLE_TIME).toISOString(), incidentKey: null, incidents: [],
+});
 
 const entry = (id: number, task: string, kind: TaskLog["entries"][number]["kind"], hoursAgo: number): TaskLog["entries"][number] => ({ id, task, kind, at: SAMPLE_TIME - hoursAgo * 3_600_000, pullRequest: null });
 const LOG: TaskLog = {
@@ -47,7 +59,7 @@ const QUIET_LOG: TaskLog = { entries: [entry(1, "T-20", "done", 30)], more: fals
 const reads = (...logs: (TaskLog | null)[]): HomeLogReads => new Map(logs.map((log, index) => [`repo-${String(index).repeat(24)}`, log]));
 
 export function HomeSection() {
-  return <Section id="home" title="Home" lede="Home is one centered column: a greeting, the Aril line, Needs you, Continue, a status line, and the composer with its suggestions. Fixed rules write the Aril line and pick the Needs you rows from the task log and the boards; no model runs. The composer is the chat composer, and the suggestion chips fill its field without sending.">
+  return <Section id="home" title="Home" lede="Home is one centered column: a greeting, the Aril line, Needs you, Continue, a status line, and the composer with its suggestions. Fixed rules write the Aril line and pick the Needs you lines from the boards, the task logs, and the sessions Pomegr observes; no model runs. The composer is the chat composer, and the suggestion chips fill its field without sending. Focusing the composer lifts it to the middle of the page, and Send hands the page to the maximized Aril view.">
     <div className="designSystemStates">
       <Sample label="Aril line, with counts" note="The tasks the logs of the last 24 hours record, once for each event, in a fixed order. Sample times are illustrative.">
         <div className="designSystemTaskFrame"><HomeArilLine>{arilLine(reads(LOG), SAMPLE_TIME)}</HomeArilLine></div>
@@ -63,13 +75,30 @@ export function HomeSection() {
       </Sample>
     </div>
     <div className="designSystemGrid designSystemChatGrid">
-      <Sample label="Needs you" note="A paused queue first, then the tasks that need review, are stalled, or are blocked. A Needs review task adds the newest CI, review, or merge result after it reported complete; failures take the amber text color. At most five rows, and a quiet link to the rest.">
-        <div className="designSystemTaskFrame"><HomeNeedsYou items={NEEDS.slice(0, 5)} total={8} /></div>
+      <Sample label="Needs you" note="One line for each thing to do, grouped by kind and repository, with the repository on the right. No task ID and no title. Amber text only for a failure: CI failed, Review failed, Merge refused, and the reason a queue is paused. Sessions that wait come first, then finished tasks, stalled tasks, blocked tasks, and paused queues.">
+        <div className="designSystemTaskFrame"><HomeNeedsYou lines={NEEDS} total={NEEDS.length} /></div>
       </Sample>
-      <Sample label="Composer on Home, with suggestions" note="The chips are the Quiet role on the raised fill with the composer radius. A chip fills the message field and sends nothing. Open conversation opens the panel without sending.">
+      <Sample label="Continue, running sessions" note="Up to four live sessions that work or wait for the owner. A state dot, the title (the task's title for a session started for a task), the state, and the repository, provider, and time since the session started. A session that waits shows Waiting for you in amber.">
+        <div className="designSystemTaskFrame"><HomeRunningList sessions={RUNNING} /></div>
+      </Sample>
+      <Sample label="Provider status, healthy" note="A muted dot and the provider's name. The popover keeps the details.">
+        <div className="designSystemTaskFrame"><ProviderStatusQuiet providers={[provider("claude", "Claude Code", "operational"), provider("codex", "Codex", "operational")]} /></div>
+      </Sample>
+      <Sample label="Provider status, not healthy" note="Only a provider that reports a degraded service, a maintenance, or an outage gets words, in amber.">
+        <div className="designSystemTaskFrame"><ProviderStatusQuiet providers={[provider("claude", "Claude Code", "operational"), provider("codex", "Codex", "degraded")]} /></div>
+      </Sample>
+      <Sample label="Composer on Home, with suggestions" note="The chips are the Quiet role on the raised fill with the composer radius. A chip fills the message field and sends nothing.">
         <div className="designSystemTaskFrame agentChatHome">
-          <HomeChips suggestions={homeSuggestions({ attention: true, work: true })} onPick={ignore} onOpen={ignore} />
+          <HomeChips suggestions={homeSuggestions({ attention: true, work: true })} onPick={ignore} />
           <SampleComposer repositories />
+        </div>
+      </Sample>
+      <Sample label="Composer on Home, focus mode" note="Focusing the composer, or picking a chip, fades the rest of Home out and lifts the composer, with the chips above it and the hint under it, to the middle of the content area. The composer takes the overlay shadow while it is lifted. Esc, or a click outside while the field is empty, returns to Home; Send turns the page into the maximized Aril view.">
+        <div className="designSystemTaskFrame">
+          <HomeComposerShell mode="focus">
+            <HomeChips suggestions={homeSuggestions({ attention: true, work: true })} onPick={ignore} />
+            <SampleComposer initial="What needs my attention first?" repositories />
+          </HomeComposerShell>
         </div>
       </Sample>
     </div>

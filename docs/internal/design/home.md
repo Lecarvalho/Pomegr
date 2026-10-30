@@ -1,6 +1,6 @@
 # Home design
 
-> Scope: the Home page: its greeting, the Aril line, Needs you, Continue, the status line, the composer and its suggestions, and the What's new line and dialog.
+> Scope: the Home page: its greeting, the Aril line, Needs you, Continue, the status line, the composer with its suggestions and focus mode, and the What's new line and dialog.
 > Authority: visual and interaction contract for this surface. [DESIGN.md](../../../DESIGN.md)
 > owns the tokens, the six button roles, the chip contract, and the shared controls.
 > The composer and the suggestion chips are specified in [Agent chat design](agent-chat.md#composer-on-home).
@@ -8,8 +8,9 @@
 > and `tests/ui/pomegr-design-contract-home.test.tsx`.
 
 Home is the page the owner sees first.
-It is a short briefing from the boards and a way to ask Aril, not a dashboard.
+It is a short briefing from the boards and the sessions, and a way to ask Aril, not a dashboard.
 The [Aril agent plan](../plans/aril-agent.md) set the direction on 2026-10-28.
+The owner approved the revised design, with Needs you, the running sessions, and focus mode, on 2026-10-30.
 
 ## Home
 
@@ -21,7 +22,7 @@ The [Aril agent plan](../plans/aril-agent.md) set the direction on 2026-10-28.
 | Order | Part | Drawn |
 | --- | --- | --- |
 | 1 | Greeting and the Aril line | Always; the Aril line only where the task log can be read |
-| 2 | Needs you | When the Tasks home answers, and holds an item |
+| 2 | Needs you | When something waits for the owner |
 | 3 | Continue | Always |
 | 4 | Status line | Always |
 | 5 | Suggestions and composer | Only where the chat can be reached |
@@ -37,7 +38,7 @@ The [Aril agent plan](../plans/aril-agent.md) set the direction on 2026-10-28.
 - That decision is made before anything is drawn: `useAgentChatAvailability` decides.
 - While the client is still identified, Home draws no Aril line, no Needs you, and no composer.
 - A browser on the same computer draws the greeting, Needs you, Continue, and the status line.
-- That browser draws no Aril line, no Needs you detail, and no composer, because it reads no task log and cannot reach the chat.
+- That browser draws no Aril line, no failure detail on Needs you, and no composer, because it reads no task log and cannot reach the chat.
 - So no part is drawn and then taken away.
 
 ## Greeting
@@ -73,23 +74,50 @@ The [Aril agent plan](../plans/aril-agent.md) set the direction on 2026-10-28.
 
 ## Needs you
 
-- Needs you lists what waits for the owner now.
-- An item is a current state of a board, never an old log entry.
-- So an item leaves the list as soon as its state ends.
-- The list is drawn from the Tasks home. [Tasks](../architecture/tasks.md#tasks-home) owns that read.
-- A fixed rule picks the items. No model picks them.
+- Needs you lists what the owner has to do now, one line for each thing.
+- A fixed rule picks and words the lines. No model runs.
+- A line is a current state of a board or a session, never an old log entry.
+- So a line leaves the list as soon as its state ends.
+- With nothing to do, Needs you is not drawn.
+- A line holds the action, an optional failure detail, the repository on the right, and a chevron.
+- A line names no task and shows no task title and no task ID.
+- The lines are grouped by kind and by repository, and phrased as the action.
 
-| Item | State that makes it | Words after the title |
+| Line | What makes it | Action words |
 | --- | --- | --- |
-| A task | Needs review: the agent reported complete | “Needs review” |
-| A task | Stalled: the bound session ended without a report | “Stalled” |
-| A task | Blocked by agent: the agent called `block_task` | “Blocked by agent” |
-| A queue | Paused: a start failed, and the queue waits to be turned on again | “Queue paused”, and the reason below |
+| Sessions that wait | A live session whose agent needs input; one line for each repository | “Answer a session that is waiting for you”, “Answer n sessions that are waiting for you” |
+| Finished tasks | Tasks in Needs review: the agent reported complete; one line for each repository | “Review 1 finished task”, “Review n finished tasks” |
+| Stalled tasks | Tasks in Stalled: the bound session ended without a report | “Check 1 stalled task”, “Check n stalled tasks” |
+| Blocked tasks | Tasks in Blocked by agent: the agent called `block_task` | “Unblock 1 task”, “Unblock n tasks” |
+| A paused queue | A queue that a failed start paused, and that waits to be turned on again | “Restart the paused queue” |
 
-- These states are not items: Not queued, Queued, Scheduled, Done, a running queue, and a queue that is blocked.
-- A blocked queue is already one item: the task that blocks it is Stalled or Blocked by agent.
-- A pause for provider usage is not an item, because it ends by itself.
+- The order is fixed: the sessions that wait, the finished tasks, the stalled tasks, the blocked tasks, and the paused queues.
+- Among the finished tasks, the plain lines come before the lines of a failure.
+- A session waits when Pomegr observed that an agent needs input: the **Needs input** state of [Sessions and agents](../../public/using-pomegr/sessions-and-agents.md#read-a-sessions-state). The state wins even while other agents work.
+- These states are not lines: Not queued, Queued, Scheduled, Done, a running queue, a blocked queue, a session that works, is idle, or is open, and a session that is not live.
+- A blocked queue is already a line: the task that blocks it is Stalled or Blocked by agent.
+- A pause for provider usage is not a line, because it ends by itself.
 - The task log records no ask of an owner and no failed start by itself. A failed start is a paused queue.
+- The counts cover the 50 newest tasks that the Tasks home serves. [Tasks](../architecture/tasks.md#tasks-home) owns that read.
+- A repository that the inventory no longer lists has no board to open, so its lines are left out.
+- At most eight lines are drawn, and a muted line says how many more wait.
+
+### Failure detail
+
+- A failure detail is one word after the action, in amber text.
+- Amber text marks a failure only. No other word on a line is amber.
+- A task in Needs review has a failure when its newest CI, review, or merge result after it reported complete failed. A failure is its own line.
+- A passed result, or no result, joins the plain line of its repository, and the line shows no word for it.
+- The detail is the newest entry of these kinds that follows the newest `review` entry of the task.
+
+| Detail | Newest log kind after the task's latest `review` entry |
+| --- | --- |
+| “CI failed” | `checks_failed` |
+| “Review failed” | `review_failed` |
+| “Merge refused” | `grant_merge_refused` |
+
+- The log kinds `checks_passed`, `review_passed`, `merged`, and `grant_merge` are passed results.
+- A paused queue always has a failure detail: the reason, in amber text.
 
 | Pause reason | Words |
 | --- | --- |
@@ -102,71 +130,118 @@ The [Aril agent plan](../plans/aril-agent.md) set the direction on 2026-10-28.
 | `environment_invalid` | “Environment invalid” |
 | Another or none | “Paused” |
 
-- The queues come first, because a paused queue holds every task of its board. The tasks follow, newest change first.
-- At most five items are drawn. A quiet link **Show all n** opens the Tasks page when more wait.
-- An item is one row and one link to the board of its repository.
-- A task row holds the repository name, the task ID in the data face, the title on one line with an ellipsis, and the state words.
-- A queue row holds the repository name, “Queue paused”, and the reason words.
-- State words are muted `--text-xs` text. They are not chips.
-- The title is the one line that the Tasks home serves. It is the session title or the first line of the task text.
-- A Needs review item adds one detail word from the task log, in the same muted text.
-
-| Detail | Newest log kind after the task's latest `review` entry |
-| --- | --- |
-| “CI failed” | `checks_failed` |
-| “CI passed” | `checks_passed` |
-| “Review failed” | `review_failed` |
-| “Review passed” | `review_passed` |
-| “Merge refused” | `grant_merge_refused` |
-| “Merged” | `merged`, `grant_merge` |
-
-- The detail is the newest entry of these kinds that follows the newest `review` entry of the task.
-- A task with no such entry has no detail.
-- “CI failed”, “Review failed”, and “Merge refused” take the amber text color, because the owner can act on them. No other detail does.
-- A task that is not Needs review has no detail.
-- Home reads the log of the 12 boards that changed last. A task of an older board has no detail.
-- Needs you waits for the logs where the client reads them, so a detail never appears after its row.
-- When the Tasks home is not ready or holds no item, Needs you is not drawn.
+- Home reads the log of the 12 boards that changed last. A task of an older board has no failure detail.
+- Needs you waits for the Tasks home, the logs, the sessions, and the inventory, so no line appears after another is shown.
 - When the Tasks home is unavailable, one quiet line reads “Task boards are unavailable. Pomegr will retry.”
-- A client that may not read the Tasks home gets no line.
+- A client that may not read the Tasks home gets no such line.
+
+### Where a line goes
+
+- A line is one link.
+- The lines of tasks and queues open the Tasks page of the repository. The Tasks page has no filter by state, so the board shows the column.
+- A line for one session that waits opens that session.
+- A line for several sessions opens the Sessions page of the repository, or the Sessions page when the sessions have no repository.
 
 ## Continue
 
-- Continue is the `h2` **Continue**, with a quiet **Browse sessions** link to the Sessions page.
-- It holds the last viewed session, the pinned destinations, and **Add pins**.
-- The last viewed session is one link row, with its title, its project, and its provider.
+- Continue is the `h2` **Continue**, a muted “· n running” when sessions run, and a quiet **Browse sessions** link to the Sessions page.
+- It holds the running sessions, the last viewed session while none runs, and one small line of pinned destinations.
+
+### Running sessions
+
+- The running sessions are the live sessions whose state is **In progress** or **Needs input**. Pomegr already observes both.
+- A session that is idle, open, stopped, closed, unknown, or not live is not a running session.
+- At most four sessions are drawn, and “n running” counts all of them.
+- A session that waits comes first. The others follow, newest activity first.
+- A session is one link row: a 7px state dot, the title, the state, and where it runs.
+- The state reads “Working” in muted text, or “Waiting for you” in amber text.
+- The dot is green for a session that works and amber for a session that waits.
+- Where it runs reads “repository · provider · time”, in muted text.
+- The time is the time since the session started: “<1 min”, “n min”, “n h”, “n h n min”, or “n d”. A session with no known start has no time.
+- A session started for a task, or assigned to it, shows the title line of that task. Any other session, a review session included, shows its own title.
+- The title line of a task is the first text after its leading tags, as the Tasks home words it.
+- The task comes from the board of the session's repository, read through the same store as the Tasks page.
+- The task text is a board value, so it never enters `/api/state`. Home draws only that one line.
+- The rows wait for the boards of the shown sessions, so no title is drawn and then replaced by another.
+- When a board cannot be read, the row shows the session's own title.
+- On the phone, the row wraps: the state goes to the end of the first line, and the place goes under the title.
+
+### Last viewed session
+
+- With no running session, Continue shows the last viewed session as one link row, with its title, its project, and its provider.
 - With no last viewed session, one muted sentence says that a shortcut will appear after the owner opens a session.
 - A last viewed session that the catalog does not hold reads as unavailable. Home never invents a title.
-- The pinned destinations are a list named **Pinned destinations**, in two columns wider than 760px.
-- A pin is a link and an icon **Unpin** action. The preferences keep only its kind and its identity.
-- **Add pins** opens the picker. The owner may pin up to six destinations.
+
+### Pinned line
+
+- The pinned destinations are one small muted line under the sessions: **Pinned**, the destinations as brand-text links, and **Add pins** at the end.
+- With no pin, the line holds **Add pins** only.
+- Each pin has an icon **Unpin** action. It shows for the pin that has the pointer or the focus, and it is always shown on a touch screen.
+- **Add pins** opens the picker under the line. The owner may pin up to six destinations.
+- The preferences keep only the kind and the identity of a pin.
 - Pins and the last viewed session stay in browser storage and do not survive a desktop restart.
 
 ## Status line
 
 - The status line is one quiet line at the foot of the content, above the composer.
-- It holds the provider status area and the What's new line.
-- The provider status area is the shared `ProviderStatusArea`, with its label and one row for each provider.
-- The two parts wrap on a narrow window. The What's new line stays last.
+- It holds a muted dot and the name of each provider, and the What's new line.
+- A dot is green at reduced strength when a provider is healthy, and neutral when Pomegr cannot tell.
+- A provider that reports a degraded service, a maintenance, or an outage, freshly read, adds its words in amber text.
+- A provider that is healthy, or that Pomegr cannot read, adds no word.
+- Each provider is a popover trigger with the details: when it was checked, and the status page.
+- The line wraps on a narrow window. The What's new line stays last.
 
 ## Composer and suggestions
 
 - The composer is the chat composer. [Agent chat design](agent-chat.md#composer-on-home) owns its parts and its look.
-- The suggestions sit above the composer as chips. A quiet **Open conversation** action sits at the end of that row.
-- **Open conversation** opens the panel on the repository's thread and sends nothing.
+- The suggestions sit above the composer as chips.
 - A suggestion chip fills the message field and sends nothing.
-- Send hands the message to the dock. The dock opens the panel on that repository's thread and sends the message there.
-- On the phone, the panel opens as the full-screen sheet.
 - The dock draws no launcher on Home, because the composer is the way in.
+- Home has no way to open the conversation without a message. The owner opens it from another page, or sends a message.
+
+## Focus mode
+
+- Focusing the message field of the composer, or picking a suggestion chip, starts focus mode.
+- Another control of the composer, such as attach or the repository choice, does not start it.
+- In focus mode the greeting, the Aril line, Needs you, Continue, and the status line fade out and cannot be reached.
+- They fade over 280ms, and they rise 10px as they go.
+- The block of the chips and the composer moves to the vertical middle of the content area over 480ms, with the curve `cubic-bezier(.2, .8, .2, 1)`.
+- The page does not move: the shift is measured from the place of the block in the page, and the block keeps its place in the flow.
+- The composer takes the overlay shadow while it is lifted.
+- The hint “Enter to send · Esc to go back” shows under the composer, in muted caption text, and fades in over 280ms.
+- Escape returns to Home, and the draft stays.
+- Escape first belongs to an open list of the composer.
+- A click outside the block returns to Home while the field is empty. It does nothing while the field holds text or an image.
+- A transparent layer over the content area catches that click. The header and the rail stay above it.
+- Returning moves focus to the Home page, never into the composer, which would start focus mode again.
+- Reduced motion removes every fade and move: the parts and the composer change at once.
+
+### Send
+
+- Send hands the message to the dock. The dock opens the [maximized Aril view](agent-chat.md#panel-opened-from-home) on that repository's thread and sends the message there.
+- The earlier messages of the thread fade in one after another, then the new message, and the answer is written as usual.
+- The composer of the panel starts where the composer of Home was, and settles to the bottom over 480ms.
+- The chips go away, and Home stays hidden under the panel.
+- Closing the maximized view returns to Home: the parts fade back in, and the composer returns to the foot of the page.
+- Closing the view does not start focus mode.
+
+### Phone
+
+- On the phone, focus mode fills the screen: a layer in the canvas fill covers the page, header included.
+- The composer does not lift. It is fixed to the bottom of the screen, above the keyboard, with the chips above it.
+- The block follows the keyboard: the visual viewport tells how far the keyboard covers the screen.
+- The hint is not drawn, because a phone has no Escape key. A Quiet **Back to Home** action takes its place.
+- Send turns the screen into the full-screen sheet of the panel.
 
 ## What Home reads
 
 | Read | Where it comes from | What it draws |
 | --- | --- | --- |
-| Session catalog | The shell | Continue |
+| Session catalog | The shell | Needs you, Continue |
 | Provider status | `GET /api/provider-status` | The status line |
 | Tasks home | `GET /api/tasks?view=home` | Needs you, the suggestions |
-| Task log | The desktop or the paired route, once for each of 12 boards | The Aril line, the details of Needs you |
+| Task log | The desktop or the paired route, once for each of 12 boards | The Aril line, the failure details of Needs you |
+| Boards | `GET /api/tasks?repositoryId=`, through the Tasks page's store, for the repositories of the shown running sessions | The title line of the task of a running session |
 | Repository inventory | The shell | The repository names, the composer's repository |
 | Thread run | The chat's `thread` operation, once for the repository the composer shows | The composer's first model and effort |
 
@@ -235,6 +310,8 @@ The [Aril agent plan](../plans/aril-agent.md) set the direction on 2026-10-28.
 ## Samples
 
 - `/design-system` renders the What's new line and the dialog.
-- It renders Home's Needs you list with every item kind, a failed detail, and a passed detail.
-- It renders the Aril line with counts, with nothing logged, and with a log that could not be read.
-- It renders the suggestion chips above the composer, as [Agent chat design](agent-chat.md#samples) lists.
+- It renders Home's Needs you list with every line kind and a failure detail.
+- It renders the running sessions with a session that waits.
+- It renders the quiet provider line, healthy and with a provider that is not.
+- It renders the Aril line with counts, with nothing logged, with a log that could not be read, and while it reads.
+- It renders the suggestion chips above the composer, and the composer in focus mode, as [Agent chat design](agent-chat.md#samples) lists.

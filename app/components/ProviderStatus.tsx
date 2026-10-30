@@ -46,21 +46,25 @@ function ProviderStatusSymbol({ status }: { status: ProviderServiceStatus | unde
   </svg>;
 }
 
-export function ProviderStatusDetails({ status, compact = false, mobileIconOnly = false, chip = false, dotOnly = false }: { status: ProviderServiceStatus | undefined; compact?: boolean; mobileIconOnly?: boolean; chip?: boolean; dotOnly?: boolean }) {
+/** A provider that reports a degraded service, a maintenance, or an outage, and that Pomegr read freshly. Only then does the quiet line say a word. */
+export const providerNeedsWords = (status: ProviderServiceStatus | undefined) => { const tone = providerStatusTone(status); return tone === "warning" || tone === "critical"; };
+
+export function ProviderStatusDetails({ status, compact = false, mobileIconOnly = false, chip = false, dotOnly = false, quiet = false }: { status: ProviderServiceStatus | undefined; compact?: boolean; mobileIconOnly?: boolean; chip?: boolean; dotOnly?: boolean; quiet?: boolean }) {
   const source = status?.source || "Provider";
   if (!status) return dotOnly ? <span className={`${styles.dot} ${styles.unknown}`} role="img" aria-label={statusLabel(status)} /> : <ProviderStatusIndicator status={status} compact={compact} />;
   const label = statusLabel(status);
   const linkLabel = `View ${status.incidents.length ? "incident" : "status page"}`;
   return <DottedInfoPopover
     ariaLabel={`${source} provider service status details${mobileIconOnly || chip || dotOnly ? `: ${label}` : ""}`}
-    className={`${styles.details}${compact ? ` ${styles.detailsCompact}` : ""}${mobileIconOnly ? ` ${styles.mobileIconOnly}` : ""}${chip ? ` ${styles.chip} ${styles[providerStatusTone(status)]}` : ""}${dotOnly ? ` ${styles.dotOnly} ${styles[providerStatusTone(status)]}` : ""}`}
+    className={`${styles.details}${compact ? ` ${styles.detailsCompact}` : ""}${mobileIconOnly ? ` ${styles.mobileIconOnly}` : ""}${chip ? ` ${styles.chip} ${styles[providerStatusTone(status)]}` : ""}${dotOnly ? ` ${styles.dotOnly} ${styles[providerStatusTone(status)]}` : ""}${quiet ? ` ${styles.quiet} ${styles[providerStatusTone(status)]}` : ""}`}
     content={<>
       {(mobileIconOnly || dotOnly) && <p className={dotOnly ? styles.statusLabel : styles.mobileStatusLabel}>{label}</p>}
       <dl className={styles.detailList}><div><dt>Last checked</dt><dd>{timestamp(status.checkedAt)}</dd></div><div><dt>Provider update</dt><dd>{timestamp(status.updatedAt)}</dd></div></dl>
     </>}
     link={{ href: statusLink(status), label: linkLabel, ariaLabel: linkLabel }}
   >
-    {dotOnly ? <span className={`${styles.dot} ${styles[providerStatusTone(status)]}`} aria-hidden="true" /> : <ProviderStatusIndicator status={status} compact={compact} />}
+    {quiet ? <><span className={styles.dot} aria-hidden="true" /><span className={styles.quietName}>{status.source}</span>{providerNeedsWords(status) && <span className={styles.quietWords}>{label}</span>}</>
+      : dotOnly ? <span className={`${styles.dot} ${styles[providerStatusTone(status)]}`} aria-hidden="true" /> : <ProviderStatusIndicator status={status} compact={compact} />}
     {mobileIconOnly && <ProviderStatusSymbol status={status} />}
   </DottedInfoPopover>;
 }
@@ -71,6 +75,13 @@ export function ProviderStatusArea({ providers, className = "", headingId }: { p
     <div className={styles.areaRows}>
       {providers.map((provider) => <span className={styles.areaRow} key={provider.provider}><strong>{provider.source}</strong><ProviderStatusDetails status={provider} compact /></span>)}
     </div>
+  </aside>;
+}
+
+/** The quiet line of Home: a dot and the name of each provider, and words, in amber, only for a provider that is not healthy. The popover keeps the details. */
+export function ProviderStatusQuiet({ providers, className = "" }: { providers: ProviderServiceStatus[]; className?: string }) {
+  return <aside className={`${styles.quietArea} ${className}`} aria-label="Provider service status">
+    {providers.map((provider) => <ProviderStatusDetails key={provider.provider} status={provider} quiet />)}
   </aside>;
 }
 

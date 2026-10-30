@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import {
   TASK_COLUMN_ROLES, TASK_GATE_REASONS, TASK_GATE_THRESHOLDS, TASK_ID_PATTERN, TASK_QUEUE_PAUSE_REASONS, TASK_QUEUE_WAIT_REASONS, TASK_QUEUE_WAIT_TASK_LIMIT, createEmptyTaskBoard,
   type ArilGrant, type ArilMemoryEntry, type ArilSettings, type Task, type TaskBoard, type TaskCheck, type TaskGateReason, type TaskGates, type TaskGateThreshold, type TaskGateUsage, type TaskProvider, type TaskQueuePauseReason, type TaskQueueSchedule, type TaskQueueWait, type TaskQueueWaitReason, type TaskState,
@@ -404,6 +404,31 @@ export function useTasks(repositoryId: string): { board: TaskBoard; refresh: () 
   const store = useMemo(() => getStore(repositoryId), [repositoryId]);
   const board = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   return useMemo(() => ({ board, refresh: store.refresh }), [board, store]);
+}
+
+const NO_BOARDS: ReadonlyMap<string, TaskBoard> = new Map();
+
+/**
+ * The committed boards of several repositories, each read by the store `useTasks` shares, so a board that another part of the page already
+ * follows costs no second request. The map is the same object until a board changes, so a caller may depend on it.
+ */
+export function useTaskBoards(repositoryIds: readonly string[]): ReadonlyMap<string, TaskBoard> {
+  const key = [...new Set(repositoryIds)].sort().join(",");
+  const stores = useMemo(() => (key === "" ? [] : key.split(",").map((id) => [id, getStore(id)] as const)), [key]);
+  const held = useRef<{ stores: typeof stores; boards: TaskBoard[]; map: ReadonlyMap<string, TaskBoard> }>({ stores: [], boards: [], map: NO_BOARDS });
+  const subscribe = useCallback((listener: () => void) => {
+    const unsubscribe = stores.map(([, store]) => store.subscribe(listener));
+    return () => { for (const off of unsubscribe) off(); };
+  }, [stores]);
+  const snapshot = useCallback(() => {
+    const boards = stores.map(([, store]) => store.getSnapshot());
+    const previous = held.current;
+    if (previous.stores === stores && previous.boards.length === boards.length && previous.boards.every((board, index) => board === boards[index])) return previous.map;
+    const map = stores.length === 0 ? NO_BOARDS : new Map(stores.map(([id], index) => [id, boards[index]] as const));
+    held.current = { stores, boards, map };
+    return map;
+  }, [stores]);
+  return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
 export function resetTasksStoreForTests() {

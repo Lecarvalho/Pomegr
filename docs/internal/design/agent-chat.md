@@ -582,21 +582,20 @@ The task board is in [Task board design](task-board.md).
 - Home reads the thread once for each repository the composer shows, only to learn the run of its last turn.
 - **Stop** is never drawn on Home, because Home follows no turn.
 - The composer is disabled with no repository.
+- Focusing the message field starts focus mode, which lifts the composer. [Focus mode](home.md#focus-mode) owns it.
 
 ### Send from Home
 
-- **Send** hands the message to the dock. The dock opens the panel on the thread of that repository, and the panel sends the message.
+- **Send** hands the message to the dock. The dock opens the maximized panel on the thread of that repository, and the panel sends the message.
 - The panel sends it as if the owner typed it there: the same `send` operation, with the model and effort the Home composer showed.
+- Home does not open the docked panel. [Panel opened from Home](#panel-opened-from-home) says what the owner sees.
 - On a phone, the panel opens as the full-screen sheet.
 - Home then clears its field and its images.
-- The panel shows the message at once, with the time it was sent, and the answer being written under it.
 - A message that the desktop refuses goes back to the panel's field with the images, and the fixed alert line says why. Nothing is lost.
 - A message waiting in the panel's field is kept. A message from Home never replaces it.
-- The handoff is a window event, `pomegr:send-aril-chat`. It carries the repository ID, the text, the provider, the model, the effort, and the image IDs.
+- The handoff is a window event, `pomegr:send-aril-chat`. It carries the repository ID, the text, the provider, the model, the effort, the image IDs, and the screen position of the Home composer.
 - The event writes nothing to browser storage.
-- When the panel closes on Home, focus returns to the Home message field.
 - Home shows no sign of an answer being written or of a new answer. The launcher's states return when the owner leaves Home.
-- **Open conversation** opens the panel on the repository's thread, as the follow-up link does, and sends nothing.
 
 ### Suggestion chips
 
@@ -605,16 +604,31 @@ The task board is in [Task board design](task-board.md).
 - A chip is 32px high with 12px side padding, `--text-xs` text, and 44px high at 760px and narrower and on coarse pointers.
 - A chip wraps its label rather than widen the column.
 - Hover takes a 10% ink tint over the raised fill. A chip keeps the shared focus ring.
-- A chip puts its words in the message field, replacing the draft, and moves focus to the field. It sends nothing.
+- A chip puts its words in the message field, replacing the draft, and moves focus to the field. It starts focus mode, and it sends nothing.
 - The words are fixed. A fixed rule picks the first three of this list whose condition holds. No model picks them.
 
 | Order | Words | Condition |
 | --- | --- | --- |
-| 1 | “What needs my attention first?” | Needs you holds an item |
+| 1 | “What needs my attention first?” | Needs you holds a line |
 | 2 | “Which task should run first, and why?” | A board holds a task in Backlog, Ready, or In progress |
 | 3 | “Is any task too big for one session?” | The same |
 | 4 | “Break this feature into tasks: ” | Always |
 | 5 | “Which model fits this kind of task: ” | Always |
+
+## Panel opened from Home
+
+- The panel that Home opens is the existing expanded panel. It has the same header, log, search, and composer in the centered column. No second chat view exists.
+- The dock opens it expanded, whatever mode it had. The dock keeps that mode, and restores it when the panel closes.
+- A panel that was docked is docked again after the close, and a panel that was expanded stays expanded.
+- For 2.2 seconds after it opens, the panel has the class `isEntering`.
+- While it has the class, each message of the log fades in over 420ms and rises 8px, one after another, the newest last.
+- The last six messages start 80ms apart, and the earlier ones start with the first.
+- The composer of the panel starts where the composer of Home was on the screen, and settles to its place at the bottom.
+- The settle takes 480ms with the curve `cubic-bezier(.2, .8, .2, 1)`. The dock does it with a transform that it removes at the end.
+- Reduced motion removes the fade and the settle: the log and the composer are where they belong at once.
+- Closing the panel with **Close Aril**, Escape, or the scrim gives the page back to Home. The dock tells Home with the window event `pomegr:aril-chat-closed`.
+- After the close, focus goes to the Home page, never into the composer of Home, which would lift it again.
+- **Dock** inside the panel docks it over Home. Home stays hidden behind the scrim until the panel closes.
 
 ## Samples
 
@@ -626,7 +640,7 @@ The task board is in [Task board design](task-board.md).
 - It renders the queue change proposed for on and for off, on a paired device, turned on, turned on and held, turned off, and not changed.
 - It renders the panel with quick replies, answered, and waiting, and with a multiple-choice question, open and answered.
 - It renders the composer with a repository choice, with the model and the effort, with no known model, with an error, and over the limit.
-- It renders the composer as Home draws it, with the suggestion chips above it.
+- It renders the composer as Home draws it, with the suggestion chips above it, and in focus mode, lifted, with the overlay shadow and the hint.
 - It renders the panel over a dimmed page, with the scrim.
 - It renders the answer text, including HTML and a link shown as literal text.
 - The panel's own behavior (docking, the room the page makes for it, focus, Escape, the repository choice, loading older pages, bringing a message into view, polling, and the desktop bridge) is specified here but is not rendered there.

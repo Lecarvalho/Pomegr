@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { useId, useMemo, useRef, useState, type Ref } from "react";
+import { useTaskBoards } from "../../tasks-store";
 import type { SessionSummary } from "../../../shared/monitor-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { useSessionCatalog } from "../../hooks/SessionCatalogContext";
 import { HOME_PIN_LIMIT, normalizeHomePin, type HomePin, type HomePreferences } from "../../hooks/useHomePreferences";
 import { CommandIcon, type CommandIconName } from "../command-center/CommandIcon";
 import { CommandSelect, type CommandSelectOption } from "../command-center/CommandPage";
+import { useMinuteClock } from "../tasks/task-panel-hooks";
+import { HOME_RUNNING_SHOWN, runningCandidates, runningSessions, type RunningSession } from "./home-model";
 import styles from "./HomeContinue.module.css";
 
 type Destination = HomePin & { title: string; detail: string; href: string; icon: CommandIconName };
@@ -67,8 +70,25 @@ function PinPicker({ destinations, pins, onToggle, catalogLoading }: {
   </div>;
 }
 
-/** The last viewed session, the pinned destinations, and the picker that pins more. The session catalog and the preferences are the only things it reads. */
-export function HomeContinue({ preferences, browseRef }: { preferences: HomePreferences; browseRef?: Ref<HTMLAnchorElement> }) {
+/** The running sessions: a state dot, the title, the state (Working, or Waiting for you in amber), and where the session runs and for how long. */
+export function HomeRunningList({ sessions }: { sessions: readonly RunningSession[] }) {
+  return <ul className={styles.sessions} aria-label="Running sessions">
+    {sessions.map((session) => <li key={session.key}>
+      <Link className={styles.sessionRow} href={session.href}>
+        <span className={`${styles.dot} ${session.waiting ? styles.dotWaiting : styles.dotWorking}`} aria-hidden="true" />
+        <span className={styles.sessionTitle}>{session.title}</span>
+        <span className={session.waiting ? styles.waiting : styles.state}>{session.waiting ? "Waiting for you" : "Working"}</span>
+        <span className={styles.meta}>{session.meta}</span>
+      </Link>
+    </li>)}
+  </ul>;
+}
+
+/**
+ * The running sessions (at most four: working, or waiting for the owner), the last viewed session while none runs, and the pinned destinations in one
+ * small line. The session catalog, the boards that name a task's title, and the preferences are the only things it reads.
+ */
+export function HomeContinue({ preferences, names, browseRef }: { preferences: HomePreferences; names: ReadonlyMap<string, string>; browseRef?: Ref<HTMLAnchorElement> }) {
   const { sessions, loading, connected, readiness } = useSessionCatalog();
   const { pins, lastViewedSessionId, ready, persistent, togglePin } = preferences;
   const headingId = useId();
@@ -81,29 +101,39 @@ export function HomeContinue({ preferences, browseRef }: { preferences: HomePref
   const [pinAnnouncement, setPinAnnouncement] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  // A session started for a task shows the task's title, so the boards of the shown sessions are read (the Tasks page's own store) before any row is drawn.
+  const repositoryIds = useMemo(() => runningCandidates(sessions).slice(0, HOME_RUNNING_SHOWN).flatMap((session) => (session.repositoryId ? [session.repositoryId] : [])), [sessions]);
+  const boards = useTaskBoards(repositoryIds);
+  const now = useMinuteClock();
+  const running = useMemo(() => runningSessions(sessions, names, boards, now), [sessions, names, boards, now]);
+  const showRunning = running.total > 0 && running.settled;
+
   return <section className={styles.continue} aria-labelledby={headingId} aria-busy={!ready || undefined}>
     <header className={styles.heading}>
-      <h2 id={headingId}>Continue</h2>
+      <h2 id={headingId}>Continue{showRunning && <span className={styles.count}> · {running.total} running</span>}</h2>
       <Link ref={browseRef} className="commandQuietAction" href="/sessions">Browse sessions<CommandIcon name="arrow" size="small" /></Link>
     </header>
     {!ready ? <p className={styles.quiet} role="status">Loading your shortcuts…</p> : <>
-      <div className={styles.last}>
+      {showRunning ? <HomeRunningList sessions={running.shown} /> : running.total === 0 && <div className={styles.last}>
         {lastViewed ? <Link className={styles.returnLink} href={lastViewed.href} aria-label={`Open last viewed session: ${lastViewed.title}`}><CommandIcon name="session" /><span><small>Last viewed session</small><strong>{lastViewed.title}</strong><span>{lastViewed.detail}</span></span><CommandIcon name="arrow" size="small" /></Link>
           : <p>{lastViewedSessionId ? (catalogLoading ? "Finding your last viewed session…" : "Your last viewed session is not in the current catalog. Browse sessions to find another.") : "Open a session to inspect its agents and recorded evidence. A shortcut back to it will appear here."}</p>}
-      </div>
+      </div>}
 
-      <div className={styles.pins}>
-        <h3 id="home-pins-heading">Pinned destinations</h3>
-        {pins.length ? <ul className={styles.pinList} aria-labelledby="home-pins-heading">
-          {pins.map((pin, index) => {
-            const destination = destinations.find((item) => samePin(item, pin));
-            const missingTitle = pin.kind === "project" ? pin.id : "Pinned session";
-            return <li key={`${pin.kind}:${pin.id}`}>
-              {destination ? <Link href={destination.href} aria-label={`${destination.title} · ${destination.detail}`} className={styles.pinLink}><CommandIcon name={destination.icon} /><span><strong>{destination.title}</strong><small>{destination.detail}</small></span></Link> : <div className={styles.pinUnavailable}><CommandIcon name={pin.kind === "project" ? "repositories" : "session"} /><span><strong>{missingTitle}</strong><small>{catalogLoading ? "Loading destination…" : "Not in the current catalog"}</small></span></div>}
-              <button className={styles.removePin} type="button" aria-label={`Unpin ${destination?.title || `${missingTitle} ${index + 1}`}`} onClick={() => { togglePin(pin); setPinAnnouncement("Destination removed from Home."); pickerSummaryRef.current?.focus(); }}><CommandIcon name="close" size="small" /></button>
-            </li>;
-          })}
-        </ul> : <p className={styles.emptyPins}>Keep frequently used sessions, projects, and views one click away.</p>}
+      <div className={styles.pinned}>
+        {pins.length > 0 && <>
+          <span id="home-pins-heading" className={styles.pinnedLabel}>Pinned</span>
+          <ul className={styles.pinList} aria-labelledby="home-pins-heading">
+            {pins.map((pin, index) => {
+              const destination = destinations.find((item) => samePin(item, pin));
+              const missingTitle = pin.kind === "project" ? pin.id : "Pinned session";
+              return <li key={`${pin.kind}:${pin.id}`}>
+                {destination ? <Link href={destination.href} aria-label={`${destination.title} · ${destination.detail}`} className={styles.pinLink}>{destination.title}</Link>
+                  : <span className={styles.pinUnavailable} title={catalogLoading ? "Loading destination…" : "Not in the current catalog"}>{missingTitle}</span>}
+                <button className={styles.removePin} type="button" aria-label={`Unpin ${destination?.title || `${missingTitle} ${index + 1}`}`} onClick={() => { togglePin(pin); setPinAnnouncement("Destination removed from Home."); pickerSummaryRef.current?.focus(); }}><CommandIcon name="close" size="small" /></button>
+              </li>;
+            })}
+          </ul>
+        </>}
         <details ref={pickerRef} className={styles.pinDisclosure} onToggle={(event) => setPickerOpen(event.currentTarget.open)}>
           <summary ref={pickerSummaryRef}>Add pins<CommandIcon name="pin" size="small" /></summary>
           {pickerOpen && <PinPicker destinations={destinations} pins={pins} onToggle={togglePin} catalogLoading={catalogLoading} />}

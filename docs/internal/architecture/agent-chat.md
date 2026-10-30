@@ -1329,10 +1329,12 @@ memory while `pairedDevices` is not true.
   route, so the panel is not drawn there.
 - Home is a second client of `thread`, `send`, and `warm`. It reads the thread once for each
   repository its composer shows, only to learn the run of the last turn. A message written on
-  Home reaches the dock as the window event `pomegr:send-aril-chat`. The dock opens the panel
-  on that repository, and the panel sends it with the `send` operation as if it were typed
-  there. Home sends no other operation, and the event carries the repository ID, the text, the
-  provider, the model, the effort, and the image IDs, and writes nothing to browser storage.
+  Home reaches the dock as the window event `pomegr:send-aril-chat`. The dock opens the
+  maximized panel on that repository, and the panel sends it with the `send` operation as if
+  it were typed there. The dock tells Home when the panel closes with the window event
+  `pomegr:aril-chat-closed`. Home sends no other operation, and the event carries the
+  repository ID, the text, the provider, the model, the effort, the image IDs, and the screen
+  position of the Home composer, and writes nothing to browser storage.
   [Agent chat design](../design/agent-chat.md#composer-on-home) owns what the owner sees.
 - The preload exposes `agentChat(operation, payload)`. It refuses an unknown operation
   or a payload without a repository ID before any call. It exposes

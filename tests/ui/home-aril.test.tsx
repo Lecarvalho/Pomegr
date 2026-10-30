@@ -1,11 +1,10 @@
 import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeChat, REPO_A, REPO_B, agentMessage, conversationOf, harness, installHarness, newUser, removeHarness, setBridge, setInventory, settle, userMessage } from "./agent-chat-fixture";
+import { answerLog, busyHome, desktopBridge, homeHarness, homeOf, board, liveSession, pairPhone, resetHome, taskLog } from "./home-fixture";
 
-// Home with Aril: the Aril line and Needs you from the Tasks home and the task logs (fixed rules, no model run), the composer and its
-// suggestions, and the hand-off of a message to the docked panel (or the phone's sheet).
-const taskHome = vi.hoisted(() => ({ value: null as unknown }));
-
+// Home with Aril: the Aril line, Needs you, and the running sessions from the Tasks home, the task logs, and the sessions Pomegr observes (fixed rules,
+// no model run), and the composer with its suggestion chips. How focus mode works and how Send reaches the maximized panel is in home-focus.test.tsx.
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
   return { usePathname: () => harness.pathname };
@@ -17,9 +16,13 @@ vi.mock("../../app/hooks/ClientAccessContext", async (importOriginal) => {
 });
 vi.mock("../../app/tasks-store", async () => {
   const { harness } = await import("./agent-chat-fixture");
-  return { useTasks: () => ({ board: harness.board, refresh: harness.refresh }) };
+  const { homeHarness } = await import("./home-fixture");
+  return { useTasks: () => ({ board: harness.board, refresh: harness.refresh }), useTaskBoards: (ids: string[]) => new Map(ids.map((id) => [id, homeHarness.boards.get(id) ?? { readiness: "ready", repositoryId: id, tasks: [] }])) };
 });
-vi.mock("../../app/tasks-home-store", () => ({ useTaskHome: () => taskHome.value }));
+vi.mock("../../app/tasks-home-store", async () => {
+  const { homeHarness } = await import("./home-fixture");
+  return { useTaskHome: () => homeHarness.taskHome };
+});
 vi.mock("../../app/agents-client", async () => {
   const { harness } = await import("./agent-chat-fixture");
   return { useAgents: () => harness.agents };
@@ -34,38 +37,9 @@ import { HomeDashboard } from "../../app/HomeDashboard";
 import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import { HOME_PREFERENCES_STORAGE_KEY, HOME_UPDATE_ID } from "../../app/hooks/useHomePreferences";
+import type { SessionSummary } from "../../shared/monitor-contract";
 
 let chat: FakeChat;
-const hoursAgo = (hours: number) => Date.now() - hours * 3_600_000;
-type LogEntry = { id: number; task: string; kind: string; at: number; pullRequest: number | null };
-const logEntry = (id: number, task: string, kind: string, hours: number): LogEntry => ({ id, task, kind, at: hoursAgo(hours), pullRequest: null });
-const logs = new Map<string, LogEntry[]>();
-const answerLog = async (repositoryId: string) => ({ ok: true, log: { entries: logs.get(repositoryId) ?? [], more: false, arilCursor: 0 } });
-const taskLog = vi.fn(answerLog);
-
-const board = (repositoryId: string, overrides: Record<string, unknown> = {}) => ({
-  repositoryId, readiness: "ready", counts: [0, 0, 0, 0, 0], openFeatures: 0, queue: { status: "idle", blockedBy: null, pauseReason: null }, updatedAt: new Date(hoursAgo(1)).toISOString(), ...overrides,
-});
-const homeOf = (overrides: Record<string, unknown> = {}) => ({ version: 1, readiness: "ready", boards: [board(REPO_A, { counts: [0, 1, 0, 1, 0] }), board(REPO_B)], attention: [], attentionTotal: 0, ...overrides });
-
-/** The desktop app's bridge: the chat, its images, and the task log. */
-function desktopBridge() {
-  setBridge({ agentChat: chat.agentChat, agentChatImage: chat.agentChatImage, taskAction: vi.fn(), taskLog });
-}
-
-/** A phone: no bridge, and the paired-device routes of the chat and the task log. */
-function pairPhone() {
-  setBridge(undefined);
-  harness.mode = "lan";
-  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    const body = JSON.parse(String(init?.body ?? "{}")) as { operation?: string; payload?: Record<string, unknown>; repositoryId?: string };
-    if (url === "/api/agent-chat") return new Response(JSON.stringify(await chat.agentChat(String(body.operation), body.payload ?? {})), { status: 200, headers: { "content-type": "application/json" } });
-    if (url === "/api/tasks/log-read") return new Response(JSON.stringify(await taskLog(String(body.repositoryId))), { status: 200, headers: { "content-type": "application/json" } });
-    throw new Error("offline");
-  });
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
-}
 
 beforeEach(() => {
   chat = installHarness();
@@ -74,65 +48,52 @@ beforeEach(() => {
   window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, JSON.stringify({ version: 1, pins: [], lastViewedSessionId: null, seenUpdateId: HOME_UPDATE_ID }));
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); this.dispatchEvent(new Event("close")); };
-  logs.clear();
-  taskLog.mockReset();
-  taskLog.mockImplementation(answerLog);
-  taskHome.value = homeOf();
+  resetHome();
   vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
-  desktopBridge();
+  desktopBridge(chat);
 });
 afterEach(() => { removeHarness(); });
 
 const user = newUser;
-const panel = () => screen.getByRole("region", { name: "Aril, the Pomegr agent" });
 const homeField = () => document.getElementById("home-aril-message") as HTMLTextAreaElement;
-const log = () => screen.getByRole("log", { name: "Conversation with Aril" });
 const launcher = () => screen.queryByRole("button", { name: /^Open Aril, the Pomegr agent/ });
-const needsYou = () => screen.getByRole("region", { name: /^Needs you/ });
+const needsYou = () => screen.getByRole("region", { name: "Needs you" });
+const rowsOf = (region: HTMLElement) => within(region).getAllByRole("link").map((row) => row.textContent);
 
-function home() {
-  return render(<SessionCatalogProvider sessions={[]}><HomeDashboard /><AgentChatDock /></SessionCatalogProvider>);
+function home(sessions: SessionSummary[] = []) {
+  return render(<SessionCatalogProvider sessions={sessions}><HomeDashboard /><AgentChatDock /></SessionCatalogProvider>);
 }
 
-/** The Tasks home with a paused queue, a task that needs review (its CI failed), a stalled task, and a blocked one. */
-function busyHome() {
-  taskHome.value = homeOf({
-    boards: [board(REPO_A, { counts: [1, 1, 0, 1, 0] }), board(REPO_B, { queue: { status: "paused", blockedBy: null, pauseReason: "start_failed" } })],
-    attention: [
-      { repositoryId: REPO_A, taskId: "T-41", title: "Retry the upload with backoff", state: "needs_review" },
-      { repositoryId: REPO_A, taskId: "T-35", title: "Cut the upload work into tasks", state: "stalled" },
-      { repositoryId: REPO_B, taskId: "T-9", title: "Rename the export action", state: "blocked" },
-    ],
-    attentionTotal: 3,
-  });
-  logs.set(REPO_A, [logEntry(1, "T-40", "started", 30), logEntry(2, "T-41", "started", 5), logEntry(3, "T-41", "review", 3), logEntry(4, "T-41", "checks_failed", 1), logEntry(5, "T-42", "merged", 2), logEntry(6, "T-43", "done", 1)]);
-  logs.set(REPO_B, [logEntry(1, "T-9", "blocked", 2)]);
-}
+const waitingIn = (repositoryId: string) => liveSession("claude:waiting", { repositoryId, activityStatus: "needs_input", needsInput: true, title: "Answer me", createdAt: new Date(Date.now() - 2 * 60_000).toISOString() });
 
 describe("the Aril line and Needs you", () => {
-  it("are written from the Tasks home and the task logs by fixed rules, and run no model", async () => {
+  it("are written from the Tasks home, the task logs, and the sessions by fixed rules, and run no model", async () => {
     busyHome();
-    home();
+    home([waitingIn(REPO_B)]);
     await settle();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^Good (morning|afternoon|evening)$/);
     expect(screen.getByText("In the last 24 hours: 1 started, 1 reached Review, 1 merged, 1 marked Done.")).toBeInTheDocument();
-    const rows = within(needsYou()).getAllByRole("link");
-    expect(rows.map((row) => row.textContent)).toEqual([
-      "clapline" + "Queue paused" + "A start failed",
-      "pomegr" + "T-41" + "Retry the upload with backoff" + "Needs review · CI failed",
-      "pomegr" + "T-35" + "Cut the upload work into tasks" + "Stalled",
-      "clapline" + "T-9" + "Rename the export action" + "Blocked by agent",
+    // One line for each thing to do: the action, a failure in amber, and the repository on the right. No task ID and no title.
+    expect(rowsOf(needsYou())).toEqual([
+      "Answer a session that is waiting for youclapline",
+      "Review 1 finished taskCI failedpomegr",
+      "Check 1 stalled taskpomegr",
+      "Unblock 1 taskclapline",
+      "Restart the paused queueA start failedclapline",
     ]);
-    expect(rows[1]).toHaveAttribute("href", `/tasks?repository=${REPO_A}`);
+    expect(needsYou()).not.toHaveTextContent(/T-\d|Retry the upload|Cut the upload|Rename the export/);
     expect(within(needsYou()).getByText("CI failed")).toHaveClass(/urgent/);
-    expect(within(needsYou()).getByRole("heading", { name: /^Needs you/ })).toHaveTextContent("Needs you4");
+    expect(within(needsYou()).getByText("A start failed")).toHaveClass(/urgent/);
+    // Each line links to the right place: the session, or the board of its repository.
+    const links = within(needsYou()).getAllByRole("link").map((row) => row.getAttribute("href"));
+    expect(links).toEqual(["/sessions/claude-waiting", `/tasks?repository=${REPO_A}`, `/tasks?repository=${REPO_A}`, `/tasks?repository=${REPO_B}`, `/tasks?repository=${REPO_B}`]);
     // One log read for each board, and the chat is asked for the thread's run only: no message, no model.
     expect(taskLog.mock.calls.map(([id]) => id).sort()).toEqual([REPO_A, REPO_B]);
     expect(chat.agentChat.mock.calls.every(([operation]) => operation === "thread" || operation === "warm")).toBe(true);
     expect(chat.calls("send")).toEqual([]);
   });
 
-  it("draws nothing from the boards until the logs have answered, then draws the line and the rows together", async () => {
+  it("draws nothing from the boards until the logs have answered, then draws the line and the lines together", async () => {
     busyHome();
     let release: () => void = () => {};
     const held = new Promise<void>((resolve) => { release = resolve; });
@@ -140,12 +101,12 @@ describe("the Aril line and Needs you", () => {
     home();
     await settle();
     expect(screen.getByText("Reading the task logs…")).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: /^Needs you/ })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
     expect(screen.queryByText(/^In the last 24 hours:/)).toBeNull();
     release();
     await settle();
     expect(screen.queryByText("Reading the task logs…")).toBeNull();
-    expect(within(needsYou()).getByText(/CI failed/)).toBeInTheDocument();
+    expect(within(needsYou()).getByText("CI failed")).toBeInTheDocument();
     expect(screen.getByText("In the last 24 hours: 1 started, 1 reached Review, 1 merged, 1 marked Done.")).toBeInTheDocument();
   });
 
@@ -153,17 +114,17 @@ describe("the Aril line and Needs you", () => {
     home();
     await settle();
     expect(screen.getByText("Nothing was logged in the last 24 hours.")).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: /^Needs you/ })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
   });
 
-  it("draws no line when no log could be read, and keeps the rows without a detail", async () => {
+  it("draws no line when no log could be read, and keeps the lines without a failure detail", async () => {
     busyHome();
     taskLog.mockImplementation(async () => ({ ok: false, error: "unavailable" }) as never);
     home();
     await settle();
     expect(screen.queryByText(/last 24 hours/)).toBeNull();
     expect(screen.queryByText("Reading the task logs…")).toBeNull();
-    expect(within(needsYou()).getAllByRole("link")[1]).toHaveTextContent("Needs review");
+    expect(within(needsYou()).getByText("Review 1 finished task")).toBeInTheDocument();
     expect(within(needsYou()).queryByText("CI failed")).toBeNull();
   });
 
@@ -175,26 +136,108 @@ describe("the Aril line and Needs you", () => {
     expect(screen.getByText("In the last 24 hours: 1 started, 1 reached Review, 1 merged, 1 marked Done. Some logs could not be read.")).toBeInTheDocument();
   });
 
-  it("leaves out the items of a repository the inventory does not list", async () => {
+  it("leaves out the lines of a repository the inventory does not list", async () => {
     busyHome();
     setInventory([[REPO_A, "pomegr"]]);
     home();
     await settle();
-    expect(within(needsYou()).getAllByRole("link").map((row) => row.textContent)).toEqual([
-      "pomegr" + "T-41" + "Retry the upload with backoff" + "Needs review · CI failed",
-      "pomegr" + "T-35" + "Cut the upload work into tasks" + "Stalled",
-    ]);
+    expect(rowsOf(needsYou())).toEqual(["Review 1 finished taskCI failedpomegr", "Check 1 stalled taskpomegr"]);
   });
 
-  it("shows five rows and a link to the rest", async () => {
-    taskHome.value = homeOf({
-      attention: Array.from({ length: 7 }, (_, index) => ({ repositoryId: REPO_A, taskId: `T-${index + 1}`, title: `Task ${index + 1}`, state: "blocked" })),
-      attentionTotal: 7,
-    });
+  it("shows eight lines and counts the rest", async () => {
+    const ids = Array.from({ length: 10 }, (_, index) => `repo-${String(index).repeat(24)}`);
+    setInventory(ids.map((id, index) => [id, `repo ${index}`]));
+    homeHarness.taskHome = homeOf({ boards: ids.map((id) => board(id, { queue: { status: "paused", blockedBy: null, pauseReason: "cli_missing" } })) });
     home();
     await settle();
-    expect(within(needsYou()).getAllByRole("link")).toHaveLength(6);
-    expect(within(needsYou()).getByRole("link", { name: "Show all 7" })).toHaveAttribute("href", "/tasks");
+    expect(within(needsYou()).getAllByRole("link")).toHaveLength(8);
+    expect(within(needsYou()).getByText("2 more things need you.")).toBeInTheDocument();
+  });
+
+  it("makes a session that waits a line even where the Tasks home cannot be read", async () => {
+    homeHarness.taskHome = { version: 1, readiness: "unavailable", boards: [], attention: [], attentionTotal: 0 };
+    home([waitingIn(REPO_A)]);
+    await settle();
+    expect(rowsOf(needsYou())).toEqual(["Answer a session that is waiting for youpomegr"]);
+    expect(screen.getByText("Task boards are unavailable. Pomegr will retry.")).toBeInTheDocument();
+  });
+});
+
+describe("Continue", () => {
+  it("shows the running sessions: a state dot, the title, the state, and where it runs and for how long; a waiting one first and in amber", async () => {
+    homeHarness.boards = new Map([[REPO_A, { readiness: "ready", repositoryId: REPO_A, tasks: [{ id: "T-50", text: "[ui] Build the new Home\nDetails.", session: { id: "claude:task-run" } }] }]]);
+    home([
+      liveSession("claude:task-run", { title: "Session of the task" }),
+      liveSession("claude:other", { title: "Rough overlay polish", provider: "claude", updatedAt: new Date(Date.now() - 90_000).toISOString() }),
+      waitingIn(REPO_B),
+      liveSession("claude:idle", { activityStatus: "idle" }),
+    ]);
+    await settle();
+    const region = screen.getByRole("region", { name: /^Continue/ });
+    expect(within(region).getByRole("heading", { name: /^Continue/ })).toHaveTextContent("Continue · 3 running");
+    const list = within(region).getByRole("list", { name: "Running sessions" });
+    expect(within(list).getAllByRole("link").map((row) => row.textContent)).toEqual([
+      "Answer meWaiting for youclapline · Claude Code · 2 min",
+      "Build the new HomeWorkingpomegr · Claude Code · 12 min",
+      "Rough overlay polishWorkingpomegr · Claude Code · 12 min",
+    ]);
+    expect(within(list).getByText("Waiting for you")).toHaveClass(/waiting/);
+    expect(within(list).getAllByText("Working")[0]).not.toHaveClass(/waiting/);
+    // A session started for a task shows the task's title, and any other shows its own: the title of an idle session is not drawn at all.
+    expect(within(list).queryByText("Session of the task")).toBeNull();
+    expect(within(list).getAllByRole("link")[0]).toHaveAttribute("href", "/sessions/claude-waiting");
+    expect(within(region).queryByRole("link", { name: /Open last viewed session/ })).toBeNull();
+  });
+
+  it("shows at most four sessions and counts all that run", async () => {
+    home(Array.from({ length: 6 }, (_, index) => liveSession(`claude:s${index}`)));
+    await settle();
+    const region = screen.getByRole("region", { name: /^Continue/ });
+    expect(within(region).getAllByRole("link", { name: /Claude Code/ }).filter((row) => row.closest("ul")?.getAttribute("aria-label") === "Running sessions")).toHaveLength(4);
+    expect(within(region).getByRole("heading", { name: /^Continue/ })).toHaveTextContent("Continue · 6 running");
+  });
+
+  it("waits for the board a title comes from, so a title is never drawn and then replaced", async () => {
+    homeHarness.boards = new Map([[REPO_A, { readiness: "loading", repositoryId: REPO_A, tasks: [] }]]);
+    const view = home([liveSession("claude:task-run", { title: "Session of the task" })]);
+    await settle();
+    expect(screen.queryByRole("list", { name: "Running sessions" })).toBeNull();
+    expect(screen.queryByText("Session of the task")).toBeNull();
+    homeHarness.boards = new Map([[REPO_A, { readiness: "ready", repositoryId: REPO_A, tasks: [{ id: "T-50", text: "Build the new Home", session: { id: "claude:task-run" } }] }]]);
+    view.rerender(<SessionCatalogProvider sessions={[liveSession("claude:task-run", { title: "Session of the task" })]}><HomeDashboard /><AgentChatDock /></SessionCatalogProvider>);
+    await settle();
+    expect(within(screen.getByRole("list", { name: "Running sessions" })).getByText("Build the new Home")).toBeInTheDocument();
+    expect(screen.queryByText("Session of the task")).toBeNull();
+  });
+
+  it("shows the last viewed session when nothing runs, as before", async () => {
+    window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, JSON.stringify({ version: 1, pins: [], lastViewedSessionId: "claude:idle", seenUpdateId: HOME_UPDATE_ID }));
+    home([liveSession("claude:idle", { activityStatus: "idle", title: "Quiet work" })]);
+    await settle();
+    expect(screen.queryByRole("list", { name: "Running sessions" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Open last viewed session: Quiet work" })).toHaveAttribute("href", "/sessions/claude-idle");
+    expect(screen.getByRole("heading", { name: /^Continue/ })).toHaveTextContent(/^Continue$/);
+  });
+
+  it("keeps the pins in one small line", async () => {
+    window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, JSON.stringify({ version: 1, pins: [{ kind: "view", id: "usage-limits" }, { kind: "project", id: "pomegr" }], lastViewedSessionId: null, seenUpdateId: HOME_UPDATE_ID }));
+    home([liveSession("claude:a")]);
+    await settle();
+    const list = screen.getByRole("list", { name: "Pinned" });
+    expect(within(list).getAllByRole("link").map((link) => link.textContent)).toEqual(["Usage limits", "pomegr"]);
+    expect(screen.getByRole("link", { name: "Browse sessions" })).toHaveAttribute("href", "/sessions");
+  });
+});
+
+describe("the status line", () => {
+  it("is quiet: a dot and the name of each provider, and What's new on the same line", async () => {
+    home();
+    await settle();
+    const status = screen.getByRole("complementary", { name: "Provider service status" });
+    expect(within(status).getByText("Claude Code")).toBeInTheDocument();
+    expect(within(status).getByText("Codex")).toBeInTheDocument();
+    expect(status.parentElement).toBe(screen.getByRole("complementary", { name: "What’s new" }).parentElement);
+    expect(screen.queryByText("Provider status")).toBeNull();
   });
 });
 
@@ -205,13 +248,14 @@ describe("the composer on Home", () => {
     expect(homeField()).toHaveAccessibleName("Message Aril");
     const composer = homeField().closest("form")!;
     expect(composer).toHaveClass("agentChatComposer");
-    expect(composer.parentElement!.closest(".agentChatHome")).not.toBeNull();
+    expect(composer.closest(".agentChatHome")).not.toBeNull();
     expect(within(composer).getByRole("combobox", { name: "Repository" })).toHaveTextContent("pomegr");
     expect(within(composer).getByRole("combobox", { name: "Model" })).toHaveTextContent(/^model-large$/);
     expect(within(composer).getByRole("combobox", { name: "Effort" })).toHaveTextContent("Medium");
     expect(within(composer).getByRole("button", { name: "Attach image" })).toBeInTheDocument();
     expect(within(composer).getByRole("button", { name: "Send" })).toBeDisabled();
     expect(within(composer).queryByRole("button", { name: "Stop" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open conversation" })).toBeNull();
     expect(launcher()).toBeNull();
   });
 
@@ -240,7 +284,7 @@ describe("the composer on Home", () => {
   });
 
   it("falls back to the fixed suggestions when no board holds work and nothing waits", async () => {
-    taskHome.value = homeOf({ boards: [board(REPO_A), board(REPO_B)] });
+    homeHarness.taskHome = homeOf({ boards: [board(REPO_A), board(REPO_B)] });
     home();
     await settle();
     expect(within(screen.getByRole("list", { name: "Suggestions" })).getAllByRole("button").map((chip) => chip.textContent)).toEqual(["Break this feature into tasks: ", "Which model fits this kind of task: "]);
@@ -282,130 +326,10 @@ describe("the composer on Home", () => {
   });
 });
 
-describe("Send on Home", () => {
-  it("opens the panel on that repository's thread and sends the message there with the run the composer showed", async () => {
-    const person = user();
-    home();
-    await settle();
-    await person.click(screen.getByRole("combobox", { name: "Effort" }));
-    await person.click(screen.getByRole("option", { name: "High" }));
-    await person.type(homeField(), "Which task should run first?");
-    await person.keyboard("{Enter}");
-    await settle();
-    expect(chat.calls("send")).toEqual([{ repositoryId: REPO_A, conversationId: null, text: "Which task should run first?", provider: "claude", model: "model-large", effort: "high" }]);
-    expect(homeField()).toHaveValue("");
-    expect(panel()).toBeVisible();
-    expect(within(panel()).getByRole("textbox", { name: "Message Aril" })).toHaveFocus();
-    expect(within(log()).getByText("Which task should run first?")).toBeInTheDocument();
-    expect(document.querySelector(".agentChatScrim")).not.toBeNull();
-    // One send for one message: the panel does not send it again when it re-renders.
-    await settle(2_000);
-    expect(chat.calls("send")).toHaveLength(1);
-  });
-
-  it("sends once for each message, to the repository the composer shows", async () => {
-    const person = user();
-    home();
-    await settle();
-    await person.click(screen.getByRole("combobox", { name: "Repository" }));
-    await person.click(screen.getByRole("option", { name: "clapline" }));
-    await person.type(homeField(), "First");
-    await person.click(screen.getByRole("button", { name: "Send" }));
-    await settle();
-    expect(chat.calls("send").map((payload) => [payload.repositoryId, payload.text])).toEqual([[REPO_B, "First"]]);
-    chat.finish("Done.");
-    await settle(1_000);
-    await person.click(within(panel()).getByRole("button", { name: "Close Aril" }));
-    await settle();
-    await person.type(homeField(), "Second");
-    await person.keyboard("{Enter}");
-    await settle();
-    expect(chat.calls("send").map((payload) => [payload.repositoryId, payload.text])).toEqual([[REPO_B, "First"], [REPO_B, "Second"]]);
-    expect(within(log()).getByText("Second")).toBeInTheDocument();
-  });
-
-  it("returns focus to the Home message field when the panel closes, and draws no launcher", async () => {
-    const person = user();
-    home();
-    await settle();
-    await person.click(screen.getByRole("button", { name: "Open conversation" }));
-    await settle();
-    expect(panel()).toBeVisible();
-    expect(launcher()).toBeNull();
-    await person.click(within(panel()).getByRole("button", { name: "Close Aril" }));
-    expect(homeField()).toHaveFocus();
-    expect(launcher()).toBeNull();
-  });
-
-  it("opens the conversation without sending anything", async () => {
-    chat.seed(REPO_B, conversationOf(1, [userMessage("Earlier question"), agentMessage("Earlier answer")]));
-    const person = user();
-    home();
-    await settle();
-    await person.click(screen.getByRole("combobox", { name: "Repository" }));
-    await person.click(screen.getByRole("option", { name: "clapline" }));
-    await person.type(homeField(), "Not sent yet");
-    await person.click(screen.getByRole("button", { name: "Open conversation" }));
-    await settle();
-    expect(within(log()).getByText("Earlier answer")).toBeInTheDocument();
-    expect(chat.calls("send")).toEqual([]);
-    expect(homeField()).toHaveValue("Not sent yet");
-  });
-
-  it("keeps a draft that waits in the panel, and puts a refused message back in the panel's field with the fixed line", async () => {
-    const person = user();
-    home();
-    await settle();
-    await person.click(screen.getByRole("button", { name: "Open conversation" }));
-    await settle();
-    await person.type(within(panel()).getByRole("textbox", { name: "Message Aril" }), "A draft in the panel");
-    await person.click(within(panel()).getByRole("button", { name: "Close Aril" }));
-    await settle();
-    chat.refuse = "busy";
-    await person.type(homeField(), "From Home");
-    await person.keyboard("{Enter}");
-    await settle();
-    expect(chat.calls("send")).toHaveLength(1);
-    expect(within(panel()).getByRole("alert")).toHaveTextContent("Aril is already answering. Wait for it to finish.");
-    // The draft was there first and stays; the refused message is not lost, and it is not typed over the draft.
-    expect(within(panel()).getByRole("textbox", { name: "Message Aril" })).toHaveValue("A draft in the panel");
-    expect(within(log()).queryByText("From Home")).toBeNull();
-  });
-
-  it("puts a refused message in the panel's empty field", async () => {
-    const person = user();
-    home();
-    await settle();
-    chat.refuse = "unavailable";
-    await person.type(homeField(), "From Home");
-    await person.keyboard("{Enter}");
-    await settle();
-    expect(within(panel()).getByRole("textbox", { name: "Message Aril" })).toHaveValue("From Home");
-    expect(within(panel()).getByRole("alert")).toHaveTextContent("Aril could not be reached. Try again.");
-    expect(homeField()).toHaveValue("");
-  });
-
-  it("sends the images attached on Home with the message", async () => {
-    const person = user();
-    home();
-    await settle();
-    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "shot.png", { type: "image/png" });
-    await person.upload(homeField().closest("form")!.querySelector<HTMLInputElement>('input[type="file"]')!, file);
-    await settle();
-    expect(within(homeField().closest("form")!).getByRole("list", { name: "Images to send" })).toBeInTheDocument();
-    await person.type(homeField(), "What is wrong here?");
-    await person.keyboard("{Enter}");
-    await settle();
-    const [sent] = chat.calls("send");
-    expect(sent).toMatchObject({ text: "What is wrong here?", images: [expect.stringMatching(/^img-/)] });
-    expect(within(homeField().closest("form")!).queryByRole("list", { name: "Images to send" })).toBeNull();
-  });
-});
-
 describe("Home on a paired phone", () => {
   it("reads the logs and the thread through the paired routes, and sends through the panel's sheet", async () => {
     busyHome();
-    const fetchMock = pairPhone();
+    const fetchMock = pairPhone(chat);
     const person = user();
     home();
     await settle();
@@ -415,7 +339,7 @@ describe("Home on a paired phone", () => {
     await person.keyboard("{Enter}");
     await settle();
     expect(chat.calls("send")).toHaveLength(1);
-    expect(within(log()).getByText("From the phone")).toBeInTheDocument();
+    expect(within(screen.getByRole("log", { name: "Conversation with Aril" })).getByText("From the phone")).toBeInTheDocument();
     const urls = new Set(fetchMock.mock.calls.map(([url]) => url));
     expect(urls.has("/api/tasks/log-read")).toBe(true);
     expect(urls.has("/api/agent-chat")).toBe(true);
@@ -424,18 +348,13 @@ describe("Home on a paired phone", () => {
 });
 
 describe("Home in a browser that cannot reach the chat", () => {
-  it("draws Needs you without a detail, and no Aril line, no log read, no composer, and no launcher", async () => {
+  it("draws Needs you without a failure detail, and no Aril line, no log read, no composer, and no launcher", async () => {
     busyHome();
     setBridge(undefined);
     harness.mode = "local";
     home();
     await settle();
-    expect(within(needsYou()).getAllByRole("link").map((row) => row.textContent)).toEqual([
-      "clapline" + "Queue paused" + "A start failed",
-      "pomegr" + "T-41" + "Retry the upload with backoff" + "Needs review",
-      "pomegr" + "T-35" + "Cut the upload work into tasks" + "Stalled",
-      "clapline" + "T-9" + "Rename the export action" + "Blocked by agent",
-    ]);
+    expect(rowsOf(needsYou())).toEqual(["Review 1 finished taskpomegr", "Check 1 stalled taskpomegr", "Unblock 1 taskclapline", "Restart the paused queueA start failedclapline"]);
     expect(screen.queryByText(/last 24 hours/)).toBeNull();
     expect(screen.queryByText("Reading the task logs…")).toBeNull();
     expect(screen.queryByRole("textbox", { name: "Message Aril" })).toBeNull();
@@ -450,17 +369,17 @@ describe("Home in a browser that cannot reach the chat", () => {
     harness.mode = "unknown";
     home();
     await settle();
-    expect(screen.queryByRole("region", { name: /^Needs you/ })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
     expect(screen.queryByRole("textbox", { name: "Message Aril" })).toBeNull();
     expect(screen.queryByText(/last 24 hours/)).toBeNull();
   });
 
   it("says that task boards are unavailable when the Tasks home is, and nothing when it is desktop only", async () => {
-    taskHome.value = { version: 1, readiness: "unavailable", boards: [], attention: [], attentionTotal: 0 };
+    homeHarness.taskHome = { version: 1, readiness: "unavailable", boards: [], attention: [], attentionTotal: 0 };
     const view = home();
     await settle();
     expect(screen.getByText("Task boards are unavailable. Pomegr will retry.")).toBeInTheDocument();
-    taskHome.value = { version: 1, readiness: "desktop_only", boards: [], attention: [], attentionTotal: 0 };
+    homeHarness.taskHome = { version: 1, readiness: "desktop_only", boards: [], attention: [], attentionTotal: 0 };
     view.rerender(<SessionCatalogProvider sessions={[]}><HomeDashboard /><AgentChatDock /></SessionCatalogProvider>);
     await settle();
     expect(screen.queryByText("Task boards are unavailable. Pomegr will retry.")).toBeNull();

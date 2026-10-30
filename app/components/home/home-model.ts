@@ -1,5 +1,9 @@
-import { DEFAULT_TASK_COLUMNS, type TaskHome, type TaskHomeAttentionState, type TaskQueuePauseReason } from "../../../shared/task-contract";
+import type { SessionSummary } from "../../../shared/monitor-contract";
+import { encodeSessionRoute } from "../../../shared/session-route.mjs";
+import { DEFAULT_TASK_COLUMNS, type TaskBoard, type TaskHome, type TaskQueuePauseReason } from "../../../shared/task-contract";
 import type { TaskLog } from "../tasks/task-desktop";
+import { splitTaskTitle } from "../tasks/task-tags";
+import { taskBoardHref } from "../tasks/TasksHome";
 
 // The fixed rules behind Home: the greeting, the Aril line, and Needs you. Each one reads numbers and fixed kinds and writes fixed
 // words. No model runs, no answer of a model is read, and no heuristic is called an AI judgment (docs/internal/design/home.md).
@@ -7,7 +11,6 @@ import type { TaskLog } from "../tasks/task-desktop";
 export const ARIL_LINE_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** Home reads the task log of the boards that changed last, and no more. */
 export const HOME_LOG_BOARDS = 12;
-export const NEEDS_YOU_SHOWN = 5;
 
 /** The log of each board Home read, by repository ID; null where it could not be read. */
 export type HomeLogReads = ReadonlyMap<string, TaskLog | null>;
@@ -52,14 +55,12 @@ export function arilLine(reads: HomeLogReads, now: number): string | null {
 
 // ---- Needs you ----
 
-export const ATTENTION_WORDS: Record<TaskHomeAttentionState, string> = { needs_review: "Needs review", stalled: "Stalled", blocked: "Blocked by agent" };
-
 export const PAUSE_WORDS: Record<TaskQueuePauseReason, string> = {
   cli_missing: "CLI not found", plugin_missing: "Plugin missing", unsupported_platform: "Windows only", start_failed: "A start failed",
   session_not_linked: "Session not linked", worktree_dirty: "Worktree has changes", environment_invalid: "Environment invalid",
 };
 
-/** The word for the newest result a Needs review task has since it reported complete, and whether the owner can act on it now. */
+/** The word for the newest result a Needs review task has since it reported complete, and whether it is a failure the owner can act on now. */
 const DETAILS: Partial<Record<LogKind, { words: string; urgent: boolean }>> = {
   checks_failed: { words: "CI failed", urgent: true },
   checks_passed: { words: "CI passed", urgent: false },
@@ -83,26 +84,123 @@ export function needsDetail(log: TaskLog, taskId: string): NeedsDetail | null {
   return null;
 }
 
-export type NeedsItem =
-  | { kind: "task"; key: string; repositoryId: string; repositoryName: string; taskId: string; title: string; state: TaskHomeAttentionState; detail: NeedsDetail | null }
-  | { kind: "queue"; key: string; repositoryId: string; repositoryName: string; reason: string };
+/** One thing the owner has to do: the action in words, a failure detail, the repository, and where it is done. It names no task and no title. */
+export type NeedsLine = { key: string; action: string; detail: NeedsDetail | null; repository: string; href: string };
+export const NEEDS_LINES_SHOWN = 8;
+
+const plural = (count: number, one: string, many: string) => (count === 1 ? one : many.replace("{n}", String(count)));
+
+/** A live session that waits for the owner: Pomegr observed that an agent needs input. */
+export const isWaiting = (session: SessionSummary) => session.isLive && (session.needsInput || session.activityStatus === "needs_input");
+/** A live session whose agent is working and does not wait for the owner. */
+export const isWorking = (session: SessionSummary) => session.isLive && !isWaiting(session) && session.activityStatus === "working";
+
+const repositoryOf = (session: SessionSummary, names: ReadonlyMap<string, string>) => (session.repositoryId ? names.get(session.repositoryId) : undefined) ?? session.project;
+function sessionHref(session: SessionSummary): string {
+  try { return `/sessions/${encodeSessionRoute(session.id)}`; } catch { return "/sessions"; }
+}
+
+/** Groups the lines by kind and repository, in this order: sessions that wait, finished tasks (failures in their own lines), stalled, blocked, paused queues. */
+export function needsYou(input: { home: TaskHome; names: ReadonlyMap<string, string>; logs: HomeLogReads; sessions: readonly SessionSummary[] }): { lines: NeedsLine[]; total: number } {
+  const { home, names, logs, sessions } = input;
+  const lines: NeedsLine[] = [];
+
+  // Sessions that wait, one line for each repository.
+  const waiting = new Map<string, SessionSummary[]>();
+  for (const session of sessions.filter(isWaiting)) {
+    const key = session.repositoryId ?? `project:${session.project}`;
+    waiting.set(key, [...(waiting.get(key) ?? []), session]);
+  }
+  for (const [key, group] of waiting) {
+    const only = group.length === 1;
+    lines.push({
+      key: `session:${key}`, action: plural(group.length, "Answer a session that is waiting for you", "Answer {n} sessions that are waiting for you"), detail: null, repository: repositoryOf(group[0], names),
+      href: only ? sessionHref(group[0]) : group[0].repositoryId ? `/sessions?${new URLSearchParams({ repository: group[0].repositoryId })}` : "/sessions",
+    });
+  }
+
+  // Tasks, in the order the Tasks home serves them. A repository the inventory no longer lists has no board to open.
+  const known = home.attention.filter((item) => names.has(item.repositoryId));
+  const finished = new Map<string, { repositoryId: string; detail: NeedsDetail | null; count: number }>();
+  const stalled = new Map<string, { repositoryId: string; count: number }>();
+  const blocked = new Map<string, { repositoryId: string; count: number }>();
+  for (const item of known) {
+    if (item.state === "needs_review") {
+      const log = logs.get(item.repositoryId);
+      const found = log ? needsDetail(log, item.taskId) : null;
+      // A failure has its own line; a passed result or none joins the plain line of its repository.
+      const detail = found?.urgent ? found : null;
+      const key = `${item.repositoryId}:${detail?.words ?? ""}`;
+      finished.set(key, { repositoryId: item.repositoryId, detail, count: (finished.get(key)?.count ?? 0) + 1 });
+    } else {
+      const bucket = item.state === "stalled" ? stalled : blocked;
+      bucket.set(item.repositoryId, { repositoryId: item.repositoryId, count: (bucket.get(item.repositoryId)?.count ?? 0) + 1 });
+    }
+  }
+  // Within a repository the plain line comes before its failures.
+  for (const [key, group] of [...finished].sort(([, left], [, right]) => Number(left.detail !== null) - Number(right.detail !== null))) {
+    lines.push({ key: `review:${key}`, action: plural(group.count, "Review 1 finished task", "Review {n} finished tasks"), detail: group.detail, repository: names.get(group.repositoryId)!, href: taskBoardHref(group.repositoryId) });
+  }
+  for (const group of stalled.values()) lines.push({ key: `stalled:${group.repositoryId}`, action: plural(group.count, "Check 1 stalled task", "Check {n} stalled tasks"), detail: null, repository: names.get(group.repositoryId)!, href: taskBoardHref(group.repositoryId) });
+  for (const group of blocked.values()) lines.push({ key: `blocked:${group.repositoryId}`, action: plural(group.count, "Unblock 1 task", "Unblock {n} tasks"), detail: null, repository: names.get(group.repositoryId)!, href: taskBoardHref(group.repositoryId) });
+
+  for (const board of home.boards) {
+    if (board.readiness !== "ready" || board.queue.status !== "paused" || !names.has(board.repositoryId)) continue;
+    lines.push({
+      key: `queue:${board.repositoryId}`, action: "Restart the paused queue", detail: { words: board.queue.pauseReason ? PAUSE_WORDS[board.queue.pauseReason] : "Paused", urgent: true },
+      repository: names.get(board.repositoryId)!, href: taskBoardHref(board.repositoryId),
+    });
+  }
+  return { lines, total: lines.length };
+}
+
+// ---- Running sessions ----
+
+export const HOME_RUNNING_SHOWN = 4;
+
+/** How long a session has run: the time since it started, in minutes, hours, or days. Null where the start is not known. */
+export function runningFor(createdAt: string | null | undefined, now: number): string | null {
+  const started = Date.parse(createdAt ?? "");
+  if (!Number.isFinite(started)) return null;
+  const minutes = Math.max(0, Math.floor((now - started) / 60_000));
+  if (minutes < 1) return "<1 min";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours >= 24) return `${Math.floor(hours / 24)} d`;
+  return minutes % 60 === 0 ? `${hours} h` : `${hours} h ${minutes % 60} min`;
+}
+
+export type RunningSession = { key: string; title: string; waiting: boolean; meta: string; href: string };
+
+/** The repositories whose boards the running list joins titles from: the shown sessions' own. */
+export function runningCandidates(sessions: readonly SessionSummary[]): SessionSummary[] {
+  return sessions.filter((session) => isWaiting(session) || isWorking(session))
+    .sort((left, right) => Number(isWaiting(right)) - Number(isWaiting(left)) || (Date.parse(right.updatedAt) || 0) - (Date.parse(left.updatedAt) || 0));
+}
+
+/** The title of the task a session was started for or assigned to, from the board the session's repository holds, or null. */
+function taskTitleOf(session: SessionSummary, boards: ReadonlyMap<string, TaskBoard>): string | null {
+  const board = session.repositoryId ? boards.get(session.repositoryId) : undefined;
+  const task = board?.readiness === "ready" ? board.tasks.find((candidate) => candidate.session?.id === session.id || candidate.assigned?.some((assigned) => assigned.id === session.id)) : undefined;
+  const title = task ? splitTaskTitle(task.text).title.trim() : "";
+  return title === "" ? null : title;
+}
 
 /**
- * What waits for the owner now, from the Tasks home: every paused queue, then every task that needs review, is stalled, or is blocked, newest
- * change first. A repository the inventory no longer lists has no board to open, so its items are left out. `total` counts all of them.
+ * The live sessions that work or wait, at most four, a waiting one first. A session started for a task shows the title line of the task; any other
+ * shows its own title. `settled` is false while a board a title comes from has not answered, so no title is drawn and then replaced.
  */
-export function needsYou(home: TaskHome, names: ReadonlyMap<string, string>, logs: HomeLogReads): { items: NeedsItem[]; total: number } {
-  const queues: NeedsItem[] = home.boards
-    .filter((board) => board.readiness === "ready" && board.queue.status === "paused" && names.has(board.repositoryId))
-    .map((board) => ({ kind: "queue", key: `queue:${board.repositoryId}`, repositoryId: board.repositoryId, repositoryName: names.get(board.repositoryId)!, reason: board.queue.pauseReason ? PAUSE_WORDS[board.queue.pauseReason] : "Paused" }));
-  const known = home.attention.filter((item) => names.has(item.repositoryId));
-  const tasks: NeedsItem[] = known.map((item) => {
-    const log = logs.get(item.repositoryId);
-    return { kind: "task", key: `${item.repositoryId}:${item.taskId}`, repositoryId: item.repositoryId, repositoryName: names.get(item.repositoryId)!, taskId: item.taskId, title: item.title, state: item.state, detail: item.state === "needs_review" && log ? needsDetail(log, item.taskId) : null };
-  });
-  // The monitor serves at most 50 tasks and counts them all; the ones of unlisted repositories are taken out of the count.
-  const taskTotal = home.attentionTotal - (home.attention.length - known.length);
-  return { items: [...queues, ...tasks], total: queues.length + taskTotal };
+export function runningSessions(sessions: readonly SessionSummary[], names: ReadonlyMap<string, string>, boards: ReadonlyMap<string, TaskBoard>, now: number): { shown: RunningSession[]; total: number; settled: boolean } {
+  const candidates = runningCandidates(sessions);
+  const shown = candidates.slice(0, HOME_RUNNING_SHOWN);
+  const settled = shown.every((session) => !session.repositoryId || (boards.has(session.repositoryId) && boards.get(session.repositoryId)!.readiness !== "loading"));
+  return {
+    total: candidates.length, settled,
+    shown: shown.map((session) => ({
+      key: session.id, title: taskTitleOf(session, boards) ?? session.title, waiting: isWaiting(session), href: sessionHref(session),
+      meta: [repositoryOf(session, names), session.source, runningFor(session.createdAt, now)].filter((part): part is string => Boolean(part)).join(" · "),
+    })),
+  };
 }
 
 /** The boards whose logs Home reads: the ones that changed last. */

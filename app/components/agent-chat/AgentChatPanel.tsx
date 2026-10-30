@@ -185,11 +185,13 @@ function AgentChatWithoutRepository({ loading, expanded, onToggleExpanded, onClo
   </>;
 }
 
-export function AgentChatPanel({ id, panelRef, mounted, availability, repositoryId, repositoriesLoading, repositories, open, onRepositoryChange, expanded, onToggleExpanded, onClose, onAnswering, onAnswered, focus = null, outgoing = null, onOutgoingTaken }: Shared & {
+export function AgentChatPanel({ id, panelRef, mounted, availability, repositoryId, repositoriesLoading, repositories, open, onRepositoryChange, expanded, onToggleExpanded, onClose, onAnswering, onAnswered, focus = null, outgoing = null, onOutgoingTaken, entering = false }: Shared & {
   focus?: ChatFocus | null;
   /** A message written on Home, waiting for the body of its repository to send it. */
   outgoing?: AgentChatHandoff | null;
   onOutgoingTaken(nonce: number): void;
+  /** The panel was opened from Home: the messages of the thread fade in one after another. */
+  entering?: boolean;
   id: string;
   panelRef: Ref<HTMLElement>;
   /** The body is built on the first opening and kept, so a closed panel keeps its draft and follows an answer. */
@@ -206,7 +208,7 @@ export function AgentChatPanel({ id, panelRef, mounted, availability, repository
     event.preventDefault();
     onClose();
   }, [onClose]);
-  return <AgentChatPanelFrame id={id} panelRef={panelRef} open={open} expanded={expanded} onKeyDown={keyDown}>
+  return <AgentChatPanelFrame id={id} panelRef={panelRef} open={open} expanded={expanded} entering={entering} onKeyDown={keyDown}>
     {mounted && (repositoryId !== null
       ? <AgentChatBody key={repositoryId} repositoryId={repositoryId} availability={availability} open={open} repositories={repositories}
         onRepositoryChange={onRepositoryChange} expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} onAnswering={onAnswering} onAnswered={onAnswered} focus={focus}
