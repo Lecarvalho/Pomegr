@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useCallback, useMemo, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -344,8 +344,9 @@ describe("Edit, the action", () => {
     await user.keyboard("{Escape}");
     expect(confirmGroup()).not.toBeNull();
     expect(onClose).not.toHaveBeenCalled();
-    // A failed create keeps the group open and puts focus back on Cancel, so the keyboard is not lost.
-    finish({ ok: false, error: "failed" });
+    // A failed create keeps the group open and puts focus back on Cancel, so the keyboard is not lost. Cancel takes focus in an effect after
+    // the commit that draws the message. The answer arrives inside act, which runs that effect before the next line; findByText alone can return first.
+    await act(async () => { finish({ ok: false, error: "failed" }); });
     expect(await screen.findByText("GitHub did not accept the issue. Try again.")).toBeInTheDocument();
     expect(within(confirmGroup() as HTMLElement).getByRole("button", { name: "Cancel" })).toHaveFocus();
     await user.keyboard("{Escape}");

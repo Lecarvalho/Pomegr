@@ -75,6 +75,10 @@ describe("managed terminal", () => {
     expect(screen.getByRole("button", { name: "T-1 Build" })).toBeInTheDocument();
     expect(screen.getAllByText("Review")).toHaveLength(1);
     expect(screen.getByText("Review")).toHaveClass("commandChip");
+    // Wait for the build terminal to attach before picking the review. findByRole returns once the buttons are drawn, which can be before the
+    // build panel's effect has run, and the click then starts both panels' imports of the mocked xterm packages in one tick. Vitest answers the
+    // second of two overlapping imports of a mock with the real module, which cannot attach in jsdom.
+    await waitFor(() => expect(fake.terminal).toHaveBeenCalledWith("attach", expect.objectContaining({ key: entry.key })), { timeout: 5000 });
     fireEvent.click(reviewButton);
     await waitFor(() => expect(fake.terminal).toHaveBeenCalledWith("attach", expect.objectContaining({ key: review.key })), { timeout: 5000 });
     expect(reviewButton).toHaveAttribute("aria-pressed", "true");
@@ -158,11 +162,11 @@ describe("managed terminal", () => {
   });
   it("does not construct a terminal when its view closes during the font wait", async () => {
     let loaded!: () => void;
-    const load = vi.fn(() => new Promise<void>((resolve) => { loaded = resolve; }));
+    // The view closes inside the font request itself. Closing it after a poll for the request could land past the panel's 500 ms bound on a loaded runner.
+    const load = vi.fn(() => { view.unmount(); return new Promise<void>((resolve) => { loaded = resolve; }); });
     Object.defineProperty(document, "fonts", { configurable: true, value: { load, ready: Promise.resolve() } });
     const view = render(<ManagedTerminalPanel terminal={entry} />);
     await waitFor(() => expect(load).toHaveBeenCalled());
-    view.unmount();
     await act(async () => loaded());
     expect(fake.construct).not.toHaveBeenCalled();
     expect(fake.terminal).not.toHaveBeenCalled();
