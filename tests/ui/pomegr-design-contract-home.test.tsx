@@ -180,7 +180,9 @@ describe("Home visual contract", () => {
     }
     // On a phone, focus mode fills the screen, and the block sits above the keyboard.
     expect(pageStyles).toMatch(/@media \(max-width: 760px\) \{[^@]*\.dim \{ z-index: 84; inset: 0; background: var\(--command-ground\); \}/);
-    expect(aril).toMatch(/\.aril\.isFocus \{ position: fixed; z-index: 85; inset-inline: var\(--space-3\); bottom: calc\(var\(--keyboard-inset, 0px\) \+ max\(var\(--space-3\), env\(safe-area-inset-bottom\)\)\); transform: none; \}/);
+    expect(aril).toMatch(/\.aril\.isFocus \{ position: fixed; z-index: 85; inset-inline: var\(--space-3\); bottom: calc\(var\(--keyboard-inset, 0px\) \+ max\(var\(--space-3\), env\(safe-area-inset-bottom\)\)\); transform: none; transition: bottom 300ms cubic-bezier\(\.2, \.8, \.2, 1\); \}/);
+    // The block follows the keyboard with that transition, and not under reduced motion; its moves between the sticky place and this one are glides (useComposerGlide).
+    expect(aril).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^@]*\.aril\.isFocus \{ transition: none; \}/);
     expect(aril).toMatch(/\.hint \{ display: none; \}\s*\.aril\.isFocus \.back \{ display: inline-flex; align-self: flex-start; \}/);
   });
 

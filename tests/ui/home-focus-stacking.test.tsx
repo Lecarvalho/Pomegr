@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeChat, REPO_A, REPO_B, installHarness, newUser, removeHarness, setInventory, settle } from "./agent-chat-fixture";
 import { desktopBridge, resetHome } from "./home-fixture";
@@ -12,6 +12,10 @@ import { desktopBridge, resetHome } from "./home-fixture";
 // entrance animation ran, the wrapper's transform did the same and moved the block off the screen as well.
 // The test resolves the declared styles of every ancestor of the block, from the real stylesheets and the real markup, and asserts that none of them makes a stacking
 // context or a containing block in focus mode. Two controls strip each half of the fix and must be caught, so the audit is known to see the bug.
+// The same change of positioning made the block jump when focus mode ended (T-219, found on the same phone): the block went from fixed to sticky in one frame, and
+// the entrance of its wrapper started over, so it vanished for the entrance's delay and faded back in. A browser measurement at 390x844 showed the block at opacity 0
+// from 93ms to 343ms after the tap. The second half of this file guards both causes: the block is measured before and after the change and glides between the
+// two places with a transform, and the wrapper's entrance never plays twice.
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
   return { usePathname: () => harness.pathname };
@@ -41,6 +45,7 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
 });
 
 import { HomeDashboard } from "../../app/HomeDashboard";
+import { GLIDE_EASE, GLIDE_MS } from "../../app/components/home/useComposerGlide";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import { HOME_PREFERENCES_STORAGE_KEY, HOME_UPDATE_ID } from "../../app/hooks/useHomePreferences";
 
@@ -174,19 +179,24 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** Focuses the composer, and answers the lifted block, the layer, and every ancestor of the block up to the document, in the shell's markup (`.commandShell > .commandMain`). */
-async function focusModeOnAPhone() {
+/** Draws Home in the shell's markup (`.commandShell > .commandMain`) and answers the composer block and its wrapper. */
+async function renderHome() {
   shell = document.createElement("div");
   shell.className = "commandShell";
   const main = document.createElement("main");
   main.className = "commandMain";
   shell.append(main);
   document.body.append(shell);
-  const person = newUser();
   render(<SessionCatalogProvider sessions={[]}><HomeDashboard /></SessionCatalogProvider>, { container: main });
   await settle();
-  await person.click(document.getElementById("home-aril-message")!);
   const block = document.querySelector<HTMLElement>('section[aria-label="Ask Aril"]')!;
+  return { block, wrapper: block.parentElement! };
+}
+
+/** Focuses the composer, and answers the lifted block, the layer, and every ancestor of the block up to the document. */
+async function focusModeOnAPhone() {
+  const { block } = await renderHome();
+  await newUser().click(document.getElementById("home-aril-message")!);
   expect(block.className).toMatch(/_isFocus_/);
   const layer = document.querySelector<HTMLElement>('[class*="_dim_"]')!;
   expect(layer).not.toBeNull();
@@ -242,7 +252,10 @@ describe("focus mode on a phone: the fixed block is not trapped under the layer"
   it("is caught by the audit when the wrapper keeps its entrance animation, which transforms it and moves the fixed block off the screen for 660ms", async () => {
     const { ancestors } = await focusModeOnAPhone();
     const old = ".column .composer.isLifted { position: static; z-index: auto; animation: none; background: none; }";
-    const bug = pageCss.replace(old, ".column .composer.isLifted { position: static; z-index: auto; background: none; }");
+    // The entrance is also cut by the mark that it has played, which focus mode sets at the same time, so both take their rule out.
+    const played = ".column .composer.isEntered { animation: none; }";
+    expect(pageCss).toContain(played);
+    const bug = pageCss.replace(old, ".column .composer.isLifted { position: static; z-index: auto; background: none; }").replace(played, "");
     expect(bug).not.toBe(pageCss);
     const found = audit(rulesOf([{ css: shellCss, modules: false }, { css: bug, modules: true }, { css: arilCss, modules: true }]), ancestors);
     expect(found.join("\n")).toMatch(/_composer_[^\n]* \{ animation: homeEnter 420ms/);
@@ -256,5 +269,103 @@ describe("focus mode on a phone: the fixed block is not trapped under the layer"
       const found = audit(rulesOf([{ css: shellCss, modules: false }, { css: `${pageCss}\n.column { ${addition}; }`, modules: true }, { css: arilCss, modules: true }]), ancestors);
       expect(found, addition).not.toEqual([]);
     }
+  });
+});
+
+// ---- Entering and leaving focus mode: the block glides between its two places, and its wrapper's entrance does not start over. ----
+
+// jsdom does no layout and has no Web Animations, so the places are stubbed: the composer is at the sticky place until the block takes the focus class, and at
+// the focus place after it. The glide must start from the place the composer left, so a measure taken after the change (offset 0) would not start one.
+const REST_TOP = 630;
+const FOCUS_TOP = 600;
+const GLIDE = (from: number, to: number) => [[{ transform: `translate(0px, ${from - to}px)` }, { transform: "none" }], { duration: GLIDE_MS, easing: GLIDE_EASE }] as const;
+
+function stubMedia({ phone, reducedMotion }: { phone: boolean; reducedMotion: boolean }) {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    media: query, matches: (phone && query === "(max-width: 760px)") || (reducedMotion && query === "(prefers-reduced-motion: reduce)"), onchange: null,
+    addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false,
+  }));
+}
+
+describe("focus mode on a phone: the block glides between the sticky place and the focus place", () => {
+  let animate: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    stubMedia({ phone: true, reducedMotion: false });
+    const measure = Element.prototype.getBoundingClientRect;
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      if (!this.classList.contains("agentChatComposer")) return measure.call(this);
+      const lifted = /_isFocus_/.test(this.closest('section[aria-label="Ask Aril"]')?.className ?? "");
+      const top = lifted ? FOCUS_TOP : REST_TOP;
+      return { x: 12, y: top, left: 12, top, right: 378, bottom: top + 100, width: 366, height: 100, toJSON: () => ({}) } as DOMRect;
+    });
+    animate = vi.fn(() => ({ cancel: vi.fn() }));
+    Object.defineProperty(Element.prototype, "animate", { value: animate, configurable: true, writable: true });
+  });
+  afterEach(() => {
+    delete (Element.prototype as { animate?: unknown }).animate;
+    vi.unstubAllGlobals();
+  });
+
+  it("glides to the focus place when focus mode starts", async () => {
+    await focusModeOnAPhone();
+    expect(animate).toHaveBeenCalledTimes(1);
+    expect(animate).toHaveBeenLastCalledWith(...GLIDE(REST_TOP, FOCUS_TOP));
+  });
+
+  it.each([
+    ["a tap outside", async () => { await newUser().click(document.querySelector<HTMLElement>('[class*="_dim_"]')!); }],
+    ["Back to Home", async () => { await newUser().click(screen.getByRole("button", { name: "Back to Home" })); }],
+    ["Escape", async () => { await newUser().keyboard("{Escape}"); }],
+  ])("glides back from the place it left when focus mode ends with %s, so it does not jump for a frame", async (_, leave) => {
+    const { block } = await focusModeOnAPhone();
+    animate.mockClear();
+    await leave();
+    expect(block.className).not.toMatch(/_isFocus_/);
+    expect(animate).toHaveBeenCalledTimes(1);
+    expect(animate).toHaveBeenLastCalledWith(...GLIDE(FOCUS_TOP, REST_TOP));
+  });
+
+  it("does not glide under reduced motion: the block is at its new place at once", async () => {
+    stubMedia({ phone: true, reducedMotion: true });
+    const { block } = await focusModeOnAPhone();
+    await newUser().click(document.querySelector<HTMLElement>('[class*="_dim_"]')!);
+    expect(block.className).not.toMatch(/_isFocus_/);
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  it("leaves the desktop to its own transition", async () => {
+    stubMedia({ phone: false, reducedMotion: false });
+    await focusModeOnAPhone();
+    await newUser().click(document.querySelector<HTMLElement>('[class*="_dim_"]')!);
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  it("moves with the time and the curve of the desktop's shift", () => {
+    expect(arilCss).toContain(`transition: transform ${GLIDE_MS}ms ${GLIDE_EASE};`);
+  });
+
+  it("never plays the wrapper's entrance a second time when focus mode ends, which made the block vanish and fade back in", async () => {
+    const { layer, ancestors } = await focusModeOnAPhone();
+    const wrapper = ancestors[0];
+    await newUser().click(layer);
+    // Back in the sticky place, with the entrance already played (focus mode cut it short).
+    expect(wrapper.className).not.toMatch(/_isLifted_/);
+    expect(wrapper.className).toMatch(/_isEntered_/);
+    const rules = rulesOf(SHIPPED);
+    expect(declared(rules, wrapper, "position")).toBe("sticky");
+    expect(declared(rules, wrapper, "animation")).toBe("none");
+    // Control: without the mark, the entrance applies again, starts over when the lifted class goes, and the wrapper is invisible for its delay.
+    wrapper.className = wrapper.className.split(/\s+/).filter((name) => !/_isEntered_/.test(name)).join(" ");
+    expect(declared(rules, wrapper, "animation")).toMatch(/^homeEnter 420ms/);
+  });
+
+  it("marks the entrance as played when the wrapper's own animation ends, and not when an animation inside it does", async () => {
+    const { block, wrapper } = await renderHome();
+    // React listens for the prefixed name where the window has no AnimationEvent, as jsdom has none, so both are sent.
+    const animationEnd = (element: Element) => { for (const type of ["animationend", "webkitAnimationEnd"]) fireEvent(element, new Event(type, { bubbles: true })); };
+    animationEnd(block);
+    expect(wrapper.className).not.toMatch(/_isEntered_/);
+    animationEnd(wrapper);
+    expect(wrapper.className).toMatch(/_isEntered_/);
   });
 });

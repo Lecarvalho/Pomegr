@@ -47,6 +47,9 @@
      entrance: a flex item with a z-index (static or not) and an element under an animation that transforms are each a stacking context, and the fixed block inside
      one stays under the dim (z-index 84) however high its own z-index is, so the screen would be blank. `.column` repeats the entrance rule's specificity. */
   .column .composer.isLifted { position: static; z-index: auto; animation: none; background: none; }
+  /* Once the entrance has played, or focus mode cut it short, it never plays again. Leaving focus mode removes `.isLifted`, and the entrance would start over: the
+     wrapper would be invisible for its delay and fade back in, which is the block vanishing and reappearing. */
+  .column .composer.isEntered { animation: none; }
   .dim { z-index: 84; inset: 0; background: var(--command-ground); }
 }
 

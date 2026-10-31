@@ -263,10 +263,19 @@ The owner approved the cards, the tiles, and the phone layout of Home (`HomeV3.d
 ### Phone
 
 - On the phone, focus mode fills the screen: a layer in the canvas fill covers the page, header included.
-- The composer does not lift. It is fixed to the bottom of the screen, above the keyboard, with the chips above it.
-- The block follows the keyboard: the visual viewport tells how far the keyboard covers the screen.
+- The composer does not lift to the middle. It is fixed to the bottom of the screen, above the keyboard, with the chips above it.
+- With the keyboard open the block sits just above it, which is the upper-middle of a tall phone, so it can look centered. Its place is the keyboard's top edge, never the middle.
+- The block follows the keyboard: the visual viewport tells how far the keyboard covers the screen, and the block's `bottom` follows it over 300ms.
+- The block is fixed only in focus mode, and its resting place is sticky at the bottom of Home. Changing between the two moves it in one frame unless it glides.
+- Starting and ending focus mode glide the block between the two places over 480ms, with the desktop's curve, while the other parts fade.
+- The glide is a transform that runs from the offset between the two places to none. `useComposerGlide` measures the composer before the mode changes, in the event that changes it, and after.
+- The composer decides the offset, not the block, so the chips and the Back to Home action, which comes and goes with focus mode, never make the composer jump.
+- Every way out glides the same: a tap outside, **Back to Home**, and Escape. A glide that is still running starts the next one from where the block is on the screen.
+- The wrapper's entrance plays once. It never starts over when focus mode ends, or the block would be invisible for the 240ms of its delay and then fade back in.
+- **Back to Home** is drawn only in focus mode, so it goes at once when focus mode ends.
+- Reduced motion has no glide: the block is at its new place at once, with no blink.
 - The block must rise above the layer, so no ancestor of the block makes a stacking context or a containing block in focus mode: no z-index, no animation, no transform, no filter, no containment.
-- The wrapper of the block leaves its sticky place, its z-index, and its entrance as focus mode starts, even while the entrance still runs. `tests/ui/home-focus-stacking.test.tsx` guards it.
+- The wrapper of the block leaves its sticky place, its z-index, and its entrance as focus mode starts, even while the entrance still runs. `tests/ui/home-focus-stacking.test.tsx` guards it, and guards the glide and the single entrance.
 - The hint is not drawn, because a phone has no Escape key. A Quiet **Back to Home** action takes its place.
 - Send turns the screen into the full-screen sheet of the panel.
 

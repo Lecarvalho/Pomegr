@@ -159,7 +159,16 @@ function HomeComposerWithoutRepository({ loading }: { loading: boolean }) {
  * The suggestions and the composer at the foot of Home, drawn only where the chat can be reached. Focusing the composer, or picking a chip, enters
  * focus mode (Home's other parts fade out and this block moves to the middle); Send hands the page to the maximized panel.
  */
-export function HomeAril({ suggestions, mode, onFocus, onSent, onLeave, onEmptyChange }: { suggestions: readonly string[]; mode: HomeMode; onFocus(): void; onSent(): void; onLeave(): void; onEmptyChange(empty: boolean): void }) {
+export function HomeAril({ suggestions, mode, blockRef, onFocus, onSent, onLeave, onEmptyChange }: {
+  suggestions: readonly string[];
+  mode: HomeMode;
+  /** The block's ref when its owner glides it between its places on a phone (useComposerGlide); without one the block keeps its own. */
+  blockRef?: RefObject<HTMLElement | null>;
+  onFocus(): void;
+  onSent(): void;
+  onLeave(): void;
+  onEmptyChange(empty: boolean): void;
+}) {
   const { snapshot, loading } = useRepositoryInventory();
   const ids = useMemo(() => snapshot.repositories.map((repository) => repository.id), [snapshot.repositories]);
   const options = useMemo<CommandSelectOption[]>(() => snapshot.repositories.map((repository) => ({ value: repository.id, label: repository.displayName })), [snapshot.repositories]);
@@ -168,7 +177,8 @@ export function HomeAril({ suggestions, mode, onFocus, onSent, onLeave, onEmptyC
   const fallback = useMemo(() => chooseRepository(ids, null, readStoredRepository()), [ids]);
   const repositoryId = selected !== null && ids.includes(selected) ? selected : fallback;
   const choose = (id: string) => { storeRepository(id); setSelected(id); };
-  const block = useRef<HTMLElement>(null);
+  const ownBlock = useRef<HTMLElement>(null);
+  const block = blockRef ?? ownBlock;
   useFocusShift(block, mode !== "home");
   useKeyboardInset(block, mode === "focus");
 

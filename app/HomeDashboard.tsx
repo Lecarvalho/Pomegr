@@ -12,6 +12,7 @@ import { HomeNeedsYou } from "./components/home/HomeNeedsYou";
 import { HomeUpdateCard } from "./components/home/HomeUpdateCard";
 import { HomeUpdateIllustration } from "./components/home/HomeUpdateIllustration";
 import { dayCounts, greetingFor, needsYou, suggestionFacts } from "./components/home/home-model";
+import { useComposerGlide } from "./components/home/useComposerGlide";
 import { useHomeLogs } from "./components/home/useHomeLogs";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { useHomePreferences } from "./hooks/useHomePreferences";
@@ -59,8 +60,20 @@ export function HomeDashboard() {
   const [emptyDraft, setEmptyDraft] = useState(true);
   // Aril turned Off while the composer was lifted or the thread was open: Home comes back, since nothing else would give it back.
   if (!chat && mode !== "home") setMode("home");
-  const leave =useCallback(() => { setMode("home"); page.current?.focus({ preventScroll: true }); }, []);
-  const enterFocus = useCallback(() => setMode((current) => (current === "home" ? "focus" : current)), []);
+  // On a phone the composer block changes its positioning when focus mode starts and ends. Where it is is marked in the event that changes the mode, before the
+  // change, and the block glides from there, so it never jumps or disappears for a frame (useComposerGlide).
+  const { block: composerBlock, mark: markGlide } = useComposerGlide(mode);
+  const leave = useCallback(() => { markGlide("home"); setMode("home"); page.current?.focus({ preventScroll: true }); }, [markGlide]);
+  const enterFocus = useCallback(() => {
+    if (mode !== "home") return;
+    markGlide("focus");
+    setMode("focus");
+  }, [mode, markGlide]);
+  // The entrance of the composer's wrapper plays once. Focus mode cuts it short on a phone, and leaving focus mode must not play it again: the wrapper would
+  // vanish for the delay of the entrance and fade back in. It plays again only when the composer is drawn again.
+  const [composerEntered, setComposerEntered] = useState(false);
+  if (!composerEntered && mode !== "home") setComposerEntered(true);
+  if (!chat && composerEntered) setComposerEntered(false);
   const sent = useCallback(() => setMode("thread"), []);
   useEffect(() => {
     const closed = () => setMode((current) => (current === "thread" ? "home" : current));
@@ -134,7 +147,10 @@ export function HomeDashboard() {
         /></div>}
       </div>
 
-      {chat && <div className={`${styles.composer} ${styles.enter}${mode === "home" ? "" : ` ${styles.isLifted}`}`} style={enter(4)}><HomeAril suggestions={suggestions} mode={mode} onFocus={enterFocus} onSent={sent} onLeave={leave} onEmptyChange={setEmptyDraft} /></div>}
+      {chat && <div className={`${styles.composer} ${styles.enter}${mode === "home" ? "" : ` ${styles.isLifted}`}${composerEntered ? ` ${styles.isEntered}` : ""}`} style={enter(4)}
+        onAnimationEnd={(event) => { if (event.target === event.currentTarget) setComposerEntered(true); }}>
+        <HomeAril suggestions={suggestions} mode={mode} blockRef={composerBlock} onFocus={enterFocus} onSent={sent} onLeave={leave} onEmptyChange={setEmptyDraft} />
+      </div>}
     </div>
   </section>;
 }
