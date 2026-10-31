@@ -56,6 +56,14 @@ export class FakeChat {
   /** Where the thread was summarized for Aril, as the desktop tells it: a position and a time, never the text. */
   summarized: { through: { conversationId: string; messageId: string; at: string }; at: string } | null = null;
   readonly agentChat = vi.fn((operation: string, payload: Json) => this.handle(operation, payload));
+  /** The switch the desktop keeps. Pomegr ships with Aril On, so a test turns it Off to see the chat go; `null` makes the desktop not answer. */
+  arilSwitch: { on: boolean; pairedOn: boolean } | null = { on: true, pairedOn: false };
+  /** Aril's own controls, the desktop bridge's `arilControl` (a phone reaches the same through the paired route). Only the switch is modelled. */
+  readonly arilControl = vi.fn(async (operation: string, payload: Json): Promise<Json> => {
+    if (operation === "aril_switch") return this.arilSwitch ? { ok: true, ...this.arilSwitch } : { ok: false, error: "unavailable" };
+    if (operation === "aril_switch_set" && this.arilSwitch && typeof payload.on === "boolean") { this.arilSwitch = { ...this.arilSwitch, on: payload.on }; return { ok: true, on: payload.on }; }
+    return { ok: false, error: "invalid" };
+  });
   /** The bytes of each image the desktop holds, by ID. */
   readonly images = new Map<string, { type: string; bytes: Uint8Array }>();
   private imageCounter = 0;
@@ -169,6 +177,10 @@ export class FakeChat {
     const conversationId = payload.conversationId === null || payload.conversationId === undefined ? null : String(payload.conversationId);
     const stored = conversationId === null ? undefined : this.conversation(repositoryId, conversationId);
     switch (operation) {
+      // A phone asks for the switch on the chat's own route.
+      case "aril_switch":
+      case "aril_switch_set":
+        return this.arilControl(operation, payload);
       case "list":
         return { ok: true, conversations: this.summaries(repositoryId), running: this.turn?.repositoryId === repositoryId ? this.turn.conversationId : null, ...(this.summarized ? { summarizedAt: this.summarized.at } : {}) };
       case "read": {
@@ -314,7 +326,7 @@ export function installHarness(): FakeChat {
   window.history.replaceState(null, "", "/");
   window.localStorage.clear();
   harness.chat = new FakeChat();
-  setBridge({ agentChat: harness.chat.agentChat, agentChatImage: harness.chat.agentChatImage });
+  setBridge({ agentChat: harness.chat.agentChat, agentChatImage: harness.chat.agentChatImage, arilControl: harness.chat.arilControl });
   setInventory([[REPO_A, "pomegr"]]);
   harness.board = boardOf();
   harness.refresh.mockClear();

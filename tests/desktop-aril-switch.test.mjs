@@ -15,20 +15,72 @@ async function directory(context) {
 
 const fileOf = (root) => path.join(root, "aril-v1", ARIL_SWITCH_FILE);
 
-test("Aril is Off on a fresh install, with no file, and with a file outside the contract", async (context) => {
+test("Aril ships On: a fresh install and a missing file read as On, with paired devices not allowed", async (context) => {
   const root = await directory(context);
   const fresh = createArilSwitch({ file: fileOf(root) });
+  assert.equal(fresh.isOn(), false, "until the file has been read the switch is Off");
   await fresh.ready;
-  assert.deepEqual(fresh.state(), { on: false, pairedOn: false });
-  assert.equal(fresh.isOn(), false);
-  assert.equal(createArilSwitch().isOn(), false, "a switch in memory starts Off");
+  assert.deepEqual(fresh.state(), { on: true, pairedOn: false });
+  assert.equal(fresh.isOn(), true);
+  await assert.rejects(fs.stat(fileOf(root)), { code: "ENOENT" }, "reading the default writes nothing");
+  // The folder exists but the file does not: still the owner who never chose.
   await fs.mkdir(path.dirname(fileOf(root)), { recursive: true });
-  for (const content of ["not json", "{}", JSON.stringify({ version: 2, on: true, pairedOn: true }), JSON.stringify({ version: 1, on: "yes", pairedOn: false }), JSON.stringify([true])]) {
+  const folder = createArilSwitch({ file: fileOf(root) });
+  await folder.ready;
+  assert.equal(folder.isOn(), true);
+  assert.equal(createArilSwitch().isOn(), false, "a switch held in memory with no state given starts Off, which stays the fail-closed default");
+  assert.equal(createArilSwitch({ initial: { on: true } }).isOn(), true);
+});
+
+test("a damaged, unreadable, or foreign file reads as Off, because it may hold an owner's Off", async (context) => {
+  const root = await directory(context);
+  await fs.mkdir(path.dirname(fileOf(root)), { recursive: true });
+  for (const content of ["", "not json", "{}", JSON.stringify({ version: 2, on: true, pairedOn: true }), JSON.stringify({ version: 1, on: "yes", pairedOn: false }), JSON.stringify({ version: 1, on: true }), JSON.stringify([true]), "null"]) {
     await fs.writeFile(fileOf(root), content);
     const odd = createArilSwitch({ file: fileOf(root) });
     await odd.ready;
-    assert.equal(odd.isOn(), false, content);
+    assert.equal(odd.isOn(), false, JSON.stringify(content));
+    assert.equal(odd.state().pairedOn, false);
   }
+  // A file that cannot be read for any reason but its absence is not the owner who never chose.
+  for (const code of ["EACCES", "EPERM", "EISDIR", "EBUSY", undefined]) {
+    const filesystem = { readFile: async () => { throw Object.assign(new Error("read"), code ? { code } : {}); } };
+    const unreadable = createArilSwitch({ file: path.resolve("switch.json"), filesystem });
+    await unreadable.ready;
+    assert.equal(unreadable.isOn(), false, String(code));
+  }
+  // A folder where the file should be is not a missing file.
+  await fs.rm(fileOf(root));
+  await fs.mkdir(fileOf(root));
+  const folder = createArilSwitch({ file: fileOf(root) });
+  await folder.ready;
+  assert.equal(folder.isOn(), false);
+});
+
+test("a saved Off stays Off after a restart, and an Off never turns into the default On", async (context) => {
+  const root = await directory(context);
+  await fs.mkdir(path.dirname(fileOf(root)), { recursive: true });
+  await fs.writeFile(fileOf(root), JSON.stringify({ version: 1, on: false, pairedOn: true }));
+  const saved = createArilSwitch({ file: fileOf(root) });
+  await saved.ready;
+  assert.deepEqual(saved.state(), { on: false, pairedOn: true });
+  // The owner turns it On and Off again: the file always says what the owner did last.
+  const owner = createArilSwitch({ file: fileOf(root) });
+  assert.equal(await owner.set(true), "ok");
+  assert.equal(JSON.parse(await fs.readFile(fileOf(root), "utf8")).on, true);
+  assert.equal(await owner.set(false), "ok");
+  const restarted = createArilSwitch({ file: fileOf(root) });
+  await restarted.ready;
+  assert.equal(restarted.isOn(), false);
+  // Turning Off on a fresh install writes the Off, so the next start does not read the default.
+  const freshRoot = await directory(context);
+  const fresh = createArilSwitch({ file: fileOf(freshRoot) });
+  await fresh.ready;
+  assert.equal(await fresh.set(false), "ok");
+  const next = createArilSwitch({ file: fileOf(freshRoot) });
+  await next.ready;
+  assert.equal(next.isOn(), false);
+  assert.deepEqual(JSON.parse(await fs.readFile(fileOf(freshRoot), "utf8")), { version: 1, on: false, pairedOn: false });
 });
 
 test("before the saved state is read the switch is Off, and it reads On after", async (context) => {
@@ -105,7 +157,7 @@ test("an On that is still being written when an Off arrives never applies after 
   const written = [];
   let first = true;
   const filesystem = {
-    readFile: async () => { throw Object.assign(new Error("none"), { code: "ENOENT" }); },
+    readFile: async () => JSON.stringify({ version: 1, on: false, pairedOn: false }),
     mkdir: async () => {},
     writeFile: async (_file, content) => { if (first) { first = false; await gate; } written.push(JSON.parse(content)); },
     rename: async () => {},

@@ -1,8 +1,9 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAgentChatAvailability } from "../../agent-chat-client";
+import { useArilSwitch } from "../../aril-control-client";
 import { useRepositoryInventory } from "../../repository-inventory-client";
 import type { CommandSelectOption } from "../command-center/CommandSelect";
 import { AgentChatLauncher, AgentChatScrim } from "./AgentChatFrame";
@@ -15,15 +16,46 @@ import {
 /**
  * Aril, the Pomegr task-board agent: a launcher at the bottom right of the window and the chat panel it opens, docked to
  * the right edge below the shell header. The panel lays over the page, which a light scrim dims; a click on the scrim closes
- * the panel as Close does. The chat is drawn only where it can be reached (the desktop app, or a paired phone), and that is
- * decided before anything is drawn, so the launcher is never shown and then taken away. Home draws no launcher: its composer is the way
+ * the panel as Close does. The chat is drawn only where it can be reached (the desktop app, or a paired phone) and only while Aril is On, and both
+ * are decided before anything is drawn, so the launcher is never shown and then taken away. While Aril is Off, or before the switch has been
+ * read, the dock draws nothing at all: no launcher, no panel, no expanded page. A panel that is open when Aril turns Off is closed with the dock
+ * (its draft goes with it), and a link to the chat lands on Home instead. Home draws no launcher: its composer is the way
  * in, and a message written there reaches this dock as an event. The dock opens the maximized panel on that repository, the panel sends the
  * message, and closing the panel gives the page back to Home; the panel's mode before that is restored.
  */
 export function AgentChatDock() {
   const availability = useAgentChatAvailability();
-  if (availability !== "desktop" && availability !== "paired") return null;
+  const reachable = availability === "desktop" || availability === "paired";
+  // The switch is asked for as long as the dock is mounted (once for every view that listens), because a launcher must follow a switch turned elsewhere.
+  const aril = useArilSwitch(reachable).state;
+  const off = aril !== null && !aril.on;
+  const pathname = usePathname() || "/";
+  // A link to the chat has nowhere to go while Aril is Off, so it lands on Home. A page that loaded with one (a follow-up's notification) shows in its
+  // address; a link clicked inside the app arrives as an event, and the page it came from is kept until the page changes.
+  const [asked, setAsked] = useState<string | null>(null);
+  const [seen, setSeen] = useState(pathname);
+  if (seen !== pathname) { setSeen(pathname); setAsked(null); }
+  if (!off && asked !== null) setAsked(null);
+  useEffect(() => {
+    if (!off) return undefined;
+    // Home is where the link lands: there is nothing to leave.
+    const onOpen = () => { if (pathname !== "/") setAsked(pathname); };
+    window.addEventListener(AGENT_CHAT_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(AGENT_CHAT_OPEN_EVENT, onOpen);
+  }, [off, pathname]);
+  const linked = off && typeof window !== "undefined" && agentChatLink(window.location.pathname, window.location.search) !== null;
+  if (off && (linked || asked === pathname)) return <AgentChatToHome />;
+  if (!reachable || aril === null || !aril.on) return null;
   return <AgentChatDockLive availability={availability} />;
+}
+
+/** Takes the page to Home, once. Drawn only for a link to the chat while Aril is Off, so a page that never asks for it never needs the router. */
+function AgentChatToHome() {
+  const router = useRouter();
+  // The page changes, and this goes with it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one move for each time it is drawn
+  useEffect(() => { router.replace("/"); }, []);
+  return null;
 }
 
 function AgentChatDockLive({ availability }: { availability: "desktop" | "paired" }) {

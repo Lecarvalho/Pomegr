@@ -1,6 +1,8 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeChat, REPO_A, agentMessage, chatId, conversationOf, installHarness, newUser, removeHarness, settle, userMessage, harness, setBridge } from "./agent-chat-fixture";
+import { renderDock } from "./dock-helper";
+import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
@@ -25,7 +27,6 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
   return { ...actual, useRepositoryInventory: () => harness.inventory };
 });
 
-import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 
 let chat: FakeChat;
 
@@ -54,9 +55,9 @@ async function ask(person: ReturnType<typeof user>, text: string) {
 }
 
 describe("agent chat availability", () => {
-  it("draws nothing on a local client without the desktop bridge, and nothing while the client is not yet known", () => {
+  it("draws nothing on a local client without the desktop bridge, and nothing while the client is not yet known", async () => {
     setBridge(undefined);
-    const { container, rerender } = render(<AgentChatDock />);
+    const { container, rerender } = await renderDock();
     expect(container).toBeEmptyDOMElement();
     harness.mode = "unknown";
     rerender(<AgentChatDock />);
@@ -64,8 +65,8 @@ describe("agent chat availability", () => {
     expect(chat.agentChat).not.toHaveBeenCalled();
   });
 
-  it("draws the launcher with the desktop bridge and asks nothing until the panel opens", () => {
-    render(<AgentChatDock />);
+  it("draws the launcher with the desktop bridge and asks nothing until the panel opens", async () => {
+    await renderDock();
     const button = launcher();
     expect(button).toHaveAccessibleName("Open Aril, the Pomegr agent");
     expect(button).toHaveTextContent("Aril");
@@ -85,17 +86,17 @@ describe("agent chat availability", () => {
       return new Response(JSON.stringify(await chat.agentChat(body.operation, body.payload)), { status: 200, headers: { "content-type": "application/json" } });
     });
     vi.stubGlobal("fetch", fetchMock);
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(await within(log()).findByText("Hi from the desktop")).toBeInTheDocument();
-    const first = fetchMock.mock.calls[0] as [string, RequestInit];
+    // The dock reads the Aril switch before it draws anything (it draws nothing while Aril is Off or not yet known); everything else it asked is the thread.
+    const operations = fetchMock.mock.calls.map(([, init]) => (JSON.parse(String((init as RequestInit).body)) as { operation: string }).operation);
+    expect(operations[0]).toBe("aril_switch");
+    const first = fetchMock.mock.calls.find(([, init]) => (JSON.parse(String((init as RequestInit).body)) as { operation: string }).operation !== "aril_switch") as [string, RequestInit];
     expect(first[0]).toBe("/api/agent-chat");
     expect(first[1]).toMatchObject({ method: "POST", cache: "no-store" });
     expect(JSON.parse(String(first[1].body))).toEqual({ operation: "thread", payload: { repositoryId: REPO_A } });
-    // The open panel also reads the Aril switch, for the On/Off beside its name; everything else it asked is the thread.
-    const operations = fetchMock.mock.calls.map(([, init]) => (JSON.parse(String((init as RequestInit).body)) as { operation: string }).operation);
     expect(operations.filter((operation) => operation !== "aril_switch").slice(0, 2)).toEqual(["thread"]);
-    expect(operations).toContain("aril_switch");
     expect(chat.agentChat.mock.calls.length).toBe(fetchMock.mock.calls.length);
   });
 });
@@ -103,7 +104,7 @@ describe("agent chat availability", () => {
 describe("opening the panel", () => {
   it("opens on the thread, hides the launcher, and puts focus in the message field", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Old question"), agentMessage("Old answer")]), conversationOf(2, [userMessage("New question"), agentMessage("New answer")]));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(listed()).toEqual([REPO_A]);
     expect(chat.calls("thread")).toEqual([{ repositoryId: REPO_A }]);
@@ -122,7 +123,7 @@ describe("opening the panel", () => {
 
   it("shows the empty state only once the thread is read, never before it, and its suggestions only fill the field", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     let release = () => {};
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const original = chat.agentChat.getMockImplementation()!;
@@ -150,7 +151,7 @@ describe("opening the panel", () => {
   it("shows no empty state while the saved thread is being read", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Question"), agentMessage("Answer")]));
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     let release = () => {};
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const original = chat.agentChat.getMockImplementation()!;
@@ -174,7 +175,7 @@ describe("opening the panel", () => {
       agentMessage("", { status: "timed_out" }, "m-6"),
       agentMessage("", { status: "interrupted" }, "m-7"),
     ]));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     const messages = within(log()).getAllByRole("article", { name: "Aril" });
     expect(messages[0]).toHaveTextContent("Codex · model-code");
@@ -192,7 +193,7 @@ describe("opening the panel", () => {
 describe("sending a message", () => {
   it("sends the text, the provider and the model, shows the pending message once, then the streamed answer and the stored one", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     // The run starts on the newest known Claude model and Medium: never a default.
     expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(/^model-large$/);
@@ -240,7 +241,7 @@ describe("sending a message", () => {
 
   it("lists only named models, grouped by provider, and sends the model and the effort the owner chooses", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(screen.getByRole("combobox", { name: "Model" }));
     const list = screen.getByRole("listbox", { name: "Model" });
@@ -260,7 +261,7 @@ describe("sending a message", () => {
 
   it("keeps a chosen effort when only the model changes, and a chosen model when only the effort changes", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(screen.getByRole("combobox", { name: "Effort" }));
     await person.click(screen.getByRole("option", { name: "Low" }));
@@ -276,7 +277,7 @@ describe("sending a message", () => {
 
   it("starts the run from what the thread last ran with", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Q"), agentMessage("A", { provider: "codex", model: "model-code", effort: "high" })], { provider: "codex", model: "model-code", effort: "high" }));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(/^model-code$/);
     expect(screen.getByRole("combobox", { name: "Effort" })).toHaveTextContent(/^High$/);
@@ -286,7 +287,7 @@ describe("sending a message", () => {
 
   it("shows the newest known model and Medium for a thread whose last conversation has no model and no effort", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Q"), agentMessage("A")]));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(/^model-large$/);
     expect(screen.getByRole("combobox", { name: "Effort" })).toHaveTextContent(/^Medium$/);
@@ -299,7 +300,7 @@ describe("sending a message", () => {
       userMessage("One"), agentMessage("Fine.", { provider: "codex", model: "model-code", effort: "xhigh" }, "m-2"),
       userMessage("Two", "m-3"), agentMessage("Older.", {}, "m-4"),
     ]));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     const answers = within(log()).getAllByRole("article", { name: "Aril" });
     expect(answers[0].querySelector(".agentChatMessageCaption")).toHaveTextContent("Codex · model-code · Xhigh");
@@ -308,7 +309,7 @@ describe("sending a message", () => {
 
   it("names the effort on the answer being written and on the stored answer", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await ask(person, "Think about it");
     chat.write("Partway", "writing");
@@ -321,7 +322,7 @@ describe("sending a message", () => {
 
   it("sends on Enter, makes a new line on Shift+Enter, and never sends while an IME composition is confirmed", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.type(field(), "first line{Shift>}{Enter}{/Shift}second line");
     expect(field()).toHaveValue("first line\nsecond line");
@@ -337,7 +338,7 @@ describe("sending a message", () => {
 
   it("disables Send for an empty or too long message, and shows the counter only past 3,600 characters", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     expect(sendButton()).toBeDisabled();
     fireEvent.change(field(), { target: { value: "   \n  " } });
@@ -356,7 +357,7 @@ describe("sending a message", () => {
 
   it("stops the answer being written", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await ask(person, "Cut this feature into tasks");
     chat.write("Starting on the cut", "writing");
@@ -373,7 +374,7 @@ describe("sending a message", () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Q1"), agentMessage("A1")]), conversationOf(2, [userMessage("Q2")]));
     chat.turn = { repositoryId: REPO_A, conversationId: chatId(2), startedAt: "2026-10-11T10:00:00.000Z", provider: "claude", model: null, activity: "thinking", text: "" };
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     expect(within(log()).getByRole("status")).toHaveTextContent("Thinking…");
     expect(screen.queryByText("Aril is answering in another conversation.")).toBeNull();
@@ -395,7 +396,7 @@ describe("refused operations", () => {
   ];
   it.each(cases)("says %s in one fixed line and keeps what was typed", async (_name, refusal, copy) => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     chat.refuse = refusal;
     await ask(person, "Please keep this text");
@@ -408,7 +409,7 @@ describe("refused operations", () => {
 
   it("names the provider that was asked when its command-line tool is missing", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(screen.getByRole("combobox", { name: "Model" }));
     await person.click(screen.getByRole("option", { name: /^model-code, Codex/ }));
@@ -420,7 +421,7 @@ describe("refused operations", () => {
   it("never says that a conversation is full, and answers a bridge that fails with the unreachable line", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Q"), agentMessage("A")]));
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     chat.refuse = "limit";
     await ask(person, "One more");
@@ -437,7 +438,7 @@ describe("refused operations", () => {
 
   it("clears the line on the next operation", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     chat.refuse = "busy";
     await ask(person, "First try");

@@ -1,6 +1,7 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AT, FakeChat, REPO_A, REPO_B, agentMessage, conversationOf, harness, installHarness, newUser, removeHarness, setInventory, settle, userMessage } from "./agent-chat-fixture";
+import { renderDock } from "./dock-helper";
 
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
@@ -25,7 +26,6 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
   return { ...actual, useRepositoryInventory: () => harness.inventory };
 });
 
-import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 
 // The docked panel, its header, the composer, and the time of every message.
 let chat: FakeChat;
@@ -63,7 +63,7 @@ function today(hour: number, minute: number) {
 describe("the docked panel", () => {
   it("expands and docks again with the one header action, which is named and pressed by the mode", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     expect(panel()).not.toHaveClass("isExpanded");
 
@@ -89,7 +89,7 @@ describe("the docked panel", () => {
 
   it("keeps the draft and the focus on the Expand action while the mode changes, and never takes focus", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.type(field(), "A draft");
     await person.click(within(panel()).getByRole("button", { name: "Expand" }));
@@ -99,7 +99,7 @@ describe("the docked panel", () => {
 
   it("has the Aril glyph and name, three actions, and no caption, no Minimize, and no repository row", async () => {
     setInventory([[REPO_A, "pomegr"], [REPO_B, "catalogus"]]);
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     const header = panel().querySelector("header")!;
     expect(within(header).getByRole("heading", { level: 2, name: "Aril" })).toBeInTheDocument();
@@ -114,7 +114,7 @@ describe("the docked panel", () => {
 
   it("returns focus to the launcher when Close is pressed, whatever the mode", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(within(panel()).getByRole("button", { name: "Expand" }));
     await person.click(within(panel()).getByRole("button", { name: "Close Aril" }));
@@ -127,7 +127,7 @@ describe("the docked panel", () => {
 describe("the scrim", () => {
   it("dims the page only while the panel is open, in either mode", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     expect(scrim()).toBeNull();
     await openPanel(person);
     expect(scrim()).not.toBeNull();
@@ -139,7 +139,7 @@ describe("the scrim", () => {
   });
 
   it("is a pointer affordance only: out of the tab order and hidden from assistive technology", async () => {
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(scrim()).toHaveAttribute("tabindex", "-1");
     expect(scrim()).toHaveAttribute("aria-hidden", "true");
@@ -148,7 +148,7 @@ describe("the scrim", () => {
 
   it("closes the panel on a click exactly as Close does, and returns focus to the launcher with the draft kept", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.type(field(), "A draft");
     await person.click(scrim()!);
@@ -162,7 +162,7 @@ describe("the scrim", () => {
 
   it("closes an expanded panel too", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(within(panel()).getByRole("button", { name: "Expand" }));
     await person.click(scrim()!);
@@ -174,7 +174,7 @@ describe("the scrim", () => {
 describe("the composer", () => {
   it("holds the repository choice only when more than one repository is listed, right after Attach, before the model", async () => {
     setInventory([[REPO_A, "pomegr"], [REPO_B, "catalogus"]]);
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     const repository = within(composer()).getByRole("combobox", { name: "Repository" });
     expect(repository).toHaveTextContent("pomegr");
@@ -191,7 +191,7 @@ describe("the composer", () => {
   });
 
   it("draws no repository choice for one repository", async () => {
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(screen.queryByRole("combobox", { name: "Repository" })).toBeNull();
     expect(within(composer()).getByRole("combobox", { name: "Model" })).toBeInTheDocument();
@@ -200,7 +200,7 @@ describe("the composer", () => {
 
   it("keeps working with no repository: a disabled field and Send, and no repository choice", async () => {
     setInventory([]);
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(field()).toBeDisabled();
     expect(within(composer()).getByRole("button", { name: "Send" })).toBeDisabled();
@@ -209,7 +209,7 @@ describe("the composer", () => {
 
   it("asks \"Ask Aril…\", and draws a round Send with an arrow that becomes a round Stop with a square while an answer is written", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     expect(field()).toHaveAttribute("placeholder", "Ask Aril…");
     const send = within(composer()).getByRole("button", { name: "Send" });
@@ -237,7 +237,7 @@ describe("the composer", () => {
 
 describe("the model and the effort", () => {
   it("show the newest known Claude model and Medium, in two selects after the spacer", async () => {
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     const model = within(composer()).getByRole("combobox", { name: "Model" });
     const effort = within(composer()).getByRole("combobox", { name: "Effort" });
@@ -252,7 +252,7 @@ describe("the model and the effort", () => {
   it("start on the newest known Codex model when no Claude model is known", async () => {
     harness.agents = { ...harness.agents, data: { runs: [] } };
     try {
-      render(<AgentChatDock />);
+      await renderDock();
       await openPanel();
       expect(within(composer()).getByRole("combobox", { name: "Model" })).toHaveTextContent(/^model-code$/);
       await ask(user(), "Hello");
@@ -267,7 +267,7 @@ describe("the model and the effort", () => {
     harness.board = { ...harness.board, runModels: { codex: [] } };
     try {
       const person = user();
-      render(<AgentChatDock />);
+      await renderDock();
       await openPanel(person);
       const model = within(composer()).getByRole("combobox", { name: "Model" });
       expect(model).toHaveTextContent(/^Claude Code$/);
@@ -284,7 +284,7 @@ describe("the model and the effort", () => {
   it("keep the conversation's model even when the known models no longer list it", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Q"), agentMessage("A", { model: "model-retired" })], { model: "model-retired", effort: "low" }));
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     expect(within(composer()).getByRole("combobox", { name: "Model" })).toHaveTextContent(/^model-retired$/);
     expect(within(composer()).getByRole("combobox", { name: "Effort" })).toHaveTextContent(/^Low$/);
@@ -300,7 +300,7 @@ describe("the time of every message", () => {
       { ...userMessage("Which task first?"), at: earlier },
       { ...agentMessage("T-3 first.", { provider: "codex", model: "model-code" }), at: today(9, 5) },
     ]));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
 
     const owner = within(log()).getByRole("article", { name: "You" });
@@ -325,7 +325,7 @@ describe("the time of every message", () => {
 
   it("draws no time for a message whose time cannot be read", async () => {
     chat.seed(REPO_A, conversationOf(1, [{ ...userMessage("Hello"), at: "not a time" }, { ...agentMessage("Hi"), at: "" }]));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(log().querySelector("time")).toBeNull();
     expect(within(log()).getByText("Hello")).toBeInTheDocument();
@@ -333,7 +333,7 @@ describe("the time of every message", () => {
 
   it("shows a time for the message on its way and for the answer being written, from the time the turn started", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     let release = () => {};
     chat.hold = new Promise<void>((resolve) => { release = resolve; });
@@ -375,7 +375,7 @@ describe("a grant follow-up as a quiet line", () => {
   });
 
   it("draws an icon, the text, and the time, muted, with no Aril head, no caption, and no card", async () => {
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     const lines = log().querySelectorAll<HTMLElement>(".agentChatQuietLine");
     expect([...lines].map((line) => line.querySelector(".agentChatQuietText")?.textContent)).toEqual([first, second]);
@@ -403,7 +403,7 @@ describe("a grant follow-up as a quiet line", () => {
     try {
       harness.pathname = "/tasks";
       window.history.replaceState(null, "", `/tasks?repository=${REPO_A}&aril=chat-000000000001&message=m-4`);
-      render(<AgentChatDock />);
+      await renderDock();
       await settle();
       expect(panel()).toBeVisible();
       const line = within(log()).getByText(second).closest("article")!;
@@ -420,7 +420,7 @@ describe("a grant follow-up as a quiet line", () => {
 describe("the stamp of a message", () => {
   it("is the instant the desktop stamped, not the instant the log was drawn", async () => {
     chat.seed(REPO_A, conversationOf(1, [{ ...userMessage("Old"), at: AT }, { ...agentMessage("Older answer"), at: AT }]));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     for (const time of log().querySelectorAll("time")) expect(time).toHaveAttribute("datetime", AT);
     expect(log().querySelectorAll("time")).toHaveLength(2);

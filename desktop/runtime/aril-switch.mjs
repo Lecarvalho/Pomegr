@@ -1,8 +1,10 @@
 // The one On/Off switch of Aril, global for the app and not for a repository. Desktop main owns it and keeps it in one small file under
 // the desktop data root, so it survives a restart. Off wins at once and from anywhere: it is applied in memory before it is written,
-// and a write that fails never turns Aril on. On is written first and applied after, so Aril is never On without a record of it. Only
-// the owner turns it On: no Aril run, tool, queue, or monitor path reaches this module. A fresh install, a missing file, and a file
-// outside the contract all read as Off.
+// and a write that fails never turns Aril on. A change to On is written first and applied after, so an On the owner chose has a record.
+// Only the owner turns it On: no Aril run, tool, queue, or monitor path reaches this module. Pomegr ships with Aril On: a missing file (a
+// fresh install, or an owner who never touched the switch) reads as On. A file that is there but unreadable, damaged, or outside the
+// contract reads as Off, because it may hold an owner's Off and a guess never overrides that. A switch with no file (a test, or a run
+// with no data root) starts Off unless it is given its state, and every switch is Off until its file has been read.
 //
 // `pairedOn` is the owner's one permission for paired devices, for every repository: a paired device may then turn Aril On, and change the
 // repositories' memory and Aril's settings. A paired device may always turn Aril Off and stop a grant. It is false until the owner allows it, or
@@ -36,7 +38,10 @@ export function createArilSwitch({ file = null, filesystem = fs, initial = {} } 
       if (isPlainObject(parsed) && parsed.version === VERSION && typeof parsed.on === "boolean" && typeof parsed.pairedOn === "boolean") {
         state = Object.freeze({ on: parsed.on, pairedOn: parsed.pairedOn });
       }
-    } catch { /* No file or a file outside the contract: Off. */ }
+    } catch (error) {
+      // Only a file that is not there is an owner who never chose: Aril ships On. Any other failure may hide an Off, so it stays Off.
+      if (error?.code === "ENOENT") state = Object.freeze({ on: true, pairedOn: false });
+    }
   })();
 
   function apply(next) {
@@ -89,7 +94,7 @@ export function createArilSwitch({ file = null, filesystem = fs, initial = {} } 
 
   return Object.freeze({
     ready,
-    /** Whether Aril is On now. False before the state has been read. */
+    /** Whether Aril is On now. False before the state has been read: a caller that must not meet the unread state awaits `ready` first. */
     isOn: () => state.on,
     state: () => state,
     /** Turns Aril On or Off. Answers `ok`, `unavailable` (the state could not be written; an Off still holds in memory), `superseded` (a newer change came first), or `invalid`. */

@@ -12,7 +12,7 @@ changes, and you apply them.
 
 Aril records links when the evidence shows that one task or pull request fixes earlier work, without **Apply changes**. Each link names a fixed cause, appears in the answer and task log, and changes no task. Aril weighs reworked results when choosing models and adds a memory check when a cause repeats.
 
-Aril has one switch, **On** or **Off**, at the top of the **Aril** section of Settings, and its state shows beside Aril's name in the panel. Aril is Off until you turn it on, and only you can. While it is Off, the chat still answers when you write, and nothing else Aril does by itself happens (see [Turn Aril on or off](#turn-aril-on-or-off)).
+Aril has one switch, **On** or **Off**, at the top of the **Aril** section of Settings. Aril is On when you first use Pomegr. While it is Off there is no Aril at all: no chat panel, no **Aril** button, and no message box on Home, and Aril takes no action of its own (see [Turn Aril on or off](#turn-aril-on-or-off)).
 
 Aril can also work under a grant that only you start. A grant is time-bound and scoped by
 your Aril settings, and it does something only while Aril is On. The desktop app then starts tasks and reviews, sends failed work back,
@@ -33,7 +33,7 @@ them off with **Send follow-ups** in the **Aril** section of Settings.
 
 - **Use the desktop app or a paired device.** The **Aril** button shows in the Pomegr
   desktop app and on a phone you paired with it (see
-  [Phone access](phone-access.md)). A browser on the same computer has no chat.
+  [Phone access](phone-access.md)), while Aril is On. A browser on the same computer has no chat.
 - **Install the coding tool and sign in.** A message runs Claude Code or Codex on your
   computer, signed in as you, so it uses your own subscription allowance. Pomegr reads
   and stores no credential. Without the tool, the panel says that it is not installed on
@@ -316,11 +316,12 @@ A kept worktree does not stop the next row. Pomegr never forces a removal.
 
 ## Turn Aril on or off
 
-The first thing in the **Aril** section of Settings is one switch. The panel's header shows **On** or **Off** beside Aril's name.
+The first thing in the **Aril** section of Settings is one switch.
 
-- **Aril is Off until you turn it on.** Only you turn it on. Aril never does, and it is Off again only when you turn it off. A restart keeps what you chose.
-- **Off takes effect at once**, in the desktop app and on a paired phone. A grant then starts, reviews, sends back, merges, and marks Done nothing, and writes no tasks. After you apply or dismiss a proposal, Aril writes no follow-up. A session that is already running goes on.
-- **The chat still answers.** Write to Aril while it is Off and it answers, as it always does. Aril saves nothing to memory while it is Off.
+- **Aril is On when you first use Pomegr.** Only you turn it off and on again. Aril never turns itself on, and it is Off again only when you turn it off. A restart keeps what you chose. If Pomegr cannot read the file that holds your choice, it treats Aril as Off, because that file may hold your Off.
+- **Off means no Aril at all.** It takes effect at once, in the desktop app and on a paired phone. The chat panel, the **Aril** button, and the expanded Aril page are gone, and Home has no message box and no suggestions: the rest of Home is as it was. A link to the chat, such as a follow-up notification, opens Home instead. Nothing is drawn before Pomegr knows whether Aril is On, so the chat never shows up and then goes away.
+- **What Aril was doing stops.** An answer that Aril was writing is stopped, as if you had selected **Stop**, and it shows as stopped. A grant starts, reviews, sends back, merges, and marks Done nothing, and writes no tasks. Pomegr starts no run of the coding tool for Aril, and it refuses a message, a proposal's **Apply changes** or **Dismiss**, and an image for Aril while Aril is Off. A session that is already running goes on.
+- **Your conversations are kept.** Turning Aril off deletes nothing. When you turn it on again, the conversations are there as you left them. Aril saves nothing to memory while it is Off.
 - **Settings turns read only.** Everything under the switch in **Settings**, under **Aril**, is gray and read only while Aril is Off: your memory and each repository's, the conversation space and its limit, and the effort routing. Pomegr refuses those changes too, and any change to Aril's settings, on the computer and from a paired phone. A notice says so. Turn Aril on to change them. Pomegr still flushes a conversation that passes your limit, because that is housekeeping on your own files, not something Aril does.
 - **A phone** can always turn Aril off. It can also turn Aril on, and change Aril's settings and each repository's memory, only after you allow that in the desktop app. Turn on the small switch under Aril's switch: "A paired phone can always turn Aril off. Let it also turn Aril on and change Aril's repository memory and settings." One switch covers every repository, and a phone never edits your own memory.
 - **If you allowed paired devices before.** Earlier versions had a **Paired devices** switch for each repository. If you turned it on for any repository, Pomegr turns the one switch on for you, once. You can turn it off, and Pomegr does not turn it on again.

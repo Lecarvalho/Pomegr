@@ -263,9 +263,12 @@ async function answered(context, text, { status = "complete", off = false, actio
   const root = await directory(context);
   const ownerMemory = createOwnerMemory({ file: path.join(root, "aril-v1", OWNER_MEMORY_FILE), now: () => 9000 });
   await ownerMemory.set("- Reply briefly.");
-  const h = await chatHarness(context, { ownerMemory, ...(off ? { arilSwitch: createArilSwitch({ initial: { on: false } }) } : {}) });
+  const arilSwitch = createArilSwitch({ initial: { on: true } });
+  const h = await chatHarness(context, { ownerMemory, arilSwitch });
   h.state.actions = actions ?? ((action, payload, body) => (action === "aril-memory-update" ? { ok: true, added: body.add.length, removed: body.remove.length } : { ok: true }));
   const sent = await send(h);
+  // Off stops the turn in flight, but a run that completes in the same moment still finds the switch Off: its memory block is not applied.
+  if (off) await arilSwitch.set(false);
   const conversation = await finishTurn(h, h.runs[0], { status, text }, sent.conversationId);
   return { h, ownerMemory, answer: conversation.messages.at(-1) };
 }

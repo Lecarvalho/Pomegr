@@ -7,7 +7,7 @@ import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { CHAT_IMAGE_ID, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGES_PER_CONVERSATION, conversationImages, createAgentChatImages } from "./agent-chat-images.mjs";
-import { createArilControl } from "./agent-chat-aril.mjs";
+import { createArilControl, OFF_REFUSED_OPERATIONS } from "./agent-chat-aril.mjs";
 import { createGrantFollowUps } from "./agent-chat-grant-follow-up.mjs";
 import { createTaskBridge } from "./agent-chat-task-bridge.mjs";
 import { createGithubKeeper, prefetchGithubSettings } from "./agent-chat-github.mjs";
@@ -125,12 +125,22 @@ export function createAgentChat(options = {}) {
   // The follow-ups that wait for the one turn: `repositoryId/proposalId` to `{ repositoryId, conversationId, proposalId,
   // provider, model, queuedAt }`. A proposal has at most one here, so a second answer to it replaces the first.
   const followUps = new Map();
-  // The On/Off switch, the owner's memory, the thread space, and its limit (see agent-chat-aril.mjs). Off drops the follow-ups that wait. A thread is
-  // busy while a turn, a follow-up, a compaction, or the owner's Apply of a proposal of it runs: nothing flushes it then.
-  const aril = createArilControl({ dataRoot, now, store, images, arilSwitch: options.arilSwitch, ownerMemory: options.ownerMemory, threadLimit: options.threadLimit, space: options.threadSpace, pairedCarry: options.pairedCarry, onOff: () => followUps.clear(),
+  // The On/Off switch, the owner's memory, the thread space, and its limit (see agent-chat-aril.mjs). Off means no Aril: `stopRunning` ends what runs.
+  // A thread is busy while a turn, a follow-up, a compaction, or the owner's Apply of a proposal of it runs: nothing flushes it then.
+  const aril = createArilControl({ dataRoot, now, store, images, arilSwitch: options.arilSwitch, ownerMemory: options.ownerMemory, threadLimit: options.threadLimit, space: options.threadSpace, pairedCarry: options.pairedCarry, onOff: stopRunning,
     busy: (repositoryId) => turnBusy(repositoryId) || compaction.running(repositoryId) || [...applying].some((key) => key.startsWith(`${repositoryId}/`)) });
   // Desktop main alone asks for it, a little after it starts: a thread that grew past the owner's limit while the app was closed is flushed then.
   if (options.sweepThreads) void aril.sweep();
+
+  // Aril turned Off, so nothing of the chat may keep running: waiting follow-ups go, the turn in flight (a message, a follow-up, a grant's writing) is
+  // stopped as the owner's Stop does and stored as stopped, and compactions, warm runs, and the Jev pre-connect end. Stored threads are untouched.
+  function stopRunning() {
+    followUps.clear();
+    try { active?.stop?.(); } catch { /* already gone */ }
+    compaction.cancelAll();
+    warm.closeAll();
+    jev.stopPreconnect();
+  }
 
   async function monitor(pathname, init) {
     const response = await fetchImpl(`${monitorOrigin}${pathname}`, {
@@ -285,7 +295,7 @@ export function createAgentChat(options = {}) {
   // After a turn is stored, an outgrown thread is summarized in the background; a turn that starts stops that run.
   const turnBusy = (repositoryId) => active?.repositoryId === repositoryId || [...followUps.values()].some((entry) => entry.repositoryId === repositoryId);
   const compaction = createCompaction({ store, summaries: summaries ?? NO_SUMMARIES, now, runTurn, spawn, env: runEnvironment, executable, repositoryRoot,
-    declare: declareRun, withdraw: withdrawRun, timeoutMs: options.compactionTimeoutMs, busy: turnBusy });
+    declare: declareRun, withdraw: withdrawRun, timeoutMs: options.compactionTimeoutMs, busy: turnBusy, on: aril.isOn });
 
   // The folder of the images the thread's current conversation holds, when it holds any: the one folder a warm run could be given.
   async function warmImageFolder(repositoryId) {
@@ -296,7 +306,7 @@ export function createAgentChat(options = {}) {
   // The runs that wait for an owner's message (see agent-chat-warm.mjs): Claude Code only, never while a turn or a compaction of the thread runs.
   const warm = createWarmRuns({ startProcess, spawn, clock, executable, repositoryRoot, instructions: () => prepareInstructionsFile(options.dataRoot), imageFolder: warmImageFolder,
     environment: runEnvironment, declare: declareRun, redeclare: redeclareRun, withdraw: withdrawRun, openBridge: warmTaskReadServer,
-    busy: (repositoryId) => turnBusy(repositoryId) || compaction.running(repositoryId), ...options.warmOptions });
+    busy: (repositoryId) => turnBusy(repositoryId) || compaction.running(repositoryId), on: aril.isOn, ...options.warmOptions });
 
   async function runFollowUp(turn) {
     try {
@@ -487,6 +497,7 @@ export function createAgentChat(options = {}) {
       // The rest of the reads have been running since the first line; the prompt waits only for the slowest.
       const { runs, taskLog, github, workflow: workflowChanges, inventory, instructions: instructionsFile = null, context } = await prep.values("runs", "taskLog", "github", "workflow", "inventory", "instructions", "context");
       if (disposed) return abandoned(UNAVAILABLE);
+      if (!aril.isOn()) return abandoned(refused("conflict")); // Aril went Off while the reads ran: nothing is stored and nothing starts.
       const composed = composePromptParts({ includeInstructions: !instructionsFile, board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory?.rows, worktreesAt: inventory?.readAt, ...context, message: text, images: shown, attached, repositoryGithub: github, now: now() });
       const prompt = composed?.prompt;
       if (!prompt) return abandoned(INVALID);
@@ -512,12 +523,12 @@ export function createAgentChat(options = {}) {
       if (warmed && routed.effort !== effort && !await warmed.setEffort(routed.effort)) { warmed.discard(); warmed = null; }
       const [sessionId, taskServer, env] = warmed ? [warmed.sessionId, null, null]
         : await Promise.all([prep.time("declare", () => declareRun(provider)), prep.time("server", () => taskReadServer(turn)), prep.environment()]);
-      if (disposed || turn.stopped) {
+      if (disposed || turn.stopped || !aril.isOn()) {
         if (warmed) warmed.discard(); else withdrawRun(sessionId);
         await finishTurn(turn, { status: "stopped", text: "" });
         return UNAVAILABLE;
       }
-      turn.prepare = warmed ? { ...prep.measure(), ...WARM_PREPARE } : prep.measure();
+      turn.prepare =warmed ? { ...prep.measure(), ...WARM_PREPARE } : prep.measure();
       const callbacks = { onText: (value) => { turn.text = value; }, onActivity: (value) => { turn.activity = value; } };
       const run = warmed ? warmed.begin({ prompt, timeoutMs: options.turnTimeoutMs, ...callbacks }) : runTurn({ instructionsFile,
         spawn, executable: command, provider, model, effort: routed.effort, mcpServer: taskServer, images: runImages, sessionId, cwd: root, env, prompt, timeoutMs: options.turnTimeoutMs, ...callbacks });
@@ -742,7 +753,11 @@ export function createAgentChat(options = {}) {
       if (Buffer.byteLength(JSON.stringify(payload), "utf8") > AGENT_CHAT_REQUEST_MAX_BYTES) return INVALID;
     } catch { return INVALID; }
     if (disposed || !store || !monitorOrigin || !authorizationToken) return UNAVAILABLE;
-    try { return await handlers[operation](payload, origin); } catch { return UNAVAILABLE; }
+    try {
+      // Aril Off means no Aril: the same refusal for the desktop window and for a paired device, after the switch has been read.
+      if (OFF_REFUSED_OPERATIONS.includes(operation) && await aril.off()) return refused("conflict");
+      return await handlers[operation](payload, origin);
+    } catch { return UNAVAILABLE; }
   }
 
   const imageHandlers = { add: addImage, read: readImage };
@@ -751,7 +766,7 @@ export function createAgentChat(options = {}) {
   async function image(operation, payload) {
     if (typeof operation !== "string" || !Object.hasOwn(imageHandlers, operation) || !isPlainObject(payload)) return INVALID;
     if (disposed || !store || !images) return UNAVAILABLE;
-    try { return await imageHandlers[operation](payload); } catch { return UNAVAILABLE; }
+    try { return operation === "add" && await aril.off() ? refused("conflict") : await imageHandlers[operation](payload); } catch { return UNAVAILABLE; }
   }
 
   return Object.freeze({

@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AT, FakeChat, REPO_A, agentMessage, chatId, conversationOf, harness, installHarness, newUser, proposalOf, removeHarness, settle, userMessage } from "./agent-chat-fixture";
+import { renderDock } from "./dock-helper";
 
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
@@ -25,7 +26,6 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
   return { ...actual, useRepositoryInventory: () => harness.inventory };
 });
 
-import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 import { mergeNewest, threadMessageKey, type LoadedThread } from "../../app/agent-chat-client";
 import { SEARCH_DELAY_MS } from "../../app/agent-chat-search";
 import { splitMatch } from "../../app/components/agent-chat/agent-chat-presentation";
@@ -47,7 +47,7 @@ beforeEach(() => { chat = installHarness(); });
 afterEach(() => { removeHarness(); window.history.replaceState(null, "", "/"); });
 
 async function openPanel(person = user()) {
-  render(<AgentChatDock />);
+  await renderDock();
   await person.click(launcher());
   await settle();
   return person;
@@ -169,7 +169,7 @@ describe("a message brought into view", () => {
       chat.seed(REPO_A, exchange(1, 6, "Old", 0), exchange(2, 6, "New", 10));
       harness.pathname = "/tasks";
       window.history.replaceState(null, "", link(chatId(1), "m-2"));
-      render(<AgentChatDock />);
+      await renderDock();
       await settle();
       expect(panel()).toBeVisible();
       const line = within(log()).getByText("Old 2").closest("article")!;
@@ -198,7 +198,7 @@ describe("a message brought into view", () => {
       harness.pathname = "/tasks";
       window.history.replaceState(null, "", link(chatId(9), "m-1"));
       chat.seed(REPO_A, conversationOf(9, []));
-      render(<AgentChatDock />);
+      await renderDock();
       await settle(200);
       expect(chat.calls("thread").filter((payload) => "before" in payload)).toHaveLength(10);
       expect(scrolled).not.toHaveBeenCalled();

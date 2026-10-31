@@ -109,7 +109,8 @@ These rules always apply:
   takes the fixed actions of [Aril grants](docs/internal/architecture/tasks.md#aril-grants)
   without asking each time. Stopping it takes effect at once and ends no running session.
   Aril has one On/Off switch ([The switch](docs/internal/architecture/agent-chat.md#the-switch)):
-  only the owner turns it On, a paired device turns it Off at any time, and with Aril Off a grant does nothing.
+  Pomegr ships with it On, only the owner turns it On again, a paired device turns it Off at any
+  time, and with Aril Off there is no Aril at all: the chat is hidden and refused, and a grant does nothing.
   A session never marks its own task Done.
   Each other control action needs an explicit confirmation boundary.
 - Aril starts only its own read-only provider runs, and Pomegr may stop them. Aril

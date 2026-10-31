@@ -1,6 +1,7 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeChat, REPO_A, agentMessage, chatId, conversationOf, harness, installHarness, newUser, removeHarness, setBridge, settle, userMessage } from "./agent-chat-fixture";
+import { renderDock } from "./dock-helper";
 
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
@@ -25,7 +26,6 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
   return { ...actual, useRepositoryInventory: () => harness.inventory };
 });
 
-import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 
 let chat: FakeChat;
 
@@ -59,7 +59,7 @@ function pairDevice() {
 
 /** A message sent to the open conversation from another device shows as this panel's own: the turn, then both stored messages. */
 async function followsTurnStartedElsewhere(person: ReturnType<typeof user>) {
-  render(<AgentChatDock />);
+  await renderDock();
   await openPanel(person);
   expect(within(log()).getByText("First answer")).toBeInTheDocument();
   await chat.sendElsewhere(REPO_A, chatId(1), "Sent from the phone");
@@ -102,7 +102,7 @@ describe("a turn started from another device", () => {
 
   it("shows a message sent elsewhere without a conversation in the thread, and the turn it starts as the panel's own", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await chat.sendElsewhere(REPO_A, null, "A new topic from the phone");
     await settle(IDLE);
@@ -117,15 +117,18 @@ describe("a turn started from another device", () => {
       const fetchMock = paired ? pairDevice() : null;
       const sent = `Sent while closed${paired ? " on a paired device" : ""}`;
       const person = user();
-      const { unmount } = render(<AgentChatDock />);
+      const { unmount } = await renderDock();
       await openPanel(person);
       await person.click(within(panel()).getByRole("button", { name: "Close Aril" }));
-      const before = chat.agentChat.mock.calls.length;
-      const fetched = fetchMock?.mock.calls.length ?? 0;
+      // The dock asks the switch for as long as it is mounted, so the launcher follows an Aril turned Off elsewhere; it asks the chat nothing.
+      const chatCalls = () => chat.agentChat.mock.calls.filter(([operation]) => !String(operation).startsWith("aril_")).length;
+      const fetchedChat = () => (fetchMock?.mock.calls ?? []).filter(([, init]) => !String((JSON.parse(String((init as RequestInit).body)) as { operation: string }).operation).startsWith("aril_")).length;
+      const before = chatCalls();
+      const fetched = fetchedChat();
       await chat.sendElsewhere(REPO_A, chatId(1), sent);
       await settle(IDLE * 3);
-      expect(chat.agentChat.mock.calls.length).toBe(before);
-      expect(fetchMock?.mock.calls.length ?? 0).toBe(fetched);
+      expect(chatCalls()).toBe(before);
+      expect(fetchedChat()).toBe(fetched);
       expect(launcher()).toHaveAccessibleName("Open Aril, the Pomegr agent");
       // Opening the panel again reads the turn.
       await person.click(launcher());

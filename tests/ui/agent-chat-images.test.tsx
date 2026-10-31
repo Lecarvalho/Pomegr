@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeChat, REPO_A, agentMessage, conversationOf, harness, installHarness, newUser, proposalOf, removeHarness, setBridge, settle, userMessage } from "./agent-chat-fixture";
+import { renderDock } from "./dock-helper";
 
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
@@ -25,7 +26,6 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
   return { ...actual, useRepositoryInventory: () => harness.inventory };
 });
 
-import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 import { IMAGE_ADD_FAILURE_MESSAGE, IMAGE_LIMIT_MESSAGE, IMAGE_SIZE_MESSAGE, IMAGE_TYPE_MESSAGE } from "../../app/components/agent-chat/agent-chat-images";
 import { UNREADABLE_PROPOSAL } from "../../app/components/agent-chat/agent-chat-presentation";
 
@@ -82,7 +82,7 @@ async function attach(...files: File[]) {
 
 describe("attaching images", () => {
   it("adds a picked image with the repository and the exact bytes, shows it, and sends its ID", async () => {
-    render(<AgentChatDock />);
+    await renderDock();
     const person = await openPanel();
     expect(attachButton()).toBeEnabled();
     await attach(pngFile());
@@ -102,7 +102,7 @@ describe("attaching images", () => {
   });
 
   it("sends no images key for a message without images", async () => {
-    render(<AgentChatDock />);
+    await renderDock();
     const person = await openPanel();
     await person.type(field(), "No picture");
     await person.keyboard("{Enter}");
@@ -112,7 +112,7 @@ describe("attaching images", () => {
   });
 
   it("adds an image pasted into the field and one dropped on the form, and ignores a paste without a file", async () => {
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     fireEvent.paste(field(), { clipboardData: { files: [] } });
     await settle();
@@ -126,7 +126,7 @@ describe("attaching images", () => {
   });
 
   it("removes an attached image so it is not sent", async () => {
-    render(<AgentChatDock />);
+    await renderDock();
     const person = await openPanel();
     await attach(pngFile(), pngFile(PNG_2));
     await person.click(screen.getByRole("button", { name: "Remove image 1" }));
@@ -144,7 +144,7 @@ describe("limits and refusals", () => {
     ["an empty file", () => pngFile(new Uint8Array(0)), IMAGE_SIZE_MESSAGE],
     ["a file over 5 MiB", () => { const file = pngFile(); Object.defineProperty(file, "size", { value: 5 * 1024 * 1024 + 1 }); return file; }, IMAGE_SIZE_MESSAGE],
   ])("refuses %s with a fixed line and no call to the desktop", async (_name, make, message) => {
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     await attach(make());
     expect(screen.getByRole("alert")).toHaveTextContent(message);
@@ -153,7 +153,7 @@ describe("limits and refusals", () => {
   });
 
   it("holds at most four images and disables Attach image at four", async () => {
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     await attach(pngFile(), pngFile(PNG_2), pngFile(), pngFile(PNG_2));
     expect(added()).toHaveLength(4);
@@ -166,7 +166,7 @@ describe("limits and refusals", () => {
 
   it.each([["invalid", IMAGE_TYPE_MESSAGE], ["unavailable", IMAGE_ADD_FAILURE_MESSAGE], ["not_found", IMAGE_ADD_FAILURE_MESSAGE]] as const)("shows the fixed line when the desktop answers %s", async (error, message) => {
     chat.refuseImage = error;
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     await attach(pngFile());
     expect(screen.getByRole("alert")).toHaveTextContent(message);
@@ -176,7 +176,7 @@ describe("limits and refusals", () => {
   it("disables Send and says Adding image while an upload is in flight", async () => {
     let release!: () => void;
     chat.holdImage = new Promise<void>((resolve) => { release = resolve; });
-    render(<AgentChatDock />);
+    await renderDock();
     const person = await openPanel();
     await person.type(field(), "Wait for it");
     expect(sendButton()).toBeEnabled();
@@ -191,7 +191,7 @@ describe("limits and refusals", () => {
 
   it("keeps the text and the images when the send is refused", async () => {
     chat.refuse = "busy";
-    render(<AgentChatDock />);
+    await renderDock();
     const person = await openPanel();
     await attach(pngFile());
     await person.type(field(), "Try me");
@@ -224,7 +224,7 @@ describe("stored images", () => {
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const real = chat.agentChatImage.getMockImplementation()!;
     chat.agentChatImage.mockImplementation(async (operation, payload) => { await gate; return real(operation, payload); });
-    const { unmount } = render(<AgentChatDock />);
+    const { unmount } = await renderDock();
     await openPanel();
     const strip = within(log()).getByRole("list", { name: "Images you sent" });
     expect(within(strip).getAllByRole("img").map((node) => node.tagName)).toEqual(["SPAN", "SPAN"]);
@@ -242,7 +242,7 @@ describe("stored images", () => {
 
   it("draws no picture for an image the desktop no longer holds", async () => {
     chat.seed(REPO_A, conversationOf(1, [sent(img(5)), agentMessage("Seen")]));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(within(log()).getByRole("img", { name: "Image 1" }).tagName).toBe("SPAN");
     expect(reads()).toHaveLength(1);
@@ -258,7 +258,7 @@ describe("stored images", () => {
   it("keeps the text of a message whose image entry is malformed and drops only that image", async () => {
     chat.storeImage(img(1), PNG);
     chat.seed(REPO_A, conversationOf(1, [{ ...userMessage("Two entries"), images: [{ id: "bad", type: "png", bytes: 3 }, { id: img(1), type: "png", bytes: 10 }, { id: img(2), type: "bmp", bytes: 3 }] }, agentMessage("Ok")]));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(within(log()).getByText("Two entries")).toBeInTheDocument();
     expect(within(within(log()).getByRole("list", { name: "Images you sent" })).getAllByRole("img")).toHaveLength(1);
@@ -271,7 +271,7 @@ describe("images in proposals", () => {
     chat.storeImage(img(1), PNG);
     chat.storeImage(img(2), PNG_2);
     chat.seed(REPO_A, conversationOf(1, [owner, agentMessage("Plan", { proposal: proposalOf(operations, state, extra) })]));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
   };
   const rows = () => [...log().querySelectorAll(".agentChatOp")];
@@ -344,7 +344,7 @@ describe("on a paired device", () => {
   const imageCalls = (path: string) => fetchMock.mock.calls.filter(([url]) => String(url).startsWith(path));
 
   it("posts an added image as octet-stream to the paired route", async () => {
-    render(<AgentChatDock />);
+    await renderDock();
     const person = await openPanel();
     await attach(pngFile());
     const [url, init] = imageCalls("/api/agent-chat/image-add")[0] as [string, RequestInit];
@@ -362,7 +362,7 @@ describe("on a paired device", () => {
   it("gets a stored image from the paired route and draws it", async () => {
     chat.storeImage(img(1), PNG);
     chat.seed(REPO_A, conversationOf(1, [{ ...userMessage("Look"), images: [{ id: img(1), type: "png", bytes: PNG.byteLength }] }, agentMessage("Seen")]));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(imageCalls("/api/agent-chat/image-read")).toHaveLength(1);
     const [url, init] = imageCalls("/api/agent-chat/image-read")[0] as [string, RequestInit | undefined];
@@ -380,7 +380,7 @@ describe("on a paired device", () => {
     readAnswer = answer;
     chat.storeImage(img(1), PNG);
     chat.seed(REPO_A, conversationOf(1, [{ ...userMessage("Look"), images: [{ id: img(1), type: "png", bytes: PNG.byteLength }] }, agentMessage("Seen")]));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(imageCalls("/api/agent-chat/image-read")).toHaveLength(1);
     expect(within(log()).getByRole("img", { name: "Image 1" }).tagName).toBe("SPAN");
@@ -393,7 +393,7 @@ describe("on a paired device", () => {
       const body = JSON.parse(String(init.body)) as { operation: string; payload: Record<string, unknown> };
       return Response.json(await chat.agentChat(body.operation, body.payload));
     });
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     await attach(pngFile());
     expect(screen.getByRole("alert")).toHaveTextContent(IMAGE_ADD_FAILURE_MESSAGE);

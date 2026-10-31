@@ -40,8 +40,8 @@ Repositories, Models & delegation, Usage limits, and Settings, where
 use desktop controls, sign in to a coding tool, or change sharing. The **Phone
 access** tab exists only in the desktop app.
 
-A paired phone can also use the [agent chat](agent-chat.md). There you can apply the
-board changes that Aril proposes, and a proposal to turn the queue on or off.
+A paired phone can also use the [agent chat](agent-chat.md) while Aril is On. There you can apply the
+board changes that Aril proposes, and a proposal to turn the queue on or off. While Aril is Off the phone shows no chat and no message box on Home.
 The phone can always turn Aril off. Only after you allow it in the desktop app, it can also turn Aril on and change Aril's settings and each repository's memory
 (see [Turn Aril on or off](agent-chat.md#turn-aril-on-or-off)).
 

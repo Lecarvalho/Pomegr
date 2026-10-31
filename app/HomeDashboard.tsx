@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { useAgentChatAvailability } from "./agent-chat-client";
+import { useArilSwitch } from "./aril-control-client";
 import { CommandPageHeader } from "./components/command-center/CommandPage";
 import { AGENT_CHAT_CLOSED_EVENT, HOME_SECTION_ID, homeSuggestions } from "./components/agent-chat/agent-chat-presentation";
 import { HomeAril, type HomeMode } from "./components/home/HomeAril";
@@ -36,6 +37,9 @@ export function HomeDashboard() {
   // Where the chat can be reached is decided before anything of Aril is drawn: the task log and the composer need it.
   const availability = useAgentChatAvailability();
   const aril = availability === "desktop" || availability === "paired";
+  // The composer and its chips are drawn only once the switch is known and Aril is On; while it is Off, or not yet known, Home has neither and the
+  // rest of Home lays out as it is. A composer is never drawn and then taken away.
+  const chat = useArilSwitch(aril).state?.on === true;
   const logs = useHomeLogs(home, aril);
   const browseRef = useRef<HTMLAnchorElement>(null);
   const page = useRef<HTMLElement>(null);
@@ -44,7 +48,9 @@ export function HomeDashboard() {
   // maximized panel; the panel's close brings Home back. Escape, or a click outside while the field is empty, leaves focus mode.
   const [mode, setMode] = useState<HomeMode>("home");
   const [emptyDraft, setEmptyDraft] = useState(true);
-  const leave = useCallback(() => { setMode("home"); page.current?.focus({ preventScroll: true }); }, []);
+  // Aril turned Off while the composer was lifted or the thread was open: Home comes back, since nothing else would give it back.
+  if (!chat && mode !== "home") setMode("home");
+  const leave =useCallback(() => { setMode("home"); page.current?.focus({ preventScroll: true }); }, []);
   const enterFocus = useCallback(() => setMode((current) => (current === "home" ? "focus" : current)), []);
   const sent = useCallback(() => setMode("thread"), []);
   useEffect(() => {
@@ -99,7 +105,7 @@ export function HomeDashboard() {
         />}
       </div>
 
-      {aril && <div className={styles.composer}><HomeAril suggestions={suggestions} mode={mode} onFocus={enterFocus} onSent={sent} onLeave={leave} onEmptyChange={setEmptyDraft} /></div>}
+      {chat && <div className={styles.composer}><HomeAril suggestions={suggestions} mode={mode} onFocus={enterFocus} onSent={sent} onLeave={leave} onEmptyChange={setEmptyDraft} /></div>}
     </div>
   </section>;
 }

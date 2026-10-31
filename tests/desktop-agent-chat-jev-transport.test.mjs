@@ -156,6 +156,28 @@ test("pre-connects in flight are one: calls together share it, and a call that s
   assert.equal(seen.connections.length, 1);
 });
 
+test("stopping the pre-connect (Aril turned Off) gives up one that is being opened and closes the one that waits, and a later pre-connect opens a new one", async (context) => {
+  const { port, seen } = await server(context);
+  const slow = transportFor(port, { resolver: fakeResolver({ delayMs: 80 }) });
+  const opening = slow.transport.preconnect();
+  slow.transport.stopPreconnect();
+  assert.equal(await opening, false, "a connection being opened is given up");
+  await settle(120);
+  assert.equal(seen.connections.length, 0, "and none reached the server");
+
+  const { transport } = transportFor(port);
+  assert.equal(await transport.preconnect(), true);
+  assert.equal(seen.connections.length, 1);
+  transport.stopPreconnect();
+  await settle(40);
+  assert.equal(seen.connections[0].destroyed, true, "the connection that waited is closed");
+  assert.equal(await transport.preconnect(), true);
+  await settle();
+  assert.equal(seen.connections.length, 2, "a later pre-connect opens a new connection");
+  transport.stopPreconnect();
+  transport.stopPreconnect();
+});
+
 test("a connection that waits keeps nothing alive, and one that grew old is replaced", async (context) => {
   const { port, seen } = await server(context);
   const created = [];

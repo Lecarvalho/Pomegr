@@ -12,6 +12,8 @@
 // - The thread space, the limit ("Flush oldest at"), and the owner's flush: the desktop window only.
 // - With Aril Off, every write below is refused (`conflict`): the owner's memory, the limit, and the owner's flush. Reads still answer. The
 //   automatic flush is not one of them: it is desktop housekeeping, not an action of Aril, and keeps running.
+// - Off also means no chat (`OFF_REFUSED_OPERATIONS`): the chat refuses a message, a warm run, Apply, Dismiss, and a deletion with the same
+//   `conflict`, and `agent-chat.mjs` stops what runs when the switch turns Off. The chat's refusals are judged there; this file answers `off()`.
 
 import path from "node:path";
 
@@ -23,6 +25,9 @@ import { AGENT_CHAT_DIRECTORY } from "./agent-chat-store.mjs";
 import { createThreadSpace } from "./agent-chat-space.mjs";
 
 export const ARIL_CONTROL_OPERATIONS = Object.freeze(["aril_switch", "aril_switch_set", "aril_paired_on_set", "owner_memory", "owner_memory_set", "thread_space", "thread_limit_set", "thread_flush"]);
+// The chat's own operations that Off refuses with `conflict`, from the desktop window and from a paired device alike: a message and its warm run, the
+// owner's answer to a proposal, and the deletion of a conversation. Reading a thread and Stop are not refused; the image `add` is (see `image()`).
+export const OFF_REFUSED_OPERATIONS = Object.freeze(["send", "warm", "apply", "dismiss", "delete"]);
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const refused = (error) => Object.freeze({ ok: false, error });
@@ -109,6 +114,8 @@ export function createArilControl({ dataRoot = null, arilSwitch, ownerMemory, th
   return Object.freeze({
     /** Whether Aril is On now: the one question the grant runner, the grant write, and the automatic follow-ups ask before they act. */
     isOn: () => held.isOn(),
+    /** Whether Aril is Off, after the switch has been read, so a call at start never meets an Off that is only the unread state. */
+    off: isOff,
     /** Whether paired devices may turn Aril On and change a repository's memory and Aril's settings: the owner's one permission (`pairedOn`). */
     pairedAllowed,
     arilSwitch: held,

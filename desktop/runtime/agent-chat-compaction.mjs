@@ -83,9 +83,10 @@ export function summaryFromAnswer(answer) {
 /**
  * The compaction of the repositories' threads. `executable(provider)` finds the provider's command, `repositoryRoot(repositoryId)` the
  * working folder, `declare(provider)` and `withdraw(sessionId)` hide a Claude Code run from the Sessions list as a chat turn does,
- * and `busy(repositoryId)` says whether a turn of that repository runs or waits.
+ * and `busy(repositoryId)` says whether a turn of that repository runs or waits. `on()` says whether Aril is On: a compaction starts, and goes
+ * on to its next run, only while it is.
  */
-export function createCompaction({ store, summaries, now, runTurn, spawn, env, executable, repositoryRoot, declare, withdraw, busy, timeoutMs = COMPACTION_TIMEOUT_MS }) {
+export function createCompaction({ store, summaries, now, runTurn, spawn, env, executable, repositoryRoot, declare, withdraw, busy, on = () => true, timeoutMs = COMPACTION_TIMEOUT_MS }) {
   const jobs = new Map();
   let disposed = false;
 
@@ -122,7 +123,7 @@ export function createCompaction({ store, summaries, now, runTurn, spawn, env, e
     const root = await repositoryRoot(repositoryId);
     let previous = summary;
     // Oldest first, in as many runs as the prompt limit needs; each stored summary stands alone, so a later run that fails keeps the earlier ones.
-    while (root && older.length > 0 && !disposed && !job.stopped) {
+    while (root && older.length > 0 && !disposed && !job.stopped && on()) {
       const chunk = compactionChunk(older, previous?.text);
       const written = await runOnce(repositoryId, job, { provider: last.provider, model: last.model, command, root, previous, chunk });
       if (!written) return;
@@ -148,12 +149,16 @@ export function createCompaction({ store, summaries, now, runTurn, spawn, env, e
      * started none, so a caller can wait for the thread to be free of one. It never rejects.
      */
     afterTurn(repositoryId) {
-      if (disposed || jobs.has(repositoryId) || busy(repositoryId)) return Promise.resolve();
+      if (disposed || !on() || jobs.has(repositoryId) || busy(repositoryId)) return Promise.resolve();
       const job = { stopped: false, run: null };
       jobs.set(repositoryId, job);
       return compact(repositoryId, job).catch(() => {}).finally(() => { if (jobs.get(repositoryId) === job) jobs.delete(repositoryId); });
     },
     cancel,
+    /** Aril turned Off: stops every compaction that runs. The thread keeps its old summary, and the next owner's message after Aril is On again tries again. */
+    cancelAll() {
+      for (const repositoryId of [...jobs.keys()]) cancel(repositoryId);
+    },
     running: (repositoryId) => jobs.has(repositoryId),
     dispose() {
       disposed = true;
