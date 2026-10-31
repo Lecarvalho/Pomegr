@@ -4,7 +4,7 @@ import { useId, useState, type ReactNode } from "react";
 import type { ArilSwitchControl, OwnerMemoryControl, ThreadSpaceControl } from "../../aril-control-client";
 import type { JevKeyControl } from "../tasks/jev-key-desktop";
 import { CommandSwitch } from "../command-center/CommandSwitch";
-import { ArilMemoryCard, ArilOffNotice, ArilSwitchCard, ConversationSpaceCard, EffortRoutingRow, OWNER_MEMORY_CAPTION, repositoryMemoryCaption } from "../../settings/ArilGlobalSettings";
+import { ArilMemoryCard, ArilOffNotice, ArilSwitchCard, ConversationSpaceCard, EffortRoutingNote, EffortRoutingRow, OWNER_MEMORY_CAPTION, repositoryMemoryCaption } from "../../settings/ArilGlobalSettings";
 import { MemoryEditor, type MemoryView } from "../../settings/MemoryEditor";
 import { Sample } from "./DesignSystemKit";
 
@@ -142,6 +142,9 @@ export function ArilControlSamples() {
     </Sample>
     <Sample label="Effort routing, key field" note="The key goes to the desktop once and the field is emptied; the app never receives the key back.">
       <Frame><EffortRoutingRow jev={JEV} initialEditing initialFailure="save" /></Frame>
+    </Sample>
+    <Sample label="Effort routing, paired device" note="A paired device reads nothing and shows no state: the title, the caption, and one line that the key is changed in the desktop app.">
+      <Frame><EffortRoutingNote /></Frame>
     </Sample>
   </div>;
 }

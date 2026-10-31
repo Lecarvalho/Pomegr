@@ -6,6 +6,7 @@ export type CommandIconName =
   | "arrow"
   | "bell"
   | "chart"
+  | "check"
   | "chevron"
   | "close"
   | "collapse"
@@ -39,6 +40,7 @@ const paths: Record<CommandIconName, ReactNode> = {
   arrow: <><path d="M4 12h15" /><path d="m13 6 6 6-6 6" /></>,
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></>,
   chart: <><path d="M4 19V5M4 19h16" /><path d="m7 15 3-4 3 2 5-7" /></>,
+  check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
   chevron: <path d="m9 5 7 7-7 7" />,
   close: <><path d="m6 6 12 12M18 6 6 18" /></>,
   collapse: <path d="m6 9 6 6 6-6" />,

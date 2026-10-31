@@ -77,6 +77,7 @@
 .arilEffortTitle span.isSet { color: var(--command-green); }
 .arilEffort .arilCardCaption { margin-top: var(--space-1); padding: 0; }
 .arilEffort .arilCardAlert { padding: var(--space-3) 0 0; }
+.arilEffort .arilEffortNote { margin-top: var(--space-2); font-size: var(--text-caption); }
 .arilEffortKey { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
 .arilEffortKey label { color: var(--command-muted); font-size: var(--text-xs); }
 .arilEffortKey input { flex: 1 1 220px; min-width: 0; }
@@ -86,23 +87,47 @@
 .arilGrantLine > :first-child { flex: 1; min-width: 0; }
 .arilGrantTime { font-family: var(--font-data); }
 
+/* A phone (design contract ArilSettingsPhone.dc.html). The page never scrolls sideways: every card is as wide as the screen, text wraps, and a strip
+   of tabs scrolls inside its own frame. Every control reaches 44px. */
 @media (max-width: 760px) {
-  .arilHeroMain { gap: var(--space-4); padding: var(--space-4); }
+  .arilSettings, .arilHero, .arilCard, .arilBelow { min-width: 0; }
+  .arilSettings, .arilBelow { gap: var(--space-4); }
+  /* The switch stays at the top right and the text wraps beside it. */
+  .arilHeroMain { align-items: flex-start; gap: var(--space-3); padding: var(--space-4); }
+  .arilHeroMark { width: 40px; height: 40px; }
+  .arilHeroMain > .commandSwitch { margin-top: var(--space-1); }
+  /* The paired row wraps the same way: its text takes the width the small switch leaves. */
   .arilHeroRow { padding: var(--space-3) var(--space-4); }
+  .arilHeroRow > :first-child { min-width: 0; }
   .arilCardHead, .arilCardCaption, .arilCardNote, .arilCardAlert, .arilMemoryFooter, .arilMemoryChange { padding-inline: var(--space-4); }
-  .arilMemoryField { width: calc(100% - 32px); margin-inline: var(--space-4); }
+  /* A card head puts its title on one line and the control under it; a strip of tabs takes the whole row. */
+  .arilCardHead { gap: var(--space-2); padding-top: var(--space-4); }
+  .arilCardHead h3 { flex-basis: 100%; }
+  .arilCardAside { min-width: 0; }
+  .arilCardAside .commandSelectTrigger { min-height: 44px; }
+  .arilTabs { flex: 1 1 100%; min-width: 0; overscroll-behavior-x: contain; }
+  .arilTab { min-height: 44px; }
+  .arilMemoryField { width: calc(100% - var(--space-8)); margin-inline: var(--space-4); }
+  .arilMemoryFooter { flex-wrap: wrap; }
   .arilMemoryChange { grid-template-columns: minmax(0, 1fr); }
-  .arilSpaceRow { grid-template-columns: minmax(0, 1fr) auto; padding-inline: var(--space-4); }
-  .arilSpaceName { order: 1; }
-  .arilSpaceAction { order: 2; }
+  /* A conversation stacks: the name with Flush oldest, then a full-width bar, then the size. */
+  .arilSpaceRow { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2) var(--space-3); padding-inline: var(--space-4); }
+  .arilSpaceName { order: 1; min-width: 0; }
+  .arilSpaceAction { order: 2; min-height: 44px; }
   .arilSpaceBar { grid-column: 1 / -1; order: 3; }
-  .arilSpaceSize { grid-column: 1 / -1; order: 4; }
+  .arilSpaceSize { grid-column: 1 / -1; order: 4; white-space: normal; }
+  .arilSpaceAsk .commandSecondaryAction, .arilSpaceAsk .commandQuietAction { min-height: 44px; }
   .arilEffort { padding-inline: var(--space-4); }
-  .arilEffortRow { flex-wrap: wrap; }
+  .arilEffortRow { flex-wrap: wrap; gap: var(--space-3); }
+  .arilEffortText { flex-basis: 100%; }
+  .arilEffortRow .commandSecondaryAction, .arilEffortRow .commandQuietAction, .arilEffortKey .commandSecondaryAction, .arilEffortKey .commandQuietAction, .arilEffortKey input { min-height: 44px; }
+  .arilEffortKey input { flex-basis: 100%; }
   .arilGrantLine { padding-inline: var(--space-4); }
+  .arilGrantLine .commandSecondaryAction { min-height: 44px; }
 }
 @media (pointer: coarse) {
-  .arilTab { min-height: 44px; }
+  .arilTab, .arilSpaceAction, .arilSpaceAsk .commandSecondaryAction, .arilSpaceAsk .commandQuietAction, .arilEffortRow .commandSecondaryAction, .arilEffortRow .commandQuietAction,
+  .arilEffortKey .commandSecondaryAction, .arilEffortKey .commandQuietAction, .arilEffortKey input, .arilGrantLine .commandSecondaryAction, .arilCardAside .commandSelectTrigger { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .arilHeroGlow, .arilHeroMark, .arilSpaceFill, .arilBelow { transition: none; }

@@ -1,6 +1,6 @@
 # Settings design
 
-> Scope: the Settings sections Providers, GitHub, Aril, Storage, and the storage usage meter, plus the About pane.
+> Scope: the Settings sections Providers, GitHub, Aril, Storage, and the storage usage meter, plus the About pane and the phone layout of the Settings page.
 > Authority: visual and interaction contract for this surface. [DESIGN.md](../../../DESIGN.md)
 > owns the tokens, the six button roles, the chip contract, and the shared controls.
 > Related code and checks: `app/settings/`, `app/styles/`, the `/design-system` samples,
@@ -223,11 +223,12 @@ The owner approved the mockup `ArilSettings.dc.html` on 2026-10-30. The section 
 - The size reads “1.9 MB” and the count “· 401 messages” in muted text. The action is **Flush oldest** (accessible name “Flush oldest messages of <repository>”), or an unavailable **Nothing to flush** for a thread of one message.
 - The flush asks under the row first: “Remove the oldest 200 of 401 messages and their images?” with a Secondary **Flush messages** and a Quiet **Cancel**. Cancel changes nothing.
 - The result is one quiet status line under the row, “Removed 20 messages and freed 700 KB.” A repository where Aril is answering says “Aril is answering in this repository. Try again when it is done.”, and any other failure shows the alert “The messages could not be flushed. Try again.” While a flush runs, every flush action is unavailable.
-- On a phone the row stacks: the name and the action on the first line, then the bar, then the size.
+- On a phone the row stacks: the name with **Flush oldest** on the first line, then a full-width bar, then the size.
 
 ### Effort routing
 
-- One compact row in its own card, drawn only by the desktop app: a paired device shows no heading, no state, and no field, and never asks the desktop whether a key is set.
+- One compact row in its own card. The desktop app draws the whole row. A paired device draws only the title, the caption, and the line “The key is changed in the desktop app.”: it shows no state and no field, and it never asks the desktop whether a key is set, so a phone never learns whether one is.
+- A browser that is neither the desktop app nor a paired device draws nothing of it.
 - It holds the `h3` **Effort routing**, the status beside it, the caption “Jev may lower the effort you chose for simple replies, never raise it. It sees your message and the end of Aril's last answer.”, a Secondary **Replace key** (**Add key** without a key), and a Quiet **Remove** (accessible name “Remove Jev key”) while a key is set.
 - The status reads “Jev key set” in green, “No Jev key”, “Checking…” while it is read, or “This computer cannot store the key safely” with no button.
 - **Replace key** opens one row under the card: a masked field named **Jev key** (at most 512 characters, autofill off), a Secondary **Save key**, and a Quiet **Cancel**. **Save key** is unavailable until the field holds 8 to 512 characters without spaces; a shorter or spaced key shows “Use 8 to 512 characters without spaces.”
@@ -243,6 +244,17 @@ The owner approved the mockup `ArilSettings.dc.html` on 2026-10-30. The section 
 - The top card's one permission replaces **Paired devices**, for every repository. The stored per-repository values stay unused, except for the one-time carry-over in [Agent chat: The switch](../architecture/agent-chat.md#the-switch).
 - **Follow-ups**, the limits, the work rules, and the grant actions have no control. Their stored values stay, and the grant runtime reads them as before.
 
+## Settings on a phone
+
+The owner approved the phone layout of Settings › Aril (`ArilSettingsPhone.dc.html`) on 2026-10-30. It holds in the paired-device view, which a phone gets through the LAN gateway, and in the desktop app at the same width.
+
+- At 760px and narrower the Settings layout is one column whose track is `minmax(0, 1fr)`. A bare `1fr` grows to the full width of the section tabs, and the whole page scrolls sideways.
+- The page never scrolls sideways. Nothing is wider than the screen at 390px.
+- The section tabs scroll sideways inside their own strip, and each tab is at least 44px high.
+- The pane has 16px of padding, and every card is as wide as the pane.
+- Every control reaches 44px on a phone and on a coarse pointer: the tabs, the memory tabs, **Flush oldest**, the flush buttons, the limit select, **Replace key**, **Remove**, the key field, and **Stop grant**. The switches keep their size and reach 44px through their hit area.
+- The small switch of the paired-device row has a hit area of 44px as well.
+
 ## About pane
 
 - The About pane presents the painted mark beside the product name and purpose before operational metadata.
@@ -251,6 +263,6 @@ The owner approved the mockup `ArilSettings.dc.html` on 2026-10-30. The section 
 ## Samples
 
 - `/design-system` renders every GitHub state from static data.
-- `/design-system` renders the shared switch, every state of the top card, the memory (yours, a repository's, with the change shown, read-only, a failed save, and reading), the conversation space (with a limit, with Never, a flush question, flushed, and not flushed), the effort routing (key set, no key, and the key field), and the running-grant line. It has no sample of a per-repository card.
+- `/design-system` renders the shared switch, every state of the top card, the memory (yours, a repository's, with the change shown, read-only, a failed save, and reading), the conversation space (with a limit, with Never, a flush question, flushed, and not flushed), the effort routing (key set, no key, the key field, and a paired device), and the running-grant line. It has no sample of a per-repository card.
 - `/design-system` renders the storage usage meter.
 - `/design-system` renders the settings tab rail (`.commandSettingsNav`) with its pane.

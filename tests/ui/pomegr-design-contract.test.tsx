@@ -27,7 +27,7 @@ it("includes every state of the Aril cards, drawn with the shared switch, the si
   const { container } = render(<ArilControlSamples />);
   for (const label of ["Switch", "Aril off, everything below read only", "Aril card, Off", "Aril card, On", "Aril card, paired device", "Aril card, change failed", "Aril card, reading", "Aril card, not reachable", "Memory, you", "Memory, change shown", "Memory, repository",
     "Memory, read-only", "Memory, save failure", "Memory, reading", "Conversation space", "Conversation space, never", "Conversation space, flush question", "Conversation space, flushed",
-    "Conversation space, not flushed", "Effort routing, key set", "Effort routing, no key", "Effort routing, key field"]) expect(screen.getAllByText(label, { selector: "span" }).length).toBeGreaterThan(0);
+    "Conversation space, not flushed", "Effort routing, key set", "Effort routing, no key", "Effort routing, key field", "Effort routing, paired device"]) expect(screen.getAllByText(label, { selector: "span" }).length).toBeGreaterThan(0);
   // The state is a word beside the heading, green only while On; a switch is the shared switch and nothing else.
   expect([...container.querySelectorAll(".arilHeroState")].map((state) => [state.textContent, state.closest(".arilHero")?.classList.contains("isOn")])).toEqual([["Off", false], ["Off", false], ["On", true], ["Off", false], ["Off", false]]);
   expect(container.querySelectorAll("input[role=\"switch\"]").length).toBe(0);
@@ -745,7 +745,8 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/^## GitHub$/m);
     expect(designContract).toMatch(/\*\*Providers\*\*, \*\*GitHub\*\*, \*\*Aril\*\*, \*\*Storage\*\*, \*\*Data display\*\*/);
     expect(designContract).toMatch(/^## Aril$/m);
-    expect(designContract).toMatch(/One compact row in its own card, drawn only by the desktop app/);
+    expect(designContract).toMatch(/One compact row in its own card\. The desktop app draws the whole row\. A paired device draws only the title, the caption, and the line “The key is changed in the desktop app\.”/);
+    expect(designContract).toMatch(/## Settings on a phone[^]*The page never scrolls sideways\. Nothing is wider than the screen at 390px/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx"), "utf8");
     expect(sample).toMatch(/Task modal, promote issue"/);
     expect(sample).toMatch(/Task modal, promote issue, outside contributor and changed/);

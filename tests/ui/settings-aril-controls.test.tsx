@@ -474,9 +474,19 @@ describe("Settings › Aril: effort routing", () => {
     expect(within(row).queryByRole("button", { name: "Replace key" })).toBeNull();
   });
 
-  it("is not drawn on a paired device, which has no bridge to the key", async () => {
+  it("tells a paired device only that the key is changed in the desktop app, with no state and no field, since it has no bridge to the key", async () => {
     asPhone();
     await open();
+    const row = await waitFor(() => card("Effort routing"));
+    expect(within(row).getByText("The key is changed in the desktop app.")).toBeInTheDocument();
+    for (const word of [/Jev key set/u, /No Jev key/u, /Checking/u, /cannot store/u]) expect(within(row).queryByText(word)).toBeNull();
+    expect(within(row).queryByRole("button")).toBeNull();
+    expect(within(row).queryByLabelText("Jev key")).toBeNull();
+  });
+
+  it("draws nothing of it in a browser that is neither the desktop app nor a paired device", async () => {
+    render(<SettingsPage initialSection="aril" />);
+    await within(section()).findByText("Turn Aril on or off in the desktop app or on a paired device.");
     expect(within(section()).queryByRole("heading", { name: "Effort routing" })).toBeNull();
     expect(within(section()).queryByText(/Jev/u)).toBeNull();
   });

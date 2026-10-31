@@ -46,7 +46,7 @@ describe("personal Home", () => {
     expect(navigation.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Dismiss this update" }));
     expect(screen.queryByRole("heading", { name: "What’s new" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Browse sessions" })).toHaveFocus();
+    expect(screen.getByRole("link", { name: "All sessions" })).toHaveFocus();
     expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({
       version: 1, pins: [{ kind: "session", id: sessions[0].id }],
       lastViewedSessionId: sessions[1].id, dismissedUpdateId: "aril-grants-v1", seenUpdateId: "aril-grants-v1",
@@ -104,7 +104,7 @@ describe("personal Home", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Local test monitor unavailable"));
     const { container } = home();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^Good (morning|afternoon|evening)$/);
-    expect(within(screen.getByRole("region", { name: /^Continue/ })).getByText("Add pins")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: /^Continue/ })).getByText("Pin a session to keep it here")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "What’s new" })).toBeInTheDocument();
     for (const name of ["Choose a session", "Inspect a session", "Session coach", "On the horizon", "Understand your sessions"]) {
       expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
@@ -129,24 +129,24 @@ describe("personal Home", () => {
   it("pins a selected session, persists only its identity, and can unpin it", async () => {
     const user = userEvent.setup();
     const view = home();
-    await user.click(screen.getByText("Add pins"));
+    await user.click(screen.getByText("Pin a session to keep it here"));
     await user.click(screen.getByRole("button", { name: "Pin Build Home" }));
     expect(screen.getByRole("list", { name: "Pinned" })).toHaveTextContent("Build Home");
     expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({ version: 1, pins: [{ kind: "session", id: "codex:build-home" }], lastViewedSessionId: null, seenUpdateId: "aril-grants-v1" });
     await user.click(screen.getByRole("button", { name: "Done" }));
-    expect(screen.getByText("Add pins")).toHaveFocus();
+    expect(screen.getByText("Pin a session to keep it here")).toHaveFocus();
     view.unmount();
     home();
     expect(screen.getByRole("link", { name: "Build Home · Pomegr · Codex" })).toHaveAttribute("href", "/sessions/codex-build-home");
     await user.click(screen.getByRole("button", { name: "Unpin Build Home" }));
     expect(screen.queryByRole("list", { name: "Pinned" })).not.toBeInTheDocument();
-    expect(screen.getByText("Add pins")).toHaveFocus();
+    expect(screen.getByText("Pin a session to keep it here")).toHaveFocus();
   });
 
   it("pins a project to an exact project-filtered session destination", async () => {
     const user = userEvent.setup();
     home();
-    await user.click(screen.getByText("Add pins"));
+    await user.click(screen.getByText("Pin a session to keep it here"));
     chooseCommandOption(screen.getByLabelText("Destination type"), "project");
     await user.click(screen.getByRole("button", { name: "Pin Other project" }));
     expect(screen.getByRole("link", { name: "Other project · Project sessions" })).toHaveAttribute("href", "/sessions?project=Other%20project");
@@ -156,7 +156,7 @@ describe("personal Home", () => {
     const user = userEvent.setup();
     home([], { loading: true });
     expect(screen.getByRole("heading", { name: "Continue" })).toBeInTheDocument();
-    await user.click(screen.getByText("Add pins"));
+    await user.click(screen.getByText("Pin a session to keep it here"));
     expect(screen.getByText("Loading destinations from the local monitor…")).toBeInTheDocument();
     chooseCommandOption(screen.getByLabelText("Destination type"), "view");
     await user.click(screen.getByRole("button", { name: "Pin Usage limits" }));
@@ -190,7 +190,8 @@ describe("personal Home", () => {
     expect(within(running).getByRole("link")).toHaveTextContent("Build HomeWorking");
     expect(within(running).getByRole("link")).toHaveAttribute("href", "/sessions/codex-build-home");
     expect(screen.queryByRole("link", { name: /Open last viewed session/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /^Continue/ })).toHaveTextContent("Continue · 1 running");
+    expect(screen.getByRole("heading", { name: "Continue" })).toBeInTheDocument();
+    expect(screen.getByText("1 running")).toBeInTheDocument();
   });
 
   it("reflects updated catalog labels without changing saved identities", () => {

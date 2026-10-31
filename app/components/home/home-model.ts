@@ -5,10 +5,10 @@ import type { TaskLog } from "../tasks/task-desktop";
 import { splitTaskTitle } from "../tasks/task-tags";
 import { taskBoardHref } from "../tasks/TasksHome";
 
-// The fixed rules behind Home: the greeting, the Aril line, and Needs you. Each one reads numbers and fixed kinds and writes fixed
+// The fixed rules behind Home: the greeting, the last-24-hours tiles, and Needs you. Each one reads numbers and fixed kinds and writes fixed
 // words. No model runs, no answer of a model is read, and no heuristic is called an AI judgment (docs/internal/design/home.md).
 
-export const ARIL_LINE_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const DAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** Home reads the task log of the boards that changed last, and no more. */
 export const HOME_LOG_BOARDS = 12;
 
@@ -20,37 +20,36 @@ export function greetingFor(hour: number): string {
   return hour >= 12 && hour < 18 ? "Good afternoon" : "Good evening";
 }
 
-// ---- The Aril line ----
+// ---- The last 24 hours ----
 
 type LogKind = TaskLog["entries"][number]["kind"];
-const EVENTS: readonly { kinds: readonly LogKind[]; words(count: number): string }[] = [
-  { kinds: ["started", "grant_start"], words: (count) => `${count} started` },
-  { kinds: ["review"], words: (count) => `${count} reached Review` },
-  { kinds: ["merged", "grant_merge"], words: (count) => `${count} merged` },
-  { kinds: ["done", "grant_done"], words: (count) => `${count} marked Done` },
+/** The four events the tiles count, in their fixed order, with the words of a tile: the full label, and the short one a phone draws. */
+export const DAY_EVENTS: readonly { kinds: readonly LogKind[]; label: string; short: string }[] = [
+  { kinds: ["started", "grant_start"], label: "Started", short: "Started" },
+  { kinds: ["review"], label: "Reached Review", short: "Review" },
+  { kinds: ["merged", "grant_merge"], label: "Merged", short: "Merged" },
+  { kinds: ["done", "grant_done"], label: "Marked Done", short: "Done" },
 ];
 
 /**
- * The one line under the greeting: how many tasks started, reached Review, merged, and were marked Done in the logs of the last 24
- * hours. A task counts once for each event. Null where no log could be read, so a missing log never says that nothing happened.
+ * How many tasks started, reached Review, were merged, and were marked Done in the logs of the last 24 hours, in the order of `DAY_EVENTS`. A task
+ * counts once for each event. Null where no log could be read, so a missing log never says that nothing happened; `unreadable` counts the logs
+ * that could not be read when others could.
  */
-export function arilLine(reads: HomeLogReads, now: number): string | null {
-  const counted = EVENTS.map(() => new Set<string>());
+export function dayCounts(reads: HomeLogReads, now: number): { counts: number[]; unreadable: number } | null {
+  const counted = DAY_EVENTS.map(() => new Set<string>());
   let readable = 0;
   let unreadable = 0;
   for (const [repositoryId, log] of reads) {
     if (log === null) { unreadable += 1; continue; }
     readable += 1;
     for (const entry of log.entries) {
-      if (entry.task === null || entry.at < now - ARIL_LINE_WINDOW_MS) continue;
-      const event = EVENTS.findIndex((candidate) => candidate.kinds.includes(entry.kind));
+      if (entry.task === null || entry.at < now - DAY_WINDOW_MS) continue;
+      const event = DAY_EVENTS.findIndex((candidate) => candidate.kinds.includes(entry.kind));
       if (event >= 0) counted[event].add(`${repositoryId}/${entry.task}`);
     }
   }
-  if (readable === 0) return null;
-  const parts = EVENTS.flatMap((event, index) => (counted[index].size > 0 ? [event.words(counted[index].size)] : []));
-  const line = parts.length > 0 ? `In the last 24 hours: ${parts.join(", ")}.` : "Nothing was logged in the last 24 hours.";
-  return unreadable > 0 ? `${line} Some logs could not be read.` : line;
+  return readable === 0 ? null : { counts: counted.map((tasks) => tasks.size), unreadable };
 }
 
 // ---- Needs you ----
@@ -85,7 +84,8 @@ export function needsDetail(log: TaskLog, taskId: string): NeedsDetail | null {
 }
 
 /** One thing the owner has to do: the action in words, a failure detail, the repository, and where it is done. It names no task and no title. */
-export type NeedsLine = { key: string; action: string; detail: NeedsDetail | null; repository: string; href: string };
+export type NeedsKind = "session" | "review" | "stalled" | "blocked" | "queue";
+export type NeedsLine = { key: string; kind: NeedsKind; action: string; detail: NeedsDetail | null; repository: string; href: string };
 export const NEEDS_LINES_SHOWN = 8;
 
 const plural = (count: number, one: string, many: string) => (count === 1 ? one : many.replace("{n}", String(count)));
@@ -114,7 +114,7 @@ export function needsYou(input: { home: TaskHome; names: ReadonlyMap<string, str
   for (const [key, group] of waiting) {
     const only = group.length === 1;
     lines.push({
-      key: `session:${key}`, action: plural(group.length, "Answer a session that is waiting for you", "Answer {n} sessions that are waiting for you"), detail: null, repository: repositoryOf(group[0], names),
+      key: `session:${key}`, kind: "session", action: plural(group.length, "Answer a session that is waiting for you", "Answer {n} sessions that are waiting for you"), detail: null, repository: repositoryOf(group[0], names),
       href: only ? sessionHref(group[0]) : group[0].repositoryId ? `/sessions?${new URLSearchParams({ repository: group[0].repositoryId })}` : "/sessions",
     });
   }
@@ -139,15 +139,15 @@ export function needsYou(input: { home: TaskHome; names: ReadonlyMap<string, str
   }
   // Within a repository the plain line comes before its failures.
   for (const [key, group] of [...finished].sort(([, left], [, right]) => Number(left.detail !== null) - Number(right.detail !== null))) {
-    lines.push({ key: `review:${key}`, action: plural(group.count, "Review 1 finished task", "Review {n} finished tasks"), detail: group.detail, repository: names.get(group.repositoryId)!, href: taskBoardHref(group.repositoryId) });
+    lines.push({ key: `review:${key}`, kind: "review", action: plural(group.count, "Review 1 finished task", "Review {n} finished tasks"), detail: group.detail, repository: names.get(group.repositoryId)!, href: taskBoardHref(group.repositoryId) });
   }
-  for (const group of stalled.values()) lines.push({ key: `stalled:${group.repositoryId}`, action: plural(group.count, "Check 1 stalled task", "Check {n} stalled tasks"), detail: null, repository: names.get(group.repositoryId)!, href: taskBoardHref(group.repositoryId) });
-  for (const group of blocked.values()) lines.push({ key: `blocked:${group.repositoryId}`, action: plural(group.count, "Unblock 1 task", "Unblock {n} tasks"), detail: null, repository: names.get(group.repositoryId)!, href: taskBoardHref(group.repositoryId) });
+  for (const group of stalled.values()) lines.push({ key: `stalled:${group.repositoryId}`, kind: "stalled", action: plural(group.count, "Check 1 stalled task", "Check {n} stalled tasks"), detail: null, repository: names.get(group.repositoryId)!, href: taskBoardHref(group.repositoryId) });
+  for (const group of blocked.values()) lines.push({ key: `blocked:${group.repositoryId}`, kind: "blocked", action: plural(group.count, "Unblock 1 task", "Unblock {n} tasks"), detail: null, repository: names.get(group.repositoryId)!, href: taskBoardHref(group.repositoryId) });
 
   for (const board of home.boards) {
     if (board.readiness !== "ready" || board.queue.status !== "paused" || !names.has(board.repositoryId)) continue;
     lines.push({
-      key: `queue:${board.repositoryId}`, action: "Restart the paused queue", detail: { words: board.queue.pauseReason ? PAUSE_WORDS[board.queue.pauseReason] : "Paused", urgent: true },
+      key: `queue:${board.repositoryId}`, kind: "queue", action: "Restart the paused queue", detail: { words: board.queue.pauseReason ? PAUSE_WORDS[board.queue.pauseReason] : "Paused", urgent: true },
       repository: names.get(board.repositoryId)!, href: taskBoardHref(board.repositoryId),
     });
   }

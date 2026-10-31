@@ -20,6 +20,9 @@
 
 /* A phone: focus mode fills the screen, and the block sits at the bottom, above the keyboard. */
 @media (max-width: 760px) {
+  /* The composer is pinned to the bottom of the screen, so the chips are one line that scrolls sideways and the block stays short. */
+  .chipList { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .chipList > li { flex: none; }
   .aril.isFocus { position: fixed; z-index: 85; inset-inline: var(--space-3); bottom: calc(var(--keyboard-inset, 0px) + max(var(--space-3), env(safe-area-inset-bottom))); transform: none; }
   .aril.isThread { transform: none; }
   .hint { display: none; }
