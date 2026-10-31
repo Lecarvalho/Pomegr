@@ -149,15 +149,15 @@ describe("the list", () => {
       repository("Alpha"),
       repository("Beta", { liveCount: 1 }),
       repository("Gamma", { providers: [provider({ pluginSetup: plugin({ enabled: false }) })] }),
-      // Reporting that is not configured is drawn Reporting off, and is not a warning: the filter keeps today's rule.
+      // Reporting that is not configured carries a fix line, so it is under Needs attention too.
       repository("Delta", { reporting: { status: "missing", version: null, checkedAt } }),
     );
     render(<RepositoryInventoryView />);
     const names = () => screen.getAllByRole("article").map((article) => within(article).getByRole("heading").textContent);
-    expect(screen.getByText("4 repositories · 1 needs attention")).toBeInTheDocument();
+    expect(screen.getByText("4 repositories · 2 needs attention")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Needs attention" }));
     expect(screen.getByRole("button", { name: "Needs attention" })).toHaveAttribute("aria-pressed", "true");
-    expect(names()).toEqual(["Gamma"]);
+    expect(names()).toEqual(["Gamma", "Delta"]);
     await userEvent.click(screen.getByRole("button", { name: "Live now" }));
     expect(names()).toEqual(["Beta"]);
     await userEvent.click(screen.getByRole("button", { name: "All" }));
@@ -166,6 +166,29 @@ describe("the list", () => {
     await userEvent.clear(screen.getByRole("searchbox"));
     await userEvent.type(screen.getByRole("searchbox"), "nothing like it");
     expect(screen.getByText("No repositories match")).toBeInTheDocument();
+  });
+
+  it("lists under Needs attention exactly the cards that show a fix line", async () => {
+    const update = plugin({ canUpdate: true, update: { status: "available", version: "0.6.0", checkedAt } });
+    serve(
+      repository("Ready"),
+      repository("Unverified", { reporting: undefined }),
+      repository("Off", { reporting: { status: "missing", version: null, checkedAt } }),
+      repository("Update", { providers: [provider({ pluginSetup: update })] }),
+      repository("Checking", { providers: [provider({ pluginSetup: plugin({ readiness: "loading" }) })] }),
+    );
+    render(<RepositoryInventoryView />);
+    const names = () => screen.getAllByRole("article").map((article) => within(article).getByRole("heading").textContent);
+    const withFix = () => screen.getAllByRole("article").filter((article) => within(article).queryByRole("link", { name: /^Set up / })).map((article) => within(article).getByRole("heading").textContent);
+    const listed = withFix();
+    expect(listed).toEqual(["Unverified", "Off", "Update"]);
+    expect(within(articleOf("Update")).getByText("Ready")).toBeInTheDocument();
+    expect(within(articleOf("Checking")).queryByText(/Set up/)).not.toBeInTheDocument();
+    expect(screen.getByText("5 repositories · 3 needs attention")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Needs attention" }));
+    expect(names()).toEqual(listed);
+    expect(withFix()).toEqual(listed);
+    expect(screen.getByText("3 repositories · 3 needs attention")).toBeInTheDocument();
   });
 
   it("says why it is empty, and draws no card", async () => {

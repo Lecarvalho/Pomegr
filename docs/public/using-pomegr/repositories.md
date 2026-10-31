@@ -25,9 +25,8 @@ sessions appear without either. **Ready** means nothing needs attention.
 **Setup unverified** means Pomegr is still checking, or could not verify the
 setup. **Reporting off** means agents in the repository do not report their
 state to Pomegr. When a setup needs you, the card adds a short line with
-**Set up** that opens the tab where you fix it. A plugin that is not installed,
-disabled, or out of date, or a reporting policy that is invalid, also appears
-under **Needs attention**.
+**Set up** that opens the tab where you fix it. Every card with that line is
+listed under **Needs attention**, and no other card is.
 
 ## Open a repository
 

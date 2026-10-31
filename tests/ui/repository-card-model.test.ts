@@ -3,7 +3,7 @@ import type { RepositoryProviderInventory, RepositorySummary } from "../../share
 import type { RepositoryPluginSetup } from "../../shared/repository-plugin-contract";
 import { repositorySetupSummary } from "../../app/components/repositories/repository-setup";
 import {
-  ACTIVITY_DAYS, BAR_MAX_PX, BAR_MIN_PX, BAR_STUB_PX, TILE_TINTS, activityBars, activityLabel, providerMarks, repositoryActivityLine, repositoryInitial, repositorySetupCard, repositorySetupHref, tileTint,
+  ACTIVITY_DAYS, BAR_MAX_PX, BAR_MIN_PX, BAR_STUB_PX, TILE_TINTS, activityBars, activityLabel, providerMarks, repositoryActivityLine, repositoryInitial, repositoryNeedsAttention, repositorySetupCard, repositorySetupHref, tileTint,
 } from "../../app/components/repositories/repository-card-model";
 
 const checkedAt = "2026-09-04T10:00:00.000Z";
@@ -51,9 +51,28 @@ describe("the setup badge", () => {
     expect(repositorySetupHref("repo-0123456789abcdef01234567", unverified.fix!)).toBe("/repositories/repo-0123456789abcdef01234567?tab=plugin");
   });
 
-  it("leaves the Needs attention rule as it was: only a warning summary", () => {
-    expect(repositorySetupSummary(repository({ reporting: { status: "missing", version: null, checkedAt } })).tone).toBe("neutral");
-    expect(repositorySetupSummary(repository({ reporting: { status: "invalid", version: null, checkedAt } })).tone).toBe("warning");
+  // One fixture for every summary the list can reach, with whether its card shows a fix line.
+  const everySetup: readonly [string, RepositorySummary, boolean][] = [
+    ["ready", repository(), false],
+    ["a plugin update", repository({ providers: [provider({ pluginSetup: plugin({ canUpdate: true, update: { status: "available", version: "0.6.0", checkedAt } }) })] }), true],
+    ["setup being checked", repository({ providers: [provider({ pluginSetup: plugin({ readiness: "loading" }) })] }), false],
+    ["setup not confirmed", repository({ reporting: undefined }), true],
+    ["a plugin that is not installed", repository({ providers: [provider({ pluginSetup: plugin({ installation: "not_installed", version: null, enabled: null }) })] }), true],
+    ["a plugin that is disabled", repository({ providers: [provider({ pluginSetup: plugin({ enabled: false }) })] }), true],
+    ["a reporting policy that is invalid", repository({ reporting: { status: "invalid", version: null, checkedAt } }), true],
+    ["a reporting policy that is missing", repository({ reporting: { status: "missing", version: null, checkedAt } }), true],
+  ];
+
+  it.each(everySetup)("needs attention exactly when the card shows a fix line: %s", (_name, input, hasFix) => {
+    expect(repositorySetupCard(input).fix !== null).toBe(hasFix);
+    expect(repositoryNeedsAttention(input)).toBe(hasFix);
+  });
+
+  it("lists under Needs attention the set of cards that show a fix line, and no other", () => {
+    const withFix = everySetup.filter(([, input]) => repositorySetupCard(input).fix !== null).map(([name]) => name);
+    expect(everySetup.filter(([, input]) => repositoryNeedsAttention(input)).map(([name]) => name)).toEqual(withFix);
+    // Ready and Checking setup are the only two that ask nothing of the owner.
+    expect(everySetup.filter(([, input]) => !repositoryNeedsAttention(input)).map(([name]) => name)).toEqual(["ready", "setup being checked"]);
   });
 });
 

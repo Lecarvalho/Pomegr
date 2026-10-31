@@ -34,6 +34,12 @@ export function repositorySetupCard(repository: RepositorySummary): RepositorySe
   return { summary: summary.label, ...(MAPPED[summary.label] ?? { badge: "Setup unverified", tone: "neutral", fix: null }) };
 }
 
+/**
+ * A repository is under Needs attention exactly when its card shows a fix line. The filter, its count, and the card all read the one `fix` of
+ * `repositorySetupCard`, so they cannot drift apart: a setup that needs the owner is listed and drawn together, and "Checking setup" is neither.
+ */
+export const repositoryNeedsAttention = (repository: RepositorySummary): boolean => repositorySetupCard(repository).fix !== null;
+
 /** The destination of the fix line: the tab of the repository where the setup is done. */
 export const repositorySetupHref = (repositoryId: string, fix: SetupFix) => `/repositories/${repositoryId}?tab=${fix.tab}`;
 

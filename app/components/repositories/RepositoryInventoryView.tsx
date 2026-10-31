@@ -5,7 +5,7 @@ import { useRepositoryInventory } from "../../repository-inventory-client";
 import { CommandEmpty, CommandFilter, CommandPage, CommandSearch, CommandToolbar } from "../command-center/CommandPage";
 import { RepositoryCard } from "./RepositoryCard";
 import styles from "./RepositoryCards.module.css";
-import { repositorySetupSummary } from "./repository-setup";
+import { repositoryNeedsAttention } from "./repository-card-model";
 
 type RepositoryFilter = "all" | "attention" | "live";
 
@@ -14,8 +14,8 @@ export function RepositoryInventoryView() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<RepositoryFilter>("all");
   const matchingSearch = snapshot.repositories.filter((repository) => repository.displayName.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
-  const repositories = matchingSearch.filter((repository) => filter === "all" || (filter === "live" ? repository.liveCount > 0 : repositorySetupSummary(repository).tone === "warning"));
-  const attentionCount = repositories.filter((repository) => repositorySetupSummary(repository).tone === "warning").length;
+  const repositories = matchingSearch.filter((repository) => filter === "all" || (filter === "live" ? repository.liveCount > 0 : repositoryNeedsAttention(repository)));
+  const attentionCount = repositories.filter((repository) => repositoryNeedsAttention(repository)).length;
   const count = `${repositories.length} repositories${attentionCount ? ` · ${attentionCount} needs attention` : ""}`;
   const empty = !connected && !snapshot.repositories.length
     ? { title: "Repository inventory unavailable", detail: "Pomegr will retry the local monitor automatically." }

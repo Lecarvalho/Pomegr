@@ -17,7 +17,7 @@ This page covers how the repository surfaces look and how the user operates them
 - The toolbar combines repository search with the All, Needs attention, and Live now filters, and ends with the count.
 - The three filters are one segmented group on the panel fill: 30px chips inside a 36px group, and the pressed chip takes the raised fill and ink. Each chip keeps `aria-pressed`.
 - The toolbar has no frame of its own. It sits above the cards with a 16px gap.
-- The count reads “n repositories”, with “ · n needs attention” when some do. Only a warning setup counts as needing attention, as before.
+- The count reads “n repositories”, with “ · n needs attention” when some do. A repository needs attention when its card shows a fix line.
 - The cards keep the order the monitor sends: alphabetical by display name.
 - The cards fade in once, 60ms apart, over 420ms, when the list is first drawn. A poll that changes a count moves nothing. Reduced motion removes the fade.
 - The page has no note under the cards. Nothing there explains how the monitor associates sessions.
@@ -78,7 +78,9 @@ This page covers how the repository surfaces look and how the user operates them
 | Reporting not configured | Agents here do not report their state to Pomegr. |
 
 - **Ready** and **Checking setup** have no fix line. Checking passes by itself, and a line would appear and go.
-- The Needs attention filter is unchanged: it lists a warning summary only (Plugin update available, Plugin not installed, Plugin disabled, Reporting invalid). Setup unverified and Reporting not configured carry a fix line and are not in that filter.
+- A repository is under Needs attention exactly when its card shows a fix line: every summary in the table above. That includes Plugin update available, whose badge is Ready, and Setup unverified.
+- Ready and Checking setup are not under Needs attention, because neither has a fix line.
+- The filter, its count, and the fix line read one value (`fix` of `repositorySetupCard` in `repository-card-model.ts`), so they cannot differ.
 
 ### Phone
 

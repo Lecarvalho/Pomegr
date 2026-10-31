@@ -141,7 +141,7 @@ describe("the design contract", () => {
     expect(contract).toMatch(/The monitor sends the 14 counts with the repository/);
     expect(contract).toMatch(/Without a series from the monitor, no bars are drawn\./);
     expect(contract).toMatch(/\| \*\*Reporting off\*\* \| Amber soft, amber \| Plugin not installed, Plugin disabled, Reporting invalid, Reporting not configured \|/);
-    expect(contract).toMatch(/The Needs attention filter is unchanged/);
+    expect(contract).toMatch(/A repository is under Needs attention exactly when its card shows a fix line: every summary in the table above\./);
     expect(contract).toMatch(/The page has no note under the cards\./);
   });
 
