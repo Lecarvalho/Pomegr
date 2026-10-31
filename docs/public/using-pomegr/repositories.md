@@ -12,20 +12,21 @@ locally and read-only, and its file history is partial by design.
 
 ## Find a repository
 
-1. Select **Repositories**. Each row shows the repository name, its observed
-   sessions and last activity, its coding tools, live and history counts, and a
-   setup chip.
+1. Select **Repositories**. Each card shows the repository name, how many
+   sessions run now and when it was last active, a circle for each coding tool
+   it has sessions of, a bar for each of the last 14 days of sessions, its live
+   and session counts, and a setup badge.
 2. Type in **Filter repositories**, or choose **Needs attention** or **Live now**.
-3. Select a row to open the repository.
+3. Select a card to open the repository.
 
-The setup chip summarizes the optional Pomegr plugin and reporting policy (see
+The setup badge summarizes the optional Pomegr plugin and reporting policy (see
 [Reporting plugins](reporting-plugins.md)). It is a local observation, and
-sessions appear without either. **Ready** means nothing needs attention. A
-warning chip, such as **Plugin update available**, **Plugin not installed**,
-**Plugin disabled**, or **Reporting invalid**, also appears under
-**Needs attention**. **Checking setup**, **Reporting not configured**, and
-**Setup unverified** are neutral: Pomegr is still checking, has no policy to
-read, or could not verify the setup.
+sessions appear without either. **Ready** means nothing needs attention.
+**Setup unverified** means Pomegr is still checking, or could not verify the
+setup. **Reporting off** means agents in the repository do not report their
+state to Pomegr. When a setup needs you, the card adds a short line with
+**Set up** that opens the tab where you fix it. Every card with that line is
+listed under **Needs attention**, and no other card is.
 
 ## Open a repository
 

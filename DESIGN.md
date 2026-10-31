@@ -173,8 +173,8 @@ Each product surface has its own page. See [Find the page](#find-the-page).
 | Sessions directory, session header, Overview, Events, Signals | [Sessions design](docs/internal/design/sessions.md) |
 | Agents panel, inspector, grid, tree, the Agents route, role tint | [Agents design](docs/internal/design/agents.md) |
 | Activities feed and the Requests chart | [Activities design](docs/internal/design/activities.md) |
-| Repositories index and detail, file tree, file history | [Repositories design](docs/internal/design/repositories.md) |
-| Tasks page, board, cards, queue, session task surfaces | [Task board design](docs/internal/design/task-board.md) |
+| Repositories index (the repository cards) and detail, file tree, file history | [Repositories design](docs/internal/design/repositories.md) |
+| Tasks home (the totals, Needs you, the board cards), Tasks page, board, cards, queue, session task surfaces | [Task board design](docs/internal/design/task-board.md) |
 | Task modal, task fields, Promote issues page | [Task modal design](docs/internal/design/task-modal.md) |
 | Aril chat launcher, panel, thread, search, messages, proposal card, composer, and the suggestion chips and composer on Home | [Agent chat design](docs/internal/design/agent-chat.md) |
 | Public website: home, download, and documentation pages, shared header and footer, landing tokens and motion | [Landing design](docs/internal/design/landing.md) |
@@ -220,7 +220,7 @@ The application palette is a quiet neutral field with pomegranate identity ink a
 
 - **Green** (`#376e4b` light, `#91c5a4` dark): monitor readiness and affirmative evidence.
 - **Amber** (`#815710` light, `#e3b575` dark): attention and warnings.
-- **Context lavender** (`#6d6099` light, `#bbb3d3` dark): context metrics only.
+- **Context lavender** (`#6d6099` light, `#bbb3d3` dark): context metrics only, with two exceptions that name a category and never a state: the Ready segment of a board's flow bar on the Tasks home, and the Codex circle on a repository card. Each is owned by its surface page.
 
 ### Neutral
 
@@ -473,7 +473,7 @@ These controls keep their own contracts on purpose. They are not counted among t
 - `CommandSwitch` (`app/components/command-center/CommandSwitch.tsx`) draws the switch, and `app/styles/command-switch.css` styles it.
 - It is a `button` with `role="switch"` and `aria-checked`. A caller names it with `aria-label` or `aria-labelledby`.
 - It acts at once, in either direction, and asks for no confirmation.
-- The track is 44px by 24px and the thumb is 18px. The small size is 36px by 20px with a 14px thumb, for a quiet row beside a main switch.
+- The track is 44px by 24px and the thumb is 18px. The small size is 36px by 20px with a 14px thumb, for a quiet row beside a main switch and for the queue in the head of a board card on the Tasks home.
 - The track radius is `--composer-radius`, which a track of 24px or 20px clamps to a full pill. The thumb is 50%.
 - Off is never a warning. The off track is `--command-line-strong` in light mode and `--command-line` in dark mode.
 - On is green: `--command-green` in light mode, and in dark mode a mix of `--command-green` and `--command-ground` that keeps the thumb readable.

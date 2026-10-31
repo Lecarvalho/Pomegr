@@ -3,7 +3,7 @@
 > Scope: the Repositories index, the repository detail and its tabs, `RepositoryRow`, `FileTree`, `FileHistoryPanel`, and `SessionFilePanel`.
 > Authority: visual and interaction contract for this surface. [DESIGN.md](../../../DESIGN.md)
 > owns the tokens, the six button roles, the chip contract, and the shared controls.
-> Related code and checks: `app/components/repositories/`, `app/components/dashboard/SessionFilePanel.tsx`, `app/styles/`, the `/design-system` samples,
+> Related code and checks: `app/components/repositories/` (the list is `RepositoryInventoryView.tsx`, `RepositoryCard.tsx`, `repository-card-model.ts`, and `RepositoryCards.module.css`), `app/components/dashboard/SessionFilePanel.tsx`, `app/styles/`, the `/design-system` samples,
 > and `tests/ui/pomegr-design-contract.test.tsx`.
 
 This page covers how the repository surfaces look and how the user operates them.
@@ -12,15 +12,88 @@ This page covers how the repository surfaces look and how the user operates them
 
 ### Layout
 
-- The index is a flat, linked list of observed projects.
-- Each row shows the repository name, observed provider badges, live and history session counts, last activity, and one bounded Pomegr setup summary.
-- The toolbar combines repository search with the All, Needs attention, and Live now filters.
-- On phone, the rows reflow into a compact layout.
-- On phone, search and filters keep targets of at least 44px.
+- The index is a grid of cards, one for each observed repository, in two columns on a wide screen and in one on phone.
+- The header is `CommandPageHeader` with the h1 **Repositories** and the muted description “Where your agents work, how busy each place is, and what still needs setting up.”
+- The toolbar combines repository search with the All, Needs attention, and Live now filters, and ends with the count.
+- The three filters are one segmented group on the panel fill: 30px chips inside a 36px group, and the pressed chip takes the raised fill and ink. Each chip keeps `aria-pressed`.
+- The toolbar has no frame of its own. It sits above the cards with a 16px gap.
+- The count reads “n repositories”, with “ · n needs attention” when some do. A repository needs attention when its card shows a fix line.
+- The cards keep the order the monitor sends: alphabetical by display name.
+- The cards fade in once, 60ms apart, over 420ms, when the list is first drawn. A poll that changes a count moves nothing. Reduced motion removes the fade.
+- The page has no note under the cards. Nothing there explains how the monitor associates sessions.
+
+### Repository card
+
+- A card has the panel fill, a one-pixel `--command-panel-2` border, the panel radius, and 16px padding with a 16px gap between its parts. The border takes `--command-line` on hover, and the card rises 1px. Reduced motion removes the rise.
+- The repository name (16px/650) is the card's one link, to `/repositories/<repositoryId>`. Its link covers the whole card, so a click anywhere opens the repository. The card shows the focus ring when the link has focus.
+- The link's name is the repository and today's setup summary, such as “Pomegr, Plugin update available”.
+- A card holds, top to bottom: the head, the activity bars, the facts, and the fix line when the setup needs one.
+
+#### Head
+
+- The initial tile is 36px square with the panel radius. It holds the first letter of the name in capitals (15px/700). It is decoration and carries no state.
+- The tile's tint is one of four, picked from the repository's identity so it never changes when the list is filtered or grows: brand soft with brand ink, green soft with green ink, a 14% lavender mix with lavender ink, and the raised fill with ink. A tint names no state.
+- Under the name, a muted 12px line reads “n running now · active <time>” while a session runs, and “last active <time>” otherwise. A time that is not known is left out.
+- While a session runs, an 8px green dot pulses before that line (1.8s). Reduced motion removes the pulse and leaves the dot.
+- At the end of the head, a small circle for each provider that has a session here, overlapping by 6px.
+- A circle is 24px with a panel-colored ring, a 12px/700 letter in the canvas color, and a provider fill: brand text for Claude Code (**C**) and lavender for Codex (**X**).
+- The provider name is the circle's `title` and its text for assistive technology. A circle never names a provider by color alone.
+
+#### Activity bars
+
+- The bars are 14 vertical bars, one for each of the last 14 local days, the oldest on the left and today on the right.
+- A bar is a day's count of sessions started that day. The monitor sends the 14 counts with the repository ([observation cache](../architecture/observation-cache.md#repository-context-inventory)); the page counts nothing itself.
+- The area is 36px high with a 3px gap. The busiest day is the full height. A day with a session is at least 6px. A day with no session is a 3px stub on the raised fill.
+- A bar with sessions is `--command-line-strong`. Today's bar is green while a session runs and today has one.
+- The bars are an image whose name gives the total and the 14 counts, oldest first.
+- Without a series from the monitor, no bars are drawn. The page never draws a row of zeros for a series it did not receive.
+
+#### Facts and setup
+
+- Under the bars, a row holds the **live** count, the **sessions** count, and the setup badge at the end. A count is 14px/650 in ink, and the live count is green while a session runs. The word beside it is muted.
+- **sessions** is every observed session of the repository, live or not.
+- The setup badge is a 24px label with the control radius and a soft fill. It is one of three, mapped from today's setup summary:
+
+| Badge | Fill and ink | Today's summaries |
+| --- | --- | --- |
+| **Ready** | Green soft, green | Ready, Plugin update available |
+| **Setup unverified** | Raised, muted | Setup unverified, Checking setup |
+| **Reporting off** | Amber soft, amber | Plugin not installed, Plugin disabled, Reporting invalid, Reporting not configured |
+
+- The card is named with the summary, not the badge: a reader of “Pomegr, Plugin update available” still hears the specific state.
+
+#### Fix line
+
+- A setup that needs the owner adds one amber line under the facts, on the amber soft fill with the control radius. It holds one sentence (12px) and a **Set up →** link at the end.
+- The link opens the tab of the repository where the setup is done: **Plugin** (`?tab=plugin`) for a plugin that is not installed, disabled, outdated, or not confirmed, and **Reporting** (`?tab=reporting`) for a reporting policy that is missing or invalid. Its name adds the repository, such as “Set up Pomegr”.
+- The link lies above the card's cover link, so it is a second link in the card.
+
+| Summary | Fix line |
+| --- | --- |
+| Plugin update available | A newer Pomegr plugin is available here. |
+| Setup unverified | Pomegr has not confirmed its plugin here yet. |
+| Plugin not installed | The Pomegr plugin is not installed here, so agents do not report their state. |
+| Plugin disabled | The Pomegr plugin is turned off here, so agents do not report their state. |
+| Reporting invalid | The reporting policy here is not valid, so agents do not report their state. |
+| Reporting not configured | Agents here do not report their state to Pomegr. |
+
+- **Ready** and **Checking setup** have no fix line. Checking passes by itself, and a line would appear and go.
+- A repository is under Needs attention exactly when its card shows a fix line: every summary in the table above. That includes Plugin update available, whose badge is Ready, and Setup unverified.
+- Ready and Checking setup are not under Needs attention, because neither has a fix line.
+- The filter, its count, and the fix line read one value (`fix` of `repositorySetupCard` in `repository-card-model.ts`), so they cannot differ.
+
+### Phone
+
+- At 760px and narrower, the cards are one column. Nothing is wider than the window at 390px.
+- Search and the filter chips keep targets of at least 44px. The filter group fills the width and scrolls sideways if its chips do not fit.
+- The count sits under the filters.
+- The **Set up →** link is a 44px target, and the fix line wraps. The name link covers the card, which is well over 44px.
+- The facts wrap rather than truncate.
 
 ### Accessibility
 
-- Row links name the repository and the setup state.
+- The cards are a list named “Repositories”. Each card is an article headed by the repository name.
+- The card link names the repository and the setup summary.
 
 ## Repository detail
 

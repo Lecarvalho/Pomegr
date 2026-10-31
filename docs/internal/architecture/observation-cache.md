@@ -3996,6 +3996,26 @@ Both are safe for read-only LAN presentation; the LAN gateway allowlists `/api/r
 so the repository page, including its Files and Git tabs, loads for a paired LAN browser. Repository revision events only tell the
 browser to fetch a newer committed response.
 
+Each repository row carries `dailySessions`, the series the Repositories list draws as 14 bars
+(task T-222, 2026-10-31): 14 non-negative integers, one for each of the last 14 local days
+of the monitor's computer, the oldest first and the current day last. A day's count is the
+sessions of the committed catalog that started that day, dated by `createdAt` and by
+`updatedAt` when the catalog has no start (`dailySessionCounts` in
+`server/repository/repository-daily-sessions.mjs`). A row with no valid date, or outside the
+14 days, counts nowhere.
+
+- It is derived from the committed catalog rows with the repository projection, in the same
+  commit, with no provider read, Git call, file read, or session hydration. A GET only serves
+  the committed list.
+- It holds counts and nothing else: no title, folder, session identity, or timestamp. The
+  14 counts cannot name a session. Nothing about it is stored, checkpointed, or logged.
+- The projection is built again at local midnight even when no session changed
+  (`armDayRoll`, started and stopped with the plugin observation), so the series never shows
+  yesterday as today. An unchanged series commits no revision.
+- The last known-good list stays until a complete projection replaces it, as before. A
+  monitor that does not send the field leaves the list without bars; the browser never
+  draws a row of zeros for a series it did not receive.
+
 Claude Code capture is an explicit desktop action. The renderer supplies only a bounded
 opaque repository ID and provider ID after an inline confirmation. A trusted Electron
 IPC handler sends a bodyless, token-authenticated POST directly to the loopback monitor.

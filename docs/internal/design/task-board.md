@@ -3,7 +3,7 @@
 > Scope: the Tasks home, the Tasks page (page header, Board, Queue settings panel with its Start gates, Schedule, and blocking-rule sections), the task card and its chips, and the session surfaces for a task session.
 > Authority: visual and interaction contract for this surface. [DESIGN.md](../../../DESIGN.md)
 > owns the tokens, the six button roles, the chip contract, and the shared controls.
-> Related code and checks: `app/components/tasks/`, `app/styles/tasks.css`, the `/design-system` samples,
+> Related code and checks: `app/components/tasks/` (the Tasks home is `TasksHome.tsx` and the `TasksOverview*` files), `app/styles/tasks.css`, the `/design-system` samples,
 > and `tests/ui/pomegr-design-contract.test.tsx`.
 
 The Tasks page draws committed board facts. The task modal and the task fields are in [task-modal.md](task-modal.md). The data, queue, and gate rules are in [Tasks](../architecture/tasks.md).
@@ -23,45 +23,104 @@ The Tasks page draws committed board facts. The task modal and the task fields a
 ### Layout
 
 - The route is `/tasks` with no `repository` parameter. The rail and the palette open it.
-- The home is a composition of the existing roles, chips, and tokens. It adds no button role and no shared control.
-- The header is `CommandPageHeader` with the h1 **Tasks** and a muted description. It has no action.
-- The page holds two `.panel` sections in order: **Needs you**, then **Boards**.
-- Each panel head is a 16px/650 heading with a muted data-font count beside it.
+- The page is the Tasks overview: the totals of every board, what waits for the owner, and one card for each board with tasks.
+- The overview is a composition of the existing chips, the shared [switch](../../../DESIGN.md#switch), and the tokens. It adds no button role and no shared control.
+- The header is `CommandPageHeader` with the h1 **Tasks** and the muted description “What waits for you, then every repository's board at a glance.”
+- The header ends with the [totals](#header-totals).
+- The page holds two blocks in order: **Needs you**, then **Boards**.
+- Each block fades in once, 60ms after the one before, over 420ms, when the home is first drawn. A poll that changes a count moves nothing. Reduced motion removes the fade.
 - Every element draws committed board facts. A state is never shown and then retracted.
+- [Task board contract](../architecture/tasks.md#tasks-home) lists the values the page may read. The page reads nothing else.
+
+### Header totals
+
+- The totals are three numbers with a caption each, at the end of the header: **open**, **in review**, and **done**.
+- A number is 18px/650 in a tabular figure. Its caption is muted 12px.
+- **Open** is every task that is not Done: the Backlog, Ready, In progress, and Review columns. Its number is in ink.
+- **In review** is the Review column. Its number is amber.
+- **Done** is the Done column. Its number is green.
+- Each is summed over the boards that answered and that the repository inventory lists.
+- A board that is unavailable adds no count. A muted line under the totals reads “Without n board that is unavailable.”
+- With no task on any board, the totals read zero. They are not drawn before the home is ready.
+- On phone, the totals sit under the description, at the left edge.
 
 ### Needs you
 
-- The panel lists the tasks that wait for the owner on any board: Needs review, Stalled, and Blocked by agent.
-- The newest change is first. At most 50 tasks are listed.
-- Each row is one link to the task's board, at least 44px tall.
-- A row shows the repository name (12px muted), the task ID (data font, muted), one title line (13px/500), the state chip, and a muted 14px chevron.
-- The title is the session title when the session has one, otherwise the first line of the task text. It is one line with an ellipsis.
+- The card is Home's card: it shares `HomeCard.module.css` and `HomeNeedsYou.module.css` with [Home](home.md#needs-you), and has no hairline between rows.
+- It lists the tasks that wait for the owner on any board: Needs review, Stalled, and Blocked by agent. The newest change is first. At most 50 tasks are listed.
+- The heading carries no count.
+- The rows are in two columns on a wide screen and in one on phone.
+- Each row is one link to the task's board, at least 44px tall, with a hover fill and no chip.
+- A row shows the amber glyph tile Home draws for the kind (a check for Needs review, a timer for Stalled, a stop for Blocked by agent), then two lines, then a muted 14px chevron.
+- The first line is the title (14px, ink, one line with an ellipsis). The second is a muted 12px line: the task ID in the data font, the repository, and the state in amber.
+- The title is the session title when the session has one, otherwise the first line of the task text.
 - The first line is read after the task's [tags](#tags).
 - A first line of only tags lets the next non-empty line lead.
-- The state chip is the shared `.commandChip` in the warning tone.
-- With no such task, the panel reads “Nothing waits for you.”
-- When more than 50 tasks wait, a muted line reads “Showing the newest 50 of n.”
+- With no such task, the card reads “Nothing waits for you.”
+- When more than 50 tasks wait, a muted closing line reads “Showing the newest 50 of n.”
 - A task of a repository that the inventory does not list is not drawn or counted.
 
 ### Boards
 
-- The panel is one table with one row for each repository in the inventory.
-- The columns are Repository, Queue, the five board columns, and Last change.
-- Boards that changed last come first. The other repositories keep the inventory's order.
-- The repository name (13px/600 ink) is the row's one link. It opens `/tasks?repository=<repositoryId>`.
-- Under the name, a muted 12px line reads “n open features”, “No open feature”, “No tasks yet”, or “Board unavailable”.
-- The five counts and the last change use the data font and are right-aligned. A zero is muted.
-- Last change is the relative time of the board's newest task change, or an em dash.
-- A repository with no stored board reads zero counts, **Off**, and “No tasks yet”. Its name is muted.
-- A board that is unavailable reads an em dash in every cell. It never reads a count.
-- The table scrolls sideways in its panel when the window is narrow.
+- The block is a section headed **Boards** (16px/650). The legend of the stage colors sits once at the end of that header, and wraps under the heading on phone.
+- The legend has five 8px swatches with the stage names. It is drawn only when a card is.
+- A board with at least one task is a card. Cards are in two columns on a wide screen and in one on phone. The board that changed last is first. The rest keep the inventory's order.
+- A card has the panel fill, a one-pixel `--command-panel-2` border, the panel radius, and 16px padding. The border takes `--command-line` on hover.
+- A card holds, top to bottom: the head, the flow bar, the counts, and the foot.
+- The card's heading is the repository name (16px/650). Under it, a muted 12px line reads “n open features” or “No open feature”, then “ · changed” and the relative time of the board's newest task change.
+- The card is not a link. Its one link is **Open board →** in the foot.
 
-| Queue | Chip |
+#### Board queue
+
+- The head ends with the queue: its word, then the shared small switch.
+- The word is muted 12px: **Queue off** is muted, **Queue on** is green, **Paused** is amber, and **Blocked by T-n** is in the error color.
+- The switch is the shared [Switch](../../../DESIGN.md#switch), small, named “Queue of <repository>”. It is checked in every status but off.
+- Pressing it sends the action the Board's [queue switch](#queue-switch) sends, `queue_settings` with `{ on }`, through the same desktop bridge or paired-device route. It asks for no confirmation, as the Board's does not.
+- A paired device may use it only while the Board lets it. A client that may not change a board reads the word only, with no switch.
+- A client that does not yet know which it is gets no switch, so a switch never appears and goes.
+- A paused queue also offers a quiet **Retry** beside the word, which sends the same action with `{ on: true }`, as pressing **On** does on the Board. No other status has it.
+- The switch changes only when the committed home says so. It is disabled while the action runs and the home is read again, and it keeps its state when the action fails.
+- A failed action adds a fixed error line, “The queue setting could not be changed.”, under the head.
+
+#### Flow bar
+
+- The flow bar is a 10px bar on the raised fill with a 2px gap and the control radius.
+- It has one segment for each of the five stages that holds a task, in board order: Backlog, Ready, In progress, Review, Done. A stage with no task has no segment.
+- A segment is as wide as its share of the board's tasks, and never under 1.5%. The bar shrinks its segments evenly to fit. A width change moves over 520ms, and never under reduced motion.
+- The colors name stages and mean nothing else:
+
+| Stage | Token |
 | --- | --- |
-| Off | Neutral and muted. |
-| On | Neutral, in ink. |
-| Blocked | Negative. It reads “Blocked by T-n”. |
-| Paused | Warning. |
+| Backlog | `--command-line-strong` |
+| Ready | `--command-lavender` |
+| In progress | `--command-brand-text` |
+| Review | `--command-amber` |
+| Done | `--command-green` |
+
+- The bar is an image whose name lists all five counts, such as “243 Backlog, 0 Ready, 1 In progress, 2 Review, 122 Done”.
+
+#### Counts
+
+- Under the bar, five counts sit in five equal columns: the count (18px/650, tabular), and the stage name under it (muted 12px).
+- A count of zero is dimmed to 75% of the muted ink and drops to weight 400. A Review count above zero is amber. Any other count is in ink.
+- The counts are a description list, so a screen reader reads the stage, then the count.
+
+#### Foot
+
+- The foot sits under a one-pixel `--command-panel-2` rule and holds, in a row: the moving line, then **Open board →**.
+- The moving line is one muted 14px line with an ellipsis. It is built only from the five counts and the queue, which are all the Tasks home carries.
+- It starts with “n in progress” or “Nothing running”. Then, each only when it holds: “Queue blocked by T-n”, or “Queue paused: <reason>”, then “n in review”, then “n ready to start”. The last appears only while nothing runs and the queue is not blocked or paused. The parts are joined by “ · ”.
+- It names no task: the Tasks home carries no title or ID of a task that is running.
+- A pulse (an 8px brand dot, 1.8s) leads the line while a task is in progress. Reduced motion removes the pulse and leaves the dot.
+- **Open board →** is a link to `/tasks?repository=<repositoryId>`. Its name adds the repository, such as “Open board of Clapline”.
+
+#### Boards with no task
+
+- A repository with no stored board, a board with no task, and a board that is unavailable are not cards. Each is one compact row with a dashed one-pixel `--command-line` border, in two columns on a wide screen and in one on phone.
+- A row holds the name (14px, ink), then the muted note **No tasks yet** or **Board unavailable**, then **+ New task** in the brand text.
+- **+ New task** is a Quiet action. It opens the same new-task dialog the Board's first lane opens, for that repository, in the desktop app and on a paired device. Any other client, and a client that does not yet know which it is, is not drawn the action.
+- The board is read only once the owner asks for the dialog, and the dialog opens when it answers, so its subtitle never changes. When a start after creation fails, the page opens that repository's board.
+- A board that is unavailable has no action and reads no count.
 
 ### States
 
@@ -69,19 +128,19 @@ The Tasks page draws committed board facts. The task modal and the task fields a
 | --- | --- |
 | Loading | Two placeholder blocks with the label **Loading tasks**. |
 | Unavailable | A panel notice with a status role. |
-| A client that is not on this computer | Only the **Desktop only** notice. |
+| A client that is not on this computer | Only the **Desktop only** notice, and no total. |
 | No repository observed | The shared empty state. |
 
 ### Phone
 
-- At 760px and narrower, a Needs you row stacks: the repository and the ID, then the title on its own wrapping line, then the chip and the chevron.
-- At 760px and narrower, each board row is a card: the name and the queue chip, then the five counts under their caption labels, then the last change.
-- The table header is not drawn there. Each count carries its column name as its label.
-- The repository link is at least 44px tall there.
-- The queue chip sits on the name's row, right-aligned, and never wraps.
-- A count caption wraps rather than truncates, and the counts stay on one line across the card.
-- The name and its detail line share the left edge of the counts and of the last change.
-- The page ends with clearance under its last panel, so the Aril launcher never covers a card.
+- At 760px and narrower, every block is one column: the Needs you rows, the cards, and the compact rows.
+- Nothing is wider than the window at 390px.
+- A Needs you title may wrap to two lines.
+- A card keeps its five counts on one line across, with a 4px gap. A stage name wraps rather than truncates.
+- The foot wraps: the moving line takes its own line, and **Open board →** follows it.
+- **Open board →**, **Retry**, **+ New task**, and the switch each reach a 44px target. The switch keeps its track and widens its hit area.
+- A compact row puts the name on its own line, then the note and the action.
+- The page ends with clearance under its last card, so the Aril launcher never covers it.
 
 ## Tasks page
 
@@ -551,6 +610,7 @@ Each row below the tags shows only when it is set, in this order:
 
 - The queue switch is a two-way [Segmented](../../../DESIGN.md#buttons) control (Off, On) named Queue.
 - A muted Queue eyebrow comes before it.
+- The Tasks home carries the same queue on each board card as the shared small [Switch](../../../DESIGN.md#switch), with the same action and the same rules. See [Board queue](#board-queue).
 - On stays pressed while the queue is blocked or paused.
 - Pressing On while paused is the retry.
 
@@ -796,4 +856,4 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 
 The session header meta and the Task tab read the board through the task store. This page specifies them, and `/design-system` does not render them.
 
-The Tasks home reads its summary through its own store. This page specifies it, and `/design-system` does not render it.
+The Tasks home reads its summary through its own store. This page specifies it, and `/design-system` does not render it. It adds no shared control: its queue is the shared Switch, which `/design-system` renders, and its flow bar and counts belong to the board card only.

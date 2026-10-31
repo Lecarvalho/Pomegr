@@ -1,0 +1,78 @@
+/* The Repositories list: one card for each repository, with its initial tile, its live state, its providers, 14 days of sessions, and its setup.
+   Tokens only: no literal color, no off-scale radius, no off-ramp font size. */
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.grid > li { min-width: 0; }
+
+/* Each card fades in once, in order, when the list is first drawn; a poll that changes a count moves nothing. */
+.enter { animation: repositoryEnter 420ms cubic-bezier(.2, .8, .2, 1) backwards; animation-delay: calc(var(--enter, 0) * 60ms); }
+@keyframes repositoryEnter { from { opacity: 0; transform: translateY(var(--space-2)); } to { opacity: 1; transform: none; } }
+
+.card { position: relative; display: flex; flex-direction: column; gap: var(--space-4); height: 100%; padding: var(--space-4); border: 1px solid var(--command-panel-2); border-radius: var(--panel-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); cursor: pointer; transition: border-color 160ms ease, transform 160ms ease; }
+.card:hover { border-color: var(--command-line); transform: translateY(-1px); }
+.card :is(h3, p, ul) { margin: 0; }
+/* The name is the one link of the card and covers all of it, so a click anywhere opens the repository; the fix link lies above that cover. */
+.nameLink { color: var(--command-ink); font: 650 var(--text-base)/1.35 var(--font-ui); text-decoration: none; }
+.nameLink::after { content: ""; position: absolute; inset: 0; border-radius: var(--panel-radius); }
+.card:has(.nameLink:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.nameLink:focus-visible { outline: none; }
+
+.head { display: flex; align-items: flex-start; gap: var(--space-3); }
+.tile { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: var(--panel-radius); font: 700 var(--text-sm)/1 var(--font-ui); }
+.tint0 { background: var(--color-brand-soft); color: var(--command-brand-text); }
+.tint1 { background: var(--color-green-soft); color: var(--command-green); }
+.tint2 { background: color-mix(in srgb, var(--command-lavender) 14%, var(--command-panel)); color: var(--command-lavender); }
+.tint3 { background: var(--command-panel-2); color: var(--command-ink); }
+.identity { flex: 1 1 0; min-width: 0; }
+.identity h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity { display: flex; align-items: center; gap: var(--space-2); margin-top: 2px; color: var(--command-muted); font-size: var(--text-caption); }
+.pulse { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--command-green); animation: repositoryPulse 1.8s infinite; }
+@keyframes repositoryPulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--command-green) 40%, transparent); }
+  70% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--command-green) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--command-green) 0%, transparent); }
+}
+
+/* A small circle for each provider, with its letter; the name is its title and its text for assistive technology. */
+.providers { display: flex; flex: none; padding: 0; list-style: none; }
+.mark { display: grid; place-items: center; width: 24px; height: 24px; margin-left: calc(var(--space-1) * -1.5); border: 2px solid var(--command-panel); border-radius: 50%; color: var(--command-ground); font: 700 var(--text-caption)/1 var(--font-ui); }
+.markClaude { background: var(--command-brand-text); }
+.markCodex { background: var(--command-lavender); }
+
+/* Fourteen days of sessions, one bar a day. */
+.bars { display: flex; align-items: flex-end; gap: 3px; height: 36px; }
+.bar { flex: 1 1 0; min-width: 0; border-radius: var(--control-radius) var(--control-radius) 0 0; background: var(--command-line-strong); transition: height 520ms cubic-bezier(.2, .8, .2, 1); }
+.bar.isEmpty { background: var(--command-panel-2); }
+.bar.isLive { background: var(--command-green); }
+
+.facts { display: flex; align-items: center; gap: var(--space-4); }
+.fact { color: var(--command-muted); }
+.fact b { color: var(--command-ink); font-weight: 650; font-variant-numeric: tabular-nums; }
+.fact b.isLive { color: var(--command-green); }
+.setup { display: inline-flex; align-items: center; margin-left: auto; min-height: 24px; padding: 0 var(--space-2); border-radius: var(--control-radius); font: 500 var(--text-caption)/1.4 var(--font-ui); white-space: nowrap; }
+.setupReady { background: var(--color-green-soft); color: var(--command-green); }
+.setupUnverified { background: var(--command-panel-2); color: var(--command-muted); }
+.setupOff { background: var(--color-amber-soft); color: var(--command-amber); }
+
+.fix { position: relative; z-index: 1; display: flex; align-items: center; gap: var(--space-2); margin-top: calc(var(--space-1) * -1); padding: var(--space-2) var(--space-3); border-radius: var(--control-radius); background: var(--color-amber-soft); color: var(--command-amber); font-size: var(--text-caption); cursor: default; }
+.fix span { flex: 1 1 0; min-width: 0; }
+.fixLink { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); color: var(--command-amber); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.fixLink:hover { text-decoration: underline; text-underline-offset: 3px; }
+.fixLink:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--control-radius); }
+
+@media (max-width: 760px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .card { padding: var(--space-3); }
+  .facts { flex-wrap: wrap; row-gap: var(--space-2); }
+  /* The fix line may wrap, and its link is a 44px target. */
+  .fix { flex-wrap: wrap; }
+  .fixLink { display: inline-flex; align-items: center; min-height: 44px; }
+  /* The name link covers the whole card, so the card is already a target well over 44px. */
+}
+@media (pointer: coarse) {
+  .fixLink { display: inline-flex; align-items: center; min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .enter, .pulse { animation: none; }
+  .card, .bar { transition: none; }
+  .card:hover { transform: none; }
+}

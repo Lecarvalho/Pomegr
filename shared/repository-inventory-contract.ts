@@ -57,6 +57,8 @@ export type RepositorySummary = {
   sessionCount: number;
   liveCount: number;
   historyCount: number;
+  /** Sessions started on each of the last 14 local days, oldest first and today last. Counts only; absent when a monitor does not serve it. */
+  dailySessions?: number[];
   providerCount: number;
   updatedAt: string | null;
   providers: RepositoryProviderInventory[];

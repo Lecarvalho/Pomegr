@@ -1364,7 +1364,8 @@ it looks.
 - **Only stored boards.** `readHome` in `server/tasks/task-store.mjs` reads the
   repositories the store already holds, at most 200. It seeds no board and writes
   nothing, so a repository that never had a task is not in the answer. The page draws
-  such a repository from the repository inventory, as an empty board with the queue off.
+  such a repository from the repository inventory, and a stored board with no task, as a
+  compact row that reads **No tasks yet**.
 - **Pure summary.** `summarizeTaskHome(entries)` in `server/tasks/task-home.mjs` takes
   projected boards and returns plain values, like the other rule modules.
 - **Title.** An attention item's title is the bound session's title, else the title line
@@ -1383,8 +1384,23 @@ it looks.
   and serves only the contract keys of what the store answered, each inside its bound.
 - **Client.** `app/tasks-home-store.ts` polls the read every ten seconds while the page
   is visible, and keeps the last home until a complete answer replaces it.
-- **Queue paused.** A paused queue is not an attention item: its row in Boards says
-  **Paused**, and the board's banner names the task and the reason.
+- **Queue paused.** A paused queue is not an attention item: its card in Boards says
+  **Paused**, its moving line names the fixed reason, and the board's banner names the task and the reason.
+- **Overview.** The page is the Tasks overview ([design](../design/task-board.md#tasks-home)).
+  It draws only values this read carries, and adds no field, route, or store:
+  - The header sums the five counts of every ready board that the inventory lists: open
+    (not Done), in review, and done. A board that is unavailable adds nothing and is
+    counted apart.
+  - A board with a task is a card. Its flow bar is the five counts as shares. Its foot is
+    one line made of the counts and the queue; it names no task, because this read carries
+    no title or ID of a task that is running.
+  - The card's queue switch sends the Board's `queue_settings` action with `{ on }`, through
+    the desktop bridge or a paired device's action route, then reads the home again. It
+    gives no client more authority than the Board's switch: a client that may not change a
+    board reads the word only.
+  - **+ New task** on a board with no task opens the Board's new-task dialog for that
+    repository, in the desktop app and on a paired device. It reads that one board only
+    once the owner opens the dialog.
 - **Home.** The Home page draws this read too, in its Needs you list, as one line for each
   kind and repository (finished, stalled, and blocked tasks, and paused queues). A line names
   no task and shows no title or ID, so Home draws none of the titles this read serves. Home
@@ -3241,7 +3257,8 @@ fixed values.
   title line of the task text, cut at 160 characters. The title line is the first text
   after the task text's leading tags, which may sit on several leading lines, and a text
   of only tags is its own title. It is still one line of at most 160 characters. No own condition,
-  block reason, attention line, feature name, image, model, or session ID enters it.
+  block reason, attention line, feature name, image, model, or session ID enters it. The Tasks
+  overview adds nothing to it: it draws the counts, the queue, and those titles and IDs.
 - The Home page draws that read, the task log (fixed kinds, times, and task IDs only), and, for
   the sessions it shows as running, one line of the text of the task each was started for. All
   come from reads the same clients already have, under the same gates. Home keeps none of them in

@@ -1,0 +1,116 @@
+/* The Tasks overview: the totals of the header, Needs you, and one card for each board with tasks. Needs you shares HomeCard.module.css and
+   HomeNeedsYou.module.css with Home. Tokens only: no literal color, no off-scale radius, no off-ramp font size. */
+.overview { min-width: 0; }
+
+/* Each block fades in one after another when the overview is first drawn, once; a poll that changes a count moves nothing. */
+.enter { animation: overviewEnter 420ms cubic-bezier(.2, .8, .2, 1) backwards; animation-delay: calc(var(--enter, 0) * 60ms); }
+@keyframes overviewEnter { from { opacity: 0; transform: translateY(var(--space-2)); } to { opacity: 1; transform: none; } }
+
+/* ---- Header totals: open, in review, done ---- */
+.totalsBlock { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-1); }
+.totals { display: flex; flex-wrap: wrap; gap: var(--space-6); margin: 0; padding: 0; list-style: none; }
+.total { display: flex; align-items: baseline; gap: var(--space-1); color: var(--command-muted); font: 400 var(--text-caption)/1.4 var(--font-ui); }
+.totalNumber { color: var(--command-ink); font: 650 var(--text-heading)/1.2 var(--font-ui); font-variant-numeric: tabular-nums; }
+.totalNumber.isReview { color: var(--command-amber); }
+.totalNumber.isDone { color: var(--command-green); }
+.totalsNote { margin: 0; color: var(--command-muted); font: 400 var(--text-caption)/1.4 var(--font-ui); }
+
+/* ---- Needs you: Home's card, two columns on a wide screen ---- */
+.overview .needs { min-height: 0; }
+.overview .needsList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.needTitle { display: block; overflow: hidden; color: var(--command-ink); text-overflow: ellipsis; white-space: nowrap; }
+.needMeta { display: block; overflow: hidden; color: var(--command-muted); font-size: var(--text-caption); text-overflow: ellipsis; white-space: nowrap; }
+.needId { font-family: var(--font-data); }
+.needState { color: var(--command-amber); }
+.overview .needsEmpty { padding-top: 0; }
+
+/* ---- Boards ---- */
+.boardsHead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin-bottom: var(--space-3); }
+.boardsHead h2 { flex: 1 1 auto; margin: 0; color: var(--command-ink); font: 650 var(--text-base)/1.35 var(--font-ui); }
+.legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: 0; padding: 0; list-style: none; }
+.legendItem { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--command-muted); font: 400 var(--text-caption)/1.4 var(--font-ui); }
+.swatch { width: 8px; height: 8px; border-radius: 0; background: var(--tone); }
+.toneBacklog { --tone: var(--command-line-strong); }
+.toneReady { --tone: var(--command-lavender); }
+.toneProgress { --tone: var(--command-brand-text); }
+.toneReview { --tone: var(--command-amber); }
+.toneDone { --tone: var(--command-green); }
+
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.board { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; padding: var(--space-4); border: 1px solid var(--command-panel-2); border-radius: var(--panel-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); transition: border-color 160ms ease; }
+.board:hover { border-color: var(--command-line); }
+.board :is(h3, p, dl, dd) { margin: 0; }
+.board :is(a, button):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--control-radius); }
+.boardHead { display: flex; align-items: flex-start; gap: var(--space-3); }
+.boardTitle { flex: 1 1 0; min-width: 0; }
+.boardTitle h3 { overflow: hidden; color: var(--command-ink); font: 650 var(--text-base)/1.35 var(--font-ui); text-overflow: ellipsis; white-space: nowrap; }
+.boardSub { margin-top: 2px; color: var(--command-muted); font-size: var(--text-caption); }
+.queue { display: flex; flex: 0 0 auto; align-items: center; gap: var(--space-2); }
+.queueWord { color: var(--command-muted); font-size: var(--text-caption); white-space: nowrap; }
+.queueWord.isOn { color: var(--command-green); }
+.queueWord.isPaused { color: var(--command-amber); }
+.queueWord.isBlocked { color: var(--command-error); }
+.retry { min-height: 28px; padding: 0 var(--space-2); border: 0; border-radius: var(--control-radius); background: transparent; color: var(--command-brand-text); cursor: pointer; font: 500 var(--text-caption)/1.4 var(--font-ui); }
+.retry:hover:not(:disabled) { background: var(--command-panel-2); }
+.retry:disabled { opacity: .48; cursor: default; }
+.overview .failure { color: var(--command-error); font-size: var(--text-caption); }
+
+/* The flow bar: one segment for each stage that holds a task, wide in proportion to its count. */
+.flow { display: flex; gap: 2px; height: 10px; overflow: hidden; border-radius: var(--control-radius); background: var(--command-panel-2); }
+.segment { height: 100%; min-width: 0; background: var(--tone); transition: width 520ms cubic-bezier(.2, .8, .2, 1); }
+
+.counts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); }
+.countCell { display: flex; flex-direction: column-reverse; justify-content: flex-end; min-width: 0; }
+.countCell dt { color: var(--command-muted); font-size: var(--text-caption); overflow-wrap: anywhere; }
+.count { color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); font-variant-numeric: tabular-nums; }
+.count.isReview { color: var(--command-amber); }
+/* A stage with no task is dimmed, and a dimmed count is still read. */
+.count.isZero { color: color-mix(in srgb, var(--command-muted) 75%, var(--command-panel)); font-weight: 400; }
+
+.foot { display: flex; align-items: center; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--command-panel-2); color: var(--command-muted); }
+.now { display: flex; flex: 1 1 0; align-items: center; gap: var(--space-2); min-width: 0; }
+.nowText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pulse { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--command-brand-text); animation: overviewPulse 1.8s infinite; }
+@keyframes overviewPulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--command-brand-text) 40%, transparent); }
+  70% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--command-brand-text) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--command-brand-text) 0%, transparent); }
+}
+.open { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); color: var(--command-ink); text-decoration: none; white-space: nowrap; }
+.open:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* ---- Boards with no task yet stay small ---- */
+.quietGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.grid + .quietGrid { margin-top: var(--space-3); }
+.quiet { display: flex; align-items: center; gap: var(--space-3); min-width: 0; padding: var(--space-3) var(--space-4); border: 1px dashed var(--command-line); border-radius: var(--panel-radius); color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.quietName { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quietNote { flex: none; color: var(--command-muted); font-size: var(--text-caption); }
+.newTask { flex: none; min-height: 28px; padding: 0 var(--space-2); border: 0; border-radius: var(--control-radius); background: transparent; color: var(--command-brand-text); cursor: pointer; font: 500 var(--text-xs)/1.4 var(--font-ui); white-space: nowrap; }
+.newTask:hover { background: var(--command-panel-2); }
+.newTask:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+@media (max-width: 760px) {
+  .totalsBlock { align-items: flex-start; width: 100%; }
+  .totals { gap: var(--space-4); }
+  .overview .needsList, .grid, .quietGrid { grid-template-columns: minmax(0, 1fr); }
+  /* A title may wrap to two lines where there is less room, and a row stays at least 44px high. */
+  .needTitle { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
+  .board { padding: var(--space-3); }
+  .boardHead { flex-wrap: wrap; }
+  .counts { gap: var(--space-1); }
+  .foot { flex-wrap: wrap; row-gap: var(--space-1); }
+  .now { flex-basis: 100%; }
+  .nowText { white-space: normal; }
+  .open { min-height: 44px; }
+  .retry, .newTask { min-height: 44px; }
+  .quiet { flex-wrap: wrap; row-gap: var(--space-1); }
+  .quietName { flex-basis: 100%; }
+  .quietNote { flex: 1 1 0; }
+}
+@media (pointer: coarse) {
+  .open, .retry, .newTask { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .enter, .pulse { animation: none; }
+  .segment, .board { transition: none; }
+}
