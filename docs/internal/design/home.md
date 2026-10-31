@@ -265,6 +265,8 @@ The owner approved the cards, the tiles, and the phone layout of Home (`HomeV3.d
 - On the phone, focus mode fills the screen: a layer in the canvas fill covers the page, header included.
 - The composer does not lift. It is fixed to the bottom of the screen, above the keyboard, with the chips above it.
 - The block follows the keyboard: the visual viewport tells how far the keyboard covers the screen.
+- The block must rise above the layer, so no ancestor of the block makes a stacking context or a containing block in focus mode: no z-index, no animation, no transform, no filter, no containment.
+- The wrapper of the block leaves its sticky place, its z-index, and its entrance as focus mode starts, even while the entrance still runs. `tests/ui/home-focus-stacking.test.tsx` guards it.
 - The hint is not drawn, because a phone has no Escape key. A Quiet **Back to Home** action takes its place.
 - Send turns the screen into the full-screen sheet of the panel.
 

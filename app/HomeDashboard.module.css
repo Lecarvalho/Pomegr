@@ -43,8 +43,10 @@
   .column { flex: 1 1 auto; margin: 0 auto; }
   .cards { grid-template-columns: minmax(0, 1fr); }
   .composer { position: sticky; bottom: 0; z-index: 3; margin-top: auto; padding-block: var(--space-3) max(var(--space-3), env(safe-area-inset-bottom)); background: linear-gradient(to bottom, transparent, var(--command-ground) var(--space-3)); }
-  /* Focus mode takes the composer out of the sticky place: the block is fixed to the screen by HomeAril. */
-  .composer.isLifted { position: static; background: none; }
+  /* Focus mode takes the composer out of the sticky place: the block is fixed to the screen by HomeAril. The composer must also leave the stacking order and the
+     entrance: a flex item with a z-index (static or not) and an element under an animation that transforms are each a stacking context, and the fixed block inside
+     one stays under the dim (z-index 84) however high its own z-index is, so the screen would be blank. `.column` repeats the entrance rule's specificity. */
+  .column .composer.isLifted { position: static; z-index: auto; animation: none; background: none; }
   .dim { z-index: 84; inset: 0; background: var(--command-ground); }
 }
 

@@ -47,7 +47,8 @@ describe("Home visual contract", () => {
     expect(phone).toMatch(/\.column \{ flex: 1 1 auto; margin: 0 auto; \}/);
     expect(phone).toMatch(/\.cards \{ grid-template-columns: minmax\(0, 1fr\); \}/);
     expect(phone).toMatch(/\.composer \{ position: sticky; bottom: 0;[^}]*margin-top: auto;[^}]*env\(safe-area-inset-bottom\)/);
-    expect(phone).toMatch(/\.composer\.isLifted \{ position: static; background: none; \}/);
+    // Focus mode takes the wrapper out of the sticky place, the stacking order, and the entrance, or the fixed block stays under the layer (home-focus-stacking.test.tsx).
+    expect(phone).toMatch(/\.column \.composer\.isLifted \{ position: static; z-index: auto; animation: none; background: none; \}/);
     // The column keeps one reading order: the header, the tiles, the cards (Needs you, then Continue), the What's new card, and the composer.
     const source = readFileSync(join(process.cwd(), "app", "HomeDashboard.tsx"), "utf8");
     const order = ["<CommandPageHeader", "<HomeDayTiles", "<HomeNeedsYou", "<HomeContinue", "<HomeUpdateCard", "<HomeAril suggestions"].map((part) => source.indexOf(part));
