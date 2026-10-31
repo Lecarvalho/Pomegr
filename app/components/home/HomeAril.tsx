@@ -55,17 +55,67 @@ function useFocusShift(block: RefObject<HTMLElement | null>, lifted: boolean) {
   }, [block, lifted]);
 }
 
-/** On a phone in focus mode, keeps the block above the keyboard: the visual viewport shrinks when the keyboard opens, and the block follows its bottom edge. */
-function useKeyboardInset(block: RefObject<HTMLElement | null>, active: boolean) {
-  useEffect(() => {
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+const quiet = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(REDUCED_MOTION).matches;
+
+/** The time constant of the ease that brings the block to a new height of the visual viewport. After four of them (360ms) it is within 2% of its place. */
+const EASE_MS = 90;
+/** The block follows the visual viewport on every frame until it has stood still for this many frames (half a second), so a viewport that moves without an event is still followed. */
+const STILL_FRAMES = 30;
+
+/**
+ * On a phone in focus mode, places the block against the visual viewport, so it stays just above the keyboard however the browser moves the viewport (T-219).
+ * The bottom edge of the block is the bottom edge of the visual viewport, less the gap. Only the visual viewport decides it: `--viewport-bottom` is its `offsetTop` plus
+ * the height the block has eased to, `top` is made of it, and the style sheet lifts the block by its own height. The layout viewport and `innerHeight` are never read, so a
+ * frame in which they disagree with the visual viewport moves nothing.
+ * A pan of the visual viewport (the browser scrolls the focused field into view, and a fixed block moves on the screen with the viewport that is panned over it) is
+ * followed in the frame of its event, with no ease, so the block does not move at all. Only the height is eased, in screen space, so one step of the keyboard or many
+ * resizes while it animates are one move to the final place that never goes past it.
+ */
+function useViewportAnchor(block: RefObject<HTMLElement | null>, active: boolean) {
+  useLayoutEffect(() => {
     const element = block.current;
     const viewport = typeof window === "undefined" ? null : window.visualViewport;
-    if (!active || !element || !viewport) return;
-    const update = () => element.style.setProperty("--keyboard-inset", `${Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop))}px`);
-    update();
-    viewport.addEventListener("resize", update);
-    viewport.addEventListener("scroll", update);
-    return () => { viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update); element.style.removeProperty("--keyboard-inset"); };
+    if (!active || !element || !viewport || !phone()) return;
+    const instant = quiet();
+    // Where the bottom edge of the block is on the screen, measured from the top of the visual viewport. It starts where the block is: at the foot of what is visible.
+    let shown = viewport.height;
+    let frame = 0;
+    let still = 0;
+    let lastTop = viewport.offsetTop;
+    let lastAt = 0;
+    const place = () => element.style.setProperty("--viewport-bottom", `${(viewport.offsetTop + shown).toFixed(2)}px`);
+    const run = (now: number) => {
+      frame = 0;
+      const target = viewport.height;
+      const from = shown;
+      const elapsed = lastAt === 0 ? 16 : Math.min(now - lastAt, 50);
+      lastAt = now;
+      shown = instant || Math.abs(shown - target) < 0.5 ? target : target + (shown - target) * Math.exp(-elapsed / EASE_MS);
+      place();
+      still = shown === from && viewport.offsetTop === lastTop ? still + 1 : 0;
+      lastTop = viewport.offsetTop;
+      if (still < STILL_FRAMES) frame = window.requestAnimationFrame(run);
+      else lastAt = 0;
+    };
+    const follow = () => {
+      if (instant) shown = viewport.height;
+      place();
+      still = 0;
+      if (frame === 0) frame = window.requestAnimationFrame(run);
+    };
+    place();
+    frame = window.requestAnimationFrame(run);
+    viewport.addEventListener("resize", follow);
+    viewport.addEventListener("scroll", follow);
+    window.addEventListener("resize", follow);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      viewport.removeEventListener("resize", follow);
+      viewport.removeEventListener("scroll", follow);
+      window.removeEventListener("resize", follow);
+      element.style.removeProperty("--viewport-bottom");
+    };
   }, [block, active]);
 }
 
@@ -180,7 +230,7 @@ export function HomeAril({ suggestions, mode, blockRef, onFocus, onSent, onLeave
   const ownBlock = useRef<HTMLElement>(null);
   const block = blockRef ?? ownBlock;
   useFocusShift(block, mode !== "home");
-  useKeyboardInset(block, mode === "focus");
+  useViewportAnchor(block, mode === "focus");
 
   return <HomeComposerShell mode={mode} onLeave={onLeave} shellRef={block}>
     {repositoryId === null

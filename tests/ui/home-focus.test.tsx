@@ -337,7 +337,6 @@ describe("focus mode on a phone", () => {
     const listeners = new Map<string, () => void>();
     const viewport = { height: 500, offsetTop: 0, addEventListener: (name: string, handler: () => void) => listeners.set(name, handler), removeEventListener: (name: string) => listeners.delete(name) };
     Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
-    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
     const person = user();
     home();
     await settle();
@@ -345,14 +344,17 @@ describe("focus mode on a phone", () => {
     await person.click(homeField());
     expect(inFocusMode()).toBe(true);
     expect(block().style.getPropertyValue("--focus-shift")).toBe("0px");
-    expect(block().style.getPropertyValue("--keyboard-inset")).toBe("300px");
-    // The keyboard closes a little: the block follows.
+    // The block is placed against the bottom edge of the visual viewport (home-keyboard-anchor.test.tsx drives the moves between).
+    expect(block().style.getPropertyValue("--viewport-bottom")).toBe("500.00px");
+    // The keyboard closes a little, and the visual viewport is panned: the block follows the bottom edge of what is visible.
     viewport.height = 600;
-    listeners.get("resize")?.();
-    expect(block().style.getPropertyValue("--keyboard-inset")).toBe("200px");
+    viewport.offsetTop = 40;
+    listeners.get("scroll")?.();
+    expect(block().style.getPropertyValue("--viewport-bottom")).toBe("540.00px");
+    await vi.waitFor(() => expect(block().style.getPropertyValue("--viewport-bottom")).toBe("640.00px"));
     await person.click(screen.getByRole("button", { name: "Back to Home" }));
     expect(inFocusMode()).toBe(false);
-    expect(block().style.getPropertyValue("--keyboard-inset")).toBe("");
+    expect(block().style.getPropertyValue("--viewport-bottom")).toBe("");
     expect(listeners.size).toBe(0);
   });
 
