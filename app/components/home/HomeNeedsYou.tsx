@@ -10,8 +10,8 @@ import styles from "./HomeNeedsYou.module.css";
 const GLYPHS: Record<NeedsKind, CommandIconName> = { session: "session", review: "check", stalled: "timer", blocked: "stop", queue: "history" };
 
 /**
- * What the owner has to do now, one line for each thing, grouped by kind and repository, in a card with a count. Fixed rules in `home-model.ts` pick and
- * word every line. The card ends with a closing line: that nothing else waits, or how many more things do.
+ * What the owner has to do now, one line for each thing, grouped by kind and repository, in a card. Fixed rules in `home-model.ts` pick and
+ * word every line. The heading carries no count, because the lines already say how many. The card ends with a closing line: that nothing else waits, or how many more things do.
  */
 export function HomeNeedsYou({ lines, total }: { lines: readonly NeedsLine[]; total: number }) {
   const headingId = useId();
@@ -20,7 +20,6 @@ export function HomeNeedsYou({ lines, total }: { lines: readonly NeedsLine[]; to
   return <section className={`${card.card} ${styles.needs}`} aria-labelledby={headingId}>
     <header className={card.head}>
       <h2 id={headingId}>Needs you</h2>
-      <span className={styles.count}>{total}</span>
     </header>
     <ul className={card.list}>
       {shown.map((line) => <li key={line.key}>

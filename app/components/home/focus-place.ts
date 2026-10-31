@@ -57,11 +57,29 @@ export type FocusPlaceInput = {
 };
 
 /**
- * The top of the block: its bottom edge a gap above the keyboard's top edge. It is never below the block's resting place, so focus mode never lowers the block, and
- * it is never under the header, which wins where a block is too tall for both.
+ * Where the block starts: its bottom edge a gap above the keyboard's top edge. It is never below the block's resting place, so focus mode never lowers the block, and
+ * it is never under the header, which wins where a block is too tall for both. The block is held by its bottom edge (`focusBottom`), so this is only where its top
+ * begins; the top moves up as the block grows.
  */
 export function focusTop({ screen, keyboard, block, headerBottom, restTop }: FocusPlaceInput): number {
   const above = screen - keyboard - block - KEYBOARD_GAP_PX;
   const high = restTop === null ? above : Math.min(above, restTop);
   return Math.round(Math.max(high, headerBottom + HEADER_GAP_PX));
+}
+
+/**
+ * The distance from the bottom of the screen to the bottom edge of the block, which the block keeps (`bottom` of the fixed block): the screen less where the block ends, that is
+ * its starting top plus its height. The block starts exactly where `focusTop` puts it, and a taller block then grows upward, because its bottom edge does not move.
+ */
+export function focusBottom(place: FocusPlaceInput): number {
+  return Math.round(place.screen - (focusTop(place) + place.block));
+}
+
+/**
+ * The tallest the block may grow: from its bottom edge up to a gap under the header. A block taller than that would go under the header, so the block stops growing here and its
+ * message field scrolls (HomeAril.module.css). It is never less than the block at the start, which is the case where the header already holds the block down.
+ */
+export function focusMaxHeight(place: FocusPlaceInput): number {
+  const room = place.screen - focusBottom(place) - (place.headerBottom + HEADER_GAP_PX);
+  return Math.max(Math.ceil(place.block), Math.round(room));
 }

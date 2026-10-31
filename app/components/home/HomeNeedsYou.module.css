@@ -1,6 +1,5 @@
-/* Needs you: the attention tone (the count and the glyph tile) is amber on its soft fill; a failure word is amber text, and nothing else on a line is. */
+/* Needs you: the attention tone (the glyph tile) is amber on its soft fill; a failure word is amber text, and nothing else on a line is. */
 .needs { min-width: 0; }
-.count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--control-radius); background: var(--color-amber-soft); color: var(--command-amber); font: 600 var(--text-caption)/1 var(--font-ui); font-variant-numeric: tabular-nums; }
 
 .glyph { display: grid; place-items: center; flex: 0 0 auto; width: 32px; height: 32px; border-radius: var(--panel-radius); background: var(--color-amber-soft); color: var(--command-amber); }
 .glyph > svg { width: 16px; height: 16px; }

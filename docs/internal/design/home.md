@@ -99,8 +99,9 @@ The owner approved the cards, the tiles, and the phone layout of Home (`HomeV3.d
 - A line is a current state of a board or a session, never an old log entry.
 - So a line leaves the list as soon as its state ends.
 - With nothing to do, Needs you is not drawn.
-- Needs you is a card: the `h2` **Needs you**, its count as a badge, the lines, and a closing line.
-- The badge is the number of all the lines, in amber on the soft amber fill, with the control radius, and it is a count and not a pill.
+- Needs you is a card: the `h2` **Needs you**, the lines, and a closing line.
+- The heading carries no count, because a count of the lines (2) disagreed with the tasks that the lines name (7 and 1).
+- The lines already carry the numbers.
 - A line is a rounded item with no rule between lines, and it takes the raised fill on hover.
 - A line holds a 32px glyph tile on the soft amber fill, the action with an optional failure detail after it, the repository under them in caption text, and a chevron.
 - The glyph names the kind: `session` for a session that waits, `check` for a finished task, `timer` for a stalled task, `stop` for a blocked task, and `history` for a paused queue.
@@ -132,7 +133,7 @@ The owner approved the cards, the tiles, and the phone layout of Home (`HomeV3.d
 
 - A failure detail is one word after the action, in amber text.
 - Amber text marks a failure only. No other word on a line is amber.
-- The badge and the glyph tile are the attention tone of the card: amber on its soft fill, and no word.
+- The glyph tile is the attention tone of the card: amber on its soft fill, and no word.
 - A task in Needs review has a failure when its newest CI, review, or merge result after it reported complete failed. A failure is its own line.
 - A passed result, or no result, joins the plain line of its repository, and the line shows no word for it.
 - The detail is the newest entry of these kinds that follows the newest `review` entry of the task.
@@ -263,7 +264,7 @@ The owner approved the cards, the tiles, and the phone layout of Home (`HomeV3.d
 ### Phone
 
 - On the phone, focus mode fills the screen: a layer in the canvas fill covers the page, header included.
-- The composer does not lift to the middle. It stands above the place the keyboard will take, with the chips above it.
+- The composer does not lift to the middle. It stands above the place the keyboard will take, with the chips above it. The block keeps its bottom edge and grows upward.
 - With the keyboard open the block sits just above it, which is the upper-middle of a tall phone, so it can look centered. Its place is the keyboard's top edge, never the middle.
 - The block is fixed only in focus mode, and its resting place is sticky at the bottom of Home. Changing between the two moves it in one frame unless it glides.
 - Starting and ending focus mode glide the block between the two places over 480ms, with the desktop's curve, while the other parts fade.
@@ -281,14 +282,24 @@ The owner approved the cards, the tiles, and the phone layout of Home (`HomeV3.d
 #### Where the block stands
 
 - Home places the block once, when focus mode starts and before the keyboard opens. It does not move while the keyboard opens, changes, or closes.
-- The top of the block (`--focus-top`) is the screen height, less the keyboard height, less the block height, less a 16px gap.
+- The block starts with its top at the screen height, less the keyboard height, less the block height, less a 16px gap.
 - Example: a 696px screen, a 264px keyboard, and a 232px block put the top at 184px.
+- The block keeps its bottom edge and grows upward as the message grows.
+- The bottom edge (`--focus-bottom`, the CSS `bottom` of the fixed block) is the screen height, less where the block ends. That is its starting top plus its height.
+- Example: the block above ends at 416px, so its bottom edge is 280px above the bottom of the screen, which is the keyboard height and the gap.
+- A message that makes the block taller moves its top edge up. The bottom edge, with **Send** and **Back to Home**, stays where it was.
+- The owner measured this on the same phone, with five lines typed and the keyboard open, a visible height of 432px:
+  - Held by its top, the block ran from 184px to 493px. **Send** was at 425px, at the edge of the keyboard, and **Back to Home** was at 493px, under it.
+  - Held by its bottom, the block ran from 107px to 416px, 309px tall. **Send** was at 348px and **Back to Home** at 416px, all above the keyboard.
+- The bottom edge is set once, with the starting top, so the first place and the glide to it are the same as before.
+- The block grows to a cap (`--focus-max`, the CSS `max-height`): from its bottom edge up to a 12px gap under the header. In the example it is 348px.
+- Past the cap the composer gives its height to the message field, which scrolls. The block never goes under the header.
+- The cap is never less than the height of the block at the start, so a block that the header already holds down does not shrink.
 - The screen height is the layout viewport (`innerHeight`), which the keyboard does not shrink.
 - The block height is the height it has in focus mode, with its **Back to Home** action.
 - The keyboard height is the one last measured on this device. Where none was measured, it is 38% of the screen height.
-- The top is never lower than the resting place of the block, so focus mode never lowers the block.
-- The top is never under the header. It stops 12px below the header's bottom edge, and the header wins where the two disagree.
-- The field grows downward as a message grows, because the block keeps its top.
+- The starting top is never lower than the resting place of the block, so focus mode never lowers the block.
+- The starting top is never under the header. It stops 12px below the header's bottom edge, and the header wins where the two disagree.
 - A keyboard that does not open, such as a hardware keyboard, leaves the block above empty space.
 - `tests/ui/home-focus-keyboard.test.tsx` and `tests/ui/home-focus-place.test.ts` guard the place.
 

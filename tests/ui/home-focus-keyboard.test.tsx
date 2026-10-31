@@ -9,6 +9,8 @@ import { desktopBridge, resetHome } from "./home-fixture";
 // layout viewport of 360x696): the keyboard opens in one step and takes 264px, and a block that follows it is moved by Chrome's own pan of the visual viewport, so it bumps
 // toward the top of the screen. Moving it at once on the resize jumps it, and so does a relayout. The owner approved this: the block glides to a place the keyboard will not
 // cover (top 184px there) as focus mode starts, the keyboard opens below it, and the block never moves again; the layer fades in and out instead of appearing and vanishing.
+// The block is held by its bottom edge (`--focus-bottom`, 280px there), so a message that grows it moves its top edge up: with five lines typed it was 107 to 416px, Send at 348px and
+// Back to Home at 416px, all above the keyboard, where a block held by its top went on to 493px, under it. `--focus-max` is the tallest it may grow, a gap under the header.
 // jsdom does no layout, so the geometry is stubbed: the block, its composer, and the header answer the rectangles a phone gave.
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
@@ -52,18 +54,25 @@ const pageCss = read("app", "HomeDashboard.module.css");
 const SCREEN = 696;
 const KEYBOARD = 264;
 const FOCUS_HEIGHT = 232;
+/** Five lines typed on the phone that was measured: the block grew from 232px to 309px. */
+const GROWN_HEIGHT = 309;
 const REST_HEIGHT = 150;
 const HEADER_BOTTOM = 56;
 const COMPOSER_OFFSET = 60;
 const REST_COMPOSER = 560;
-const geometry = { restTop: 520 };
+const geometry = { restTop: 520, focusHeight: FOCUS_HEIGHT };
 
 const LAYER = '[class*="_dim_"]';
 const findBlock = () => document.querySelector<HTMLElement>('section[aria-label="Ask Aril"]');
 const blockEl = () => findBlock()!;
 const layerEl = () => document.querySelector<HTMLElement>(LAYER);
 const wrapperEl = () => blockEl().parentElement!;
-const focusTopOf = () => blockEl().style.getPropertyValue("--focus-top");
+/** The place the component set when focus mode started: how far the block's bottom edge is from the bottom of the screen, and how tall it may grow. Empty where none is set. */
+const bottomOf = () => blockEl().style.getPropertyValue("--focus-bottom");
+const maxOf = () => blockEl().style.getPropertyValue("--focus-max");
+/** Where the block is on the screen (the stub answers as a fixed block with `bottom` does), in pixels from the top and from the bottom of the screen. */
+const topOf = () => blockEl().getBoundingClientRect().top;
+const bottomEdgeOf = () => blockEl().getBoundingClientRect().bottom;
 const stored = () => window.localStorage.getItem(KEYBOARD_STORAGE_KEY);
 const rect = (top: number, height: number) => ({ x: 12, y: top, left: 12, top, right: 378, bottom: top + height, width: 366, height, toJSON: () => ({}) }) as DOMRect;
 
@@ -104,12 +113,15 @@ beforeEach(() => {
   stubMedia({ phone: true, reducedMotion: false });
   setScreen(SCREEN);
   geometry.restTop = 520;
+  geometry.focusHeight = FOCUS_HEIGHT;
   const measure = Element.prototype.getBoundingClientRect;
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
     const focus = /_isFocus_/.test(this.closest('section[aria-label="Ask Aril"]')?.className ?? "");
-    const placed = Number.parseFloat(findBlock()?.style.getPropertyValue("--focus-top") ?? "");
+    // A fixed block held by `bottom` ends that far above the bottom of the screen and begins one height higher; before the place is set it is at 0, which is only its height being read.
+    const held = Number.parseFloat(findBlock()?.style.getPropertyValue("--focus-bottom") ?? "");
+    const placed = Number.isNaN(held) ? Number.NaN : window.innerHeight - held - geometry.focusHeight;
     if (this.classList.contains("commandHeader")) return rect(0, HEADER_BOTTOM);
-    if (this.matches('section[aria-label="Ask Aril"]')) return focus ? rect(Number.isNaN(placed) ? 0 : placed, FOCUS_HEIGHT) : rect(geometry.restTop, REST_HEIGHT);
+    if (this.matches('section[aria-label="Ask Aril"]')) return focus ? rect(Number.isNaN(placed) ? 0 : placed, geometry.focusHeight) : rect(geometry.restTop, REST_HEIGHT);
     if (this.classList.contains("agentChatComposer")) return focus ? rect((Number.isNaN(placed) ? 0 : placed) + COMPOSER_OFFSET, 100) : rect(REST_COMPOSER, 100);
     return measure.call(this);
   });
@@ -149,21 +161,31 @@ describe("where the block is placed when focus mode starts", () => {
   it("is above the keyboard this device last had: 184px on the phone that was measured", async () => {
     window.localStorage.setItem(KEYBOARD_STORAGE_KEY, String(KEYBOARD));
     await focusHome();
-    expect(focusTopOf()).toBe(`${SCREEN - KEYBOARD - FOCUS_HEIGHT - 16}px`);
-    expect(focusTopOf()).toBe("184px");
+    expect(topOf()).toBe(SCREEN - KEYBOARD - FOCUS_HEIGHT - 16);
+    expect(topOf()).toBe(184);
+  });
+
+  it("holds the block by its bottom edge: 280px above the bottom of the screen, which is the keyboard and the gap, with room to grow up to 348px", async () => {
+    window.localStorage.setItem(KEYBOARD_STORAGE_KEY, String(KEYBOARD));
+    await focusHome();
+    expect(bottomOf()).toBe(`${SCREEN - 184 - FOCUS_HEIGHT}px`);
+    expect(bottomOf()).toBe(`${KEYBOARD + 16}px`);
+    expect(maxOf()).toBe(`${SCREEN - 280 - HEADER_BOTTOM - 12}px`);
+    expect(maxOf()).toBe("348px");
+    expect([topOf(), bottomEdgeOf()]).toEqual([184, 416]);
   });
 
   it("is above a share of the screen where no keyboard was measured yet", async () => {
     setScreen(800);
     await focusHome();
     expect(stored()).toBeNull();
-    expect(focusTopOf()).toBe(`${800 - Math.round(0.38 * 800) - FOCUS_HEIGHT - 16}px`);
+    expect(topOf()).toBe(800 - Math.round(0.38 * 800) - FOCUS_HEIGHT - 16);
   });
 
   it.each(["", "nonsense", "40", "99999"])("does not trust the stored height %j", async (value) => {
     window.localStorage.setItem(KEYBOARD_STORAGE_KEY, value);
     await focusHome();
-    expect(focusTopOf()).toBe(`${SCREEN - Math.round(0.38 * SCREEN) - FOCUS_HEIGHT - 16}px`);
+    expect(topOf()).toBe(SCREEN - Math.round(0.38 * SCREEN) - FOCUS_HEIGHT - 16);
   });
 
   it("works where browser storage throws", async () => {
@@ -172,13 +194,15 @@ describe("where the block is placed when focus mode starts", () => {
       return key === HOME_PREFERENCES_STORAGE_KEY ? JSON.stringify({ version: 1, pins: [], lastViewedSessionId: null, seenUpdateId: HOME_UPDATE_ID }) : null;
     });
     await focusHome();
-    expect(focusTopOf()).toBe("184px");
+    expect(topOf()).toBe(184);
   });
 
-  it("stops below the header, whatever the keyboard", async () => {
+  it("stops below the header, whatever the keyboard, and then has no room to grow", async () => {
     window.localStorage.setItem(KEYBOARD_STORAGE_KEY, "600");
     await focusHome();
-    expect(focusTopOf()).toBe(`${HEADER_BOTTOM + 12}px`);
+    expect(topOf()).toBe(HEADER_BOTTOM + 12);
+    expect(bottomOf()).toBe(`${SCREEN - (HEADER_BOTTOM + 12) - FOCUS_HEIGHT}px`);
+    expect(maxOf()).toBe(`${FOCUS_HEIGHT}px`);
   });
 
   it("is never below the resting place of the block", async () => {
@@ -186,7 +210,7 @@ describe("where the block is placed when focus mode starts", () => {
     geometry.restTop = 200;
     await focusHome();
     expect(SCREEN - 130 - FOCUS_HEIGHT - 16).toBeGreaterThan(200);
-    expect(focusTopOf()).toBe("200px");
+    expect(topOf()).toBe(200);
   });
 
   it("is set before the glide measures the block, so the glide runs to the place the block stands in", async () => {
@@ -201,7 +225,7 @@ describe("where the block is placed when focus mode starts", () => {
     const viewport = installViewport();
     const listen = vi.spyOn(viewport, "addEventListener");
     await focusHome();
-    expect(focusTopOf()).toBe("");
+    expect(bottomOf()).toBe("");
     expect(listen).not.toHaveBeenCalled();
     resizeTo(viewport, 432);
     expect(stored()).toBeNull();
@@ -211,15 +235,59 @@ describe("where the block is placed when focus mode starts", () => {
     stubMedia({ phone: true, reducedMotion: true });
     window.localStorage.setItem(KEYBOARD_STORAGE_KEY, String(KEYBOARD));
     await focusHome();
-    expect(focusTopOf()).toBe("184px");
+    expect(topOf()).toBe(184);
     expect(animate).not.toHaveBeenCalled();
   });
 
   it("clears the place when focus mode ends", async () => {
     await focusHome();
-    expect(focusTopOf()).not.toBe("");
+    expect(bottomOf()).not.toBe("");
     await leaveByTapping();
-    expect(focusTopOf()).toBe("");
+    expect(bottomOf()).toBe("");
+  });
+});
+
+describe("the block while a message grows it", () => {
+  // The owner's phone, five lines typed: the block went from 232px to 309px. Held by its top it ran from 184px to 493px, and Back to Home was under the keyboard, which starts at 432px.
+  it("grows upward: the top edge moves up and the bottom edge stays, so Send and Back to Home stay above the keyboard", async () => {
+    window.localStorage.setItem(KEYBOARD_STORAGE_KEY, String(KEYBOARD));
+    const person = newUser();
+    await renderHome();
+    await person.click(field());
+    expect([topOf(), bottomEdgeOf()]).toEqual([184, 416]);
+    const placed = blockEl().getAttribute("style");
+    // The block is taller now. Nothing measures it again, so nothing sets a place again.
+    geometry.focusHeight = GROWN_HEIGHT;
+    await person.type(field(), "five lines");
+    expect(blockEl().getAttribute("style")).toBe(placed);
+    expect(bottomOf()).toBe("280px");
+    expect([topOf(), bottomEdgeOf()]).toEqual([107, 416]);
+    expect(bottomEdgeOf()).toBeLessThanOrEqual(SCREEN - KEYBOARD);
+    // Held by its top edge it would have ended at 493px, under the keyboard.
+    expect(184 + GROWN_HEIGHT).toBe(493);
+    expect(184 + GROWN_HEIGHT).toBeGreaterThan(SCREEN - KEYBOARD);
+  });
+
+  it("stays within the cap under the header: the tallest block has its top edge a gap under the header", async () => {
+    window.localStorage.setItem(KEYBOARD_STORAGE_KEY, String(KEYBOARD));
+    await focusHome();
+    // The cap is what the stylesheet gives as `max-height`; a block as tall as that has its top 12px under the header.
+    geometry.focusHeight = Number.parseFloat(maxOf());
+    expect(topOf()).toBe(HEADER_BOTTOM + 12);
+    expect(bottomEdgeOf()).toBe(416);
+  });
+
+  it("keeps the same bottom edge as the block shrinks again", async () => {
+    window.localStorage.setItem(KEYBOARD_STORAGE_KEY, String(KEYBOARD));
+    const person = newUser();
+    await renderHome();
+    await person.click(field());
+    geometry.focusHeight = GROWN_HEIGHT;
+    await person.type(field(), "x");
+    expect(bottomEdgeOf()).toBe(416);
+    geometry.focusHeight = FOCUS_HEIGHT;
+    await person.clear(field());
+    expect([topOf(), bottomEdgeOf()]).toEqual([184, 416]);
   });
 });
 
@@ -227,15 +295,15 @@ describe("the keyboard while focus mode is on", () => {
   it("is measured from the visual viewport and kept for the next time, which then places the block with it", async () => {
     const viewport = installViewport();
     await focusHome();
-    expect(focusTopOf()).toBe(`${SCREEN - Math.round(0.38 * SCREEN) - FOCUS_HEIGHT - 16}px`);
+    expect(topOf()).toBe(SCREEN - Math.round(0.38 * SCREEN) - FOCUS_HEIGHT - 16);
     resizeTo(viewport, SCREEN - 316);
     expect(stored()).toBe("316");
     // The next time focus mode starts, the block is placed above the keyboard that was measured.
     await newUser().click(screen.getByRole("button", { name: "Back to Home" }));
     await waitFor(() => expect(layerEl()).toBeNull());
-    expect(focusTopOf()).toBe("");
+    expect(bottomOf()).toBe("");
     await newUser().click(field());
-    expect(focusTopOf()).toBe(`${SCREEN - 316 - FOCUS_HEIGHT - 16}px`);
+    expect(topOf()).toBe(SCREEN - 316 - FOCUS_HEIGHT - 16);
   });
 
   it("keeps the last height it measured, as the keyboard settles", async () => {

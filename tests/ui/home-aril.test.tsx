@@ -86,8 +86,9 @@ describe("the last 24 hours and Needs you", () => {
       "Unblock 1 taskclapline",
       "Restart the paused queue A start failedclapline",
     ]);
-    // The card counts what waits in a badge and ends with a closing line.
-    expect(within(needsYou()).getByRole("heading", { name: "Needs you" }).nextElementSibling).toHaveTextContent("5");
+    // The heading carries no count, because the lines say how many, and the card ends with a closing line.
+    expect(within(needsYou()).getByRole("heading", { name: "Needs you" })).toHaveTextContent(/^Needs you$/);
+    expect(within(needsYou()).getByRole("heading", { name: "Needs you" }).nextElementSibling).toBeNull();
     expect(within(needsYou()).getByText("Nothing else is waiting on you.")).toBeInTheDocument();
     expect(needsYou()).not.toHaveTextContent(/T-\d|Retry the upload|Cut the upload|Rename the export/);
     expect(within(needsYou()).getByText("CI failed")).toHaveClass(/urgent/);
@@ -210,8 +211,8 @@ describe("the last 24 hours and Needs you", () => {
     await settle();
     expect(within(needsYou()).getAllByRole("link")).toHaveLength(8);
     expect(within(needsYou()).getByText("2 more things need you.")).toBeInTheDocument();
-    // The badge counts all ten, and the closing line is the count of the rest, not the claim that nothing else waits.
-    expect(within(needsYou()).getByRole("heading", { name: "Needs you" }).nextElementSibling).toHaveTextContent("10");
+    // The heading has no badge, and the closing line is the count of the rest, not the claim that nothing else waits.
+    expect(within(needsYou()).getByRole("heading", { name: "Needs you" }).nextElementSibling).toBeNull();
     expect(within(needsYou()).queryByText("Nothing else is waiting on you.")).toBeNull();
   });
 

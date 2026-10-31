@@ -91,7 +91,7 @@ describe("Home visual contract", () => {
     expect(read("HomeDayTiles.tsx")).toContain("Some logs could not be read.");
   });
 
-  it("draws Needs you as a card with a count badge, a rounded item for each line, and a closing line, with a failure in amber and no task ID and no title", () => {
+  it("draws Needs you as a card with no count badge, a rounded item for each line, and a closing line, with a failure in amber and no task ID and no title", () => {
     const needs = read("HomeNeedsYou.module.css");
     const card = read("HomeCard.module.css");
     expect(card).toMatch(/\.card \{[^}]*min-height: 196px;[^}]*border: 1px solid var\(--command-panel-2\); border-radius: var\(--panel-radius\); background: var\(--command-panel\);/);
@@ -101,14 +101,15 @@ describe("Home visual contract", () => {
     expect(card).toMatch(/\.item:hover \{ background: var\(--command-panel-2\); \}/);
     expect(card).toMatch(/\.closing \{ display: flex; align-items: center; gap: var\(--space-2\); margin-top: auto;/);
     expect(card).toMatch(/@media \(max-width: 760px\) \{\s*\.card \{ min-height: 0;/);
-    expect(needs).toMatch(/\.count \{[^}]*background: var\(--color-amber-soft\); color: var\(--command-amber\);/);
+    expect(needs).not.toMatch(/\.count/);
+    expect(read("HomeNeedsYou.tsx")).not.toMatch(/styles\.count|\{total\}/);
     expect(needs).toMatch(/\.glyph \{[^}]*width: 32px; height: 32px; border-radius: var\(--panel-radius\); background: var\(--color-amber-soft\); color: var\(--command-amber\); \}/);
     expect(needs).toMatch(/\.urgent \{ color: var\(--command-amber\); \}/);
     expect(needs).toMatch(/\.detail \{ color: var\(--command-muted\); \}/);
     expect(needs).toMatch(/\.repository \{[^}]*color: var\(--command-muted\); font-size: var\(--text-caption\);/);
     expect(needs).toMatch(/@media \(max-width: 760px\) \{[^@]*\.needs \.closing \{ display: none; \}/);
-    // Amber is the badge, the glyph tile, and the failure word of a line; the line type carries no task or title at all.
-    expect(needs.match(/var\(--command-amber\)/g)).toHaveLength(3);
+    // Amber is the glyph tile and the failure word of a line; the line type carries no task or title at all.
+    expect(needs.match(/var\(--command-amber\)/g)).toHaveLength(2);
     expect(read("HomeNeedsYou.tsx")).not.toMatch(/taskId|\.title|<h3|<button/);
     expect(read("HomeNeedsYou.tsx")).toContain("Nothing else is waiting on you.");
     expect(read("home-model.ts")).toMatch(/export type NeedsLine = \{ key: string; kind: NeedsKind; action: string; detail: NeedsDetail \| null; repository: string; href: string \};/);
@@ -167,7 +168,8 @@ describe("Home visual contract", () => {
     expect(aril).toMatch(/\.chipBlock \{ display: grid; grid-template-rows: 1fr; transition: grid-template-rows 300ms ease, opacity 220ms ease; \}/);
     expect(aril).toMatch(/\.chipInner \{ min-height: 0; overflow: hidden; \}/);
     expect(aril).toMatch(/\.isThread \.chipBlock \{ grid-template-rows: 0fr; opacity: 0; pointer-events: none; \}/);
-    expect(aril).not.toMatch(/max-height/);
+    // The only height the block is capped to is the focus cap on a phone, below.
+    expect(aril.match(/max-height/g)).toHaveLength(1);
     expect(aril).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.aril, \.aril :global\(\.agentChatComposer\), \.chipBlock, \.hint \{ transition: none; \}/);
     expect(pageStyles).toMatch(/\.content \{[^}]*transition: opacity 280ms ease, transform 280ms ease; \}/);
     expect(pageStyles).toMatch(/\.content\.isHidden \{ opacity: 0; transform: translateY\(-10px\); pointer-events: none; \}/);
@@ -184,8 +186,11 @@ describe("Home visual contract", () => {
     expect(pageStyles).toMatch(/\.column \.composer\.isReleasing \{ z-index: 85; \}/);
     expect(pageStyles).toMatch(/@keyframes dimIn \{ from \{ opacity: 0; \} to \{ opacity: 1; \} \}\s*@keyframes dimOut \{ from \{ opacity: 1; \} to \{ opacity: 0; \} \}/);
     expect(pageStyles).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^@]*\.dim, \.dim\.isLeaving \{ animation: none; \}/);
-    // The block is placed once with `top` and never follows the keyboard: no transition of its place, and no `bottom` that follows it. Its moves between the sticky place and this one are glides (useComposerGlide).
-    expect(aril).toMatch(/\.aril\.isFocus \{ position: fixed; z-index: 85; inset-inline: var\(--space-3\); top: var\(--focus-top\); bottom: auto; transform: none; transition: none; \}/);
+    // The block is held by its bottom edge, placed once and never following the keyboard: `bottom` is a value set when focus mode starts and not the keyboard's, and its place has no transition. It grows
+    // upward, to a cap under the header (`--focus-max`), and past the cap the composer gives its height to the message field. Its moves between the sticky place and this one are glides (useComposerGlide).
+    expect(aril).toMatch(/\.aril\.isFocus \{ position: fixed; z-index: 85; inset-inline: var\(--space-3\); top: auto; bottom: var\(--focus-bottom\); max-height: var\(--focus-max\); transform: none; transition: none; \}/);
+    expect(aril).toMatch(/\.aril\.isFocus :global\(\.agentChatComposer\) \{ flex-shrink: 1; min-height: 0; \}/);
+    expect(aril).not.toMatch(/--focus-top/);
     expect(aril).not.toMatch(/keyboard-inset/);
     expect(aril).toMatch(/\.hint \{ display: none; \}\s*\.aril\.isFocus \.back \{ display: inline-flex; align-self: flex-start; \}/);
   });

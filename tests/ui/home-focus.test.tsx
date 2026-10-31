@@ -348,7 +348,8 @@ describe("focus mode on a phone", () => {
     expect(inFocusMode()).toBe(true);
     expect(block().style.getPropertyValue("--focus-shift")).toBe("0px");
     // The block is placed once, when focus mode starts, and the keyboard's own opening and changes do not move it (home-focus-keyboard.test.tsx measures where).
-    expect(block().style.getPropertyValue("--focus-top")).toMatch(/^\d+px$/);
+    expect(block().style.getPropertyValue("--focus-bottom")).toMatch(/^-?\d+px$/);
+    expect(block().style.getPropertyValue("--focus-max")).toMatch(/^\d+px$/);
     expect(block().style.getPropertyValue("--keyboard-inset")).toBe("");
     const placed = block().getAttribute("style");
     viewport.height = 500;
@@ -358,7 +359,8 @@ describe("focus mode on a phone", () => {
     expect(block().getAttribute("style")).toBe(placed);
     await person.click(screen.getByRole("button", { name: "Back to Home" }));
     expect(inFocusMode()).toBe(false);
-    expect(block().style.getPropertyValue("--focus-top")).toBe("");
+    expect(block().style.getPropertyValue("--focus-bottom")).toBe("");
+    expect(block().style.getPropertyValue("--focus-max")).toBe("");
     expect(listeners.size).toBe(0);
   });
 

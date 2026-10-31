@@ -11,7 +11,7 @@ import { CHAT_DEFAULT_EFFORT, chatModelOptions, chatModelValue, initialChatRun, 
 import { useAgentChatComposer } from "../agent-chat/useAgentChatComposer";
 import type { CommandSelectOption } from "../command-center/CommandSelect";
 import { NO_MODELS } from "../tasks/task-fields";
-import { focusTop, predictedKeyboardHeight, storeKeyboardHeight } from "./focus-place";
+import { focusBottom, focusMaxHeight, predictedKeyboardHeight, storeKeyboardHeight } from "./focus-place";
 import { onPhone } from "./home-media";
 import styles from "./HomeAril.module.css";
 
@@ -55,10 +55,11 @@ function useFocusShift(block: RefObject<HTMLElement | null>, lifted: boolean) {
 }
 
 /**
- * On a phone, places the block when focus mode starts, above the place the keyboard will take (`--focus-top`, see focus-place.ts), and never moves it again: it follows the
- * keyboard neither as it opens nor as it changes. Call the returned function in the event that starts focus mode, before the mode changes, so that the block's resting
- * place is known. The block is measured in its focus layout, after the render and before the paint, and in the same commit as `useComposerGlide`'s measure, which runs after
- * this and so reads the block at its new place.
+ * On a phone, places the block when focus mode starts, above the place the keyboard will take, and never moves it again: it follows the keyboard neither as it opens nor as it
+ * changes. The block is held by its bottom edge (`--focus-bottom`, with `--focus-max` as the tallest it may grow, see focus-place.ts), so a message that grows the block moves its
+ * top edge up and leaves its bottom edge, with **Send** and **Back to Home**, where it is. Call the returned function in the event that starts focus mode, before the mode changes,
+ * so that the block's resting place is known. The block is measured in its focus layout, after the render and before the paint, and in the same commit as `useComposerGlide`'s
+ * measure, which runs after this and so reads the block at its new place.
  */
 function useFocusPlace(block: RefObject<HTMLElement | null>, focus: boolean): () => void {
   const rest = useRef<number | null>(null);
@@ -71,10 +72,11 @@ function useFocusPlace(block: RefObject<HTMLElement | null>, focus: boolean): ()
     if (!focus || !element || !onPhone()) return;
     const screen = window.innerHeight;
     const header = document.querySelector(".commandHeader")?.getBoundingClientRect().bottom ?? 0;
-    const top = focusTop({ screen, keyboard: predictedKeyboardHeight(screen), block: element.getBoundingClientRect().height, headerBottom: header, restTop: rest.current });
+    const place = { screen, keyboard: predictedKeyboardHeight(screen), block: element.getBoundingClientRect().height, headerBottom: header, restTop: rest.current };
     rest.current = null;
-    element.style.setProperty("--focus-top", `${top}px`);
-    return () => { element.style.removeProperty("--focus-top"); };
+    element.style.setProperty("--focus-bottom", `${focusBottom(place)}px`);
+    element.style.setProperty("--focus-max", `${focusMaxHeight(place)}px`);
+    return () => { element.style.removeProperty("--focus-bottom"); element.style.removeProperty("--focus-max"); };
   }, [block, focus]);
   return begin;
 }

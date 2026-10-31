@@ -19,13 +19,17 @@
 .note { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); }
 
 /* A phone: focus mode fills the screen. The block is fixed, and it stands above the place the keyboard will take: the component measures that place when focus mode starts
-   (`--focus-top`, focus-place.ts) and the block does not move while the keyboard opens, changes, or closes. The block is fixed only in focus mode, and a change of positioning
-   moves it in one frame, so useComposerGlide animates a transform from the place it left (the desktop's 480ms and curve). */
+   (`--focus-bottom`, focus-place.ts) and the block does not move while the keyboard opens, changes, or closes. The block is held by its bottom edge, so it grows upward with the
+   message and its Send and Back to Home stay in view above the keyboard; `--focus-max` is the tallest it may grow, a gap under the header, and past it the message field scrolls.
+   The block is fixed only in focus mode, and a change of positioning moves it in one frame, so useComposerGlide animates a transform from the place it left (the desktop's 480ms
+   and curve). */
 @media (max-width: 760px) {
   /* The block stands low on the screen, above the keyboard, so the chips are one line that scrolls sideways and the block stays short. */
   .chipList { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
   .chipList > li { flex: none; }
-  .aril.isFocus { position: fixed; z-index: 85; inset-inline: var(--space-3); top: var(--focus-top); bottom: auto; transform: none; transition: none; }
+  .aril.isFocus { position: fixed; z-index: 85; inset-inline: var(--space-3); top: auto; bottom: var(--focus-bottom); max-height: var(--focus-max); transform: none; transition: none; }
+  /* Under the cap the composer gives its height to the message field, which scrolls, and the block does not go under the header. */
+  .aril.isFocus :global(.agentChatComposer) { flex-shrink: 1; min-height: 0; }
   .aril.isThread { transform: none; }
   .hint { display: none; }
   .aril.isFocus .back { display: inline-flex; align-self: flex-start; }
