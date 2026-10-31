@@ -19,16 +19,12 @@
 .note { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); }
 
 /* A phone: focus mode fills the screen, and the block sits at the bottom, above the keyboard. The block is fixed only in focus mode, and a change of positioning moves it
-   in one frame, so useComposerGlide animates a transform from the place it left (the desktop's 480ms and curve).
-   The block is placed against the visual viewport, not the layout viewport: `top` is the bottom edge of the visual viewport (`--viewport-bottom`, set every frame by
-   useViewportAnchor) less the gap, and `translate` lifts the block by its own height, so its bottom edge is the anchor. `translate` is its own property, so it adds to
-   the glide's `transform`. Without the property, `100%` is the foot of the layout viewport. Nothing here is a transition: a transition chases a target that the browser
-   moves again (it pans the visual viewport to show the focused field), and goes past the place; the hook eases the height itself. */
+   in one frame, so useComposerGlide animates a transform from the place it left (the desktop's 480ms and curve); `bottom` follows the keyboard with a shorter transition. */
 @media (max-width: 760px) {
   /* The composer is pinned to the bottom of the screen, so the chips are one line that scrolls sideways and the block stays short. */
   .chipList { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
   .chipList > li { flex: none; }
-  .aril.isFocus { position: fixed; z-index: 85; inset-inline: var(--space-3); top: calc(var(--viewport-bottom, 100%) - max(var(--space-3), env(safe-area-inset-bottom))); translate: 0 -100%; transform: none; transition: none; }
+  .aril.isFocus { position: fixed; z-index: 85; inset-inline: var(--space-3); bottom: calc(var(--keyboard-inset, 0px) + max(var(--space-3), env(safe-area-inset-bottom))); transform: none; transition: bottom 300ms cubic-bezier(.2, .8, .2, 1); }
   .aril.isThread { transform: none; }
   .hint { display: none; }
   .aril.isFocus .back { display: inline-flex; align-self: flex-start; }
@@ -36,4 +32,5 @@
 
 @media (prefers-reduced-motion: reduce) {
   .aril, .aril :global(.agentChatComposer), .chipBlock, .hint { transition: none; }
+  .aril.isFocus { transition: none; }
 }
