@@ -85,17 +85,17 @@ describe("repository index", () => {
     render(<RepositoriesView />);
     await screen.findByRole("link", { name: "Pomegr, Plugin update available" });
     await userEvent.click(screen.getByRole("button", { name: "Needs attention" }));
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getAllByRole("article")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Needs attention" })).toHaveAttribute("aria-pressed", "true");
     await userEvent.click(screen.getByRole("button", { name: "Live now" }));
-    expect(screen.getAllByRole("link")).toHaveLength(2);
+    expect(screen.getAllByRole("article")).toHaveLength(2);
     await userEvent.type(screen.getByRole("searchbox", { name: "Filter repositories" }), " example ");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getAllByRole("article")).toHaveLength(1);
     expect(screen.getByRole("link", { name: "Example live, Ready" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "All" }));
-    expect(screen.getAllByRole("link")).toHaveLength(2);
+    expect(screen.getAllByRole("article")).toHaveLength(2);
     await userEvent.clear(screen.getByRole("searchbox"));
-    expect(screen.getAllByRole("link")).toHaveLength(3);
+    expect(screen.getAllByRole("article")).toHaveLength(3);
   });
   it("serializes a forced refresh behind an in-flight poll", async () => {
     const replies: Array<(response: Response) => void> = [];

@@ -375,31 +375,14 @@
 .commandUsageUnavailable p { margin: 0; font-size: var(--text-xs); }
 .commandUsageRefreshNote { margin: 0; padding: 9px 12px 10px; border-top: 1px solid var(--command-line); color: var(--command-muted); background: color-mix(in srgb, var(--command-amber) 8%, transparent); font-size: var(--text-xs); line-height: 1.5; }
 .commandUsageCaution { padding: 12px 14px; border: 1px solid var(--command-line); background: var(--command-panel); }
-.commandRepositoryList { margin-top: 12px; border: 1px solid var(--command-line); background: var(--command-panel); }
-.commandRepositoryHead, .commandRepositoryRow { display: grid; grid-template-columns: 20px minmax(240px, 1.4fr) 200px 190px minmax(200px, 1fr) 24px; align-items: center; gap: 14px; padding: 10px 16px; }
-.commandRepositoryHead { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); text-transform: uppercase; letter-spacing: .02em; }
-.commandRepositoryRow { min-width: 0; min-height: 60px; border-top: 1px solid var(--command-line); color: var(--command-ink); text-decoration: none; }
-.commandRepositoryRow:hover { background: var(--command-panel-2); }
-.commandRepositoryRow:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--focus-ring); outline-offset: -2px; }
-.commandRepositoryBody, .commandRepositoryNameAndSetup, .commandRepositoryMeta { display: contents; }
-.commandRepositoryIcon { grid-column: 1; grid-row: 1; color: var(--command-muted); }
-.commandRepositoryIdentity { min-width: 0; grid-column: 2; grid-row: 1; }
-.commandRepositoryIdentity strong, .commandRepositoryIdentity small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.commandRepositoryIdentity strong { font-size: var(--text-sm); font-weight: 600; }
-.commandRepositoryIdentity small { margin-top: 3px; color: var(--command-muted); font-size: var(--text-xs); }
-.commandRepositoryProviders { min-width: 0; grid-column: 3; grid-row: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.commandRepositorySessions { grid-column: 4; grid-row: 1; display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--command-muted); font: var(--text-xs)/1.4 var(--font-data); font-variant-numeric: tabular-nums; }
-.commandRepositorySessions > span { white-space: nowrap; }
-.commandRepositorySessions strong { color: var(--command-ink); font-weight: 500; }
-.commandRepositorySessions strong.live { color: var(--command-green); }
-.commandRepositorySetup { grid-column: 5; grid-row: 1; justify-self: start; }
-.commandRepositoryArrow { grid-column: 6; grid-row: 1; display: flex; justify-content: flex-end; color: var(--command-faint); }
-.commandRepositoryFilters { min-width: 0; display: flex; gap: 8px; }
-.commandRepositoryListCount, .commandRepositoryMobileDot { display: none; }
-.commandRepositoryFootnote { margin: 16px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
-@media (min-width: 761px) and (max-width: 1200px) {
-  .commandRepositoryHead, .commandRepositoryRow { grid-template-columns: 20px minmax(120px, 1fr) minmax(100px, .8fr) minmax(110px, .8fr) minmax(140px, 1fr) 16px; gap: 10px; }
-}
+/* The Repositories toolbar: the search, then the three filters as one segmented group, then the count. The cards are in RepositoryCards.module.css. */
+.commandRepositoryToolbar { margin-bottom: var(--space-4); }
+.commandRepositoryToolbar .commandToolbar { min-height: 0; margin-top: 0; padding: 0; border: 0; background: transparent; }
+.commandRepositoryFilters { min-width: 0; display: flex; gap: 4px; padding: 3px; border-radius: var(--panel-radius); background: var(--command-panel); }
+.commandRepositoryToolbar .commandFilterChip { min-height: 30px; padding: 0 12px; border: 0; background: transparent; color: var(--command-muted); font: 500 var(--text-xs)/1.3 var(--font-ui); }
+.commandRepositoryToolbar .commandFilterChip:hover { border: 0; background: transparent; color: var(--command-ink); }
+.commandRepositoryToolbar .commandFilterChip[aria-pressed="true"] { border: 0; background: var(--command-panel-2); color: var(--command-ink); }
+.commandRepositoryToolbar .commandFilterChip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .repositoryProvider + .repositoryProvider { border-top: 1px solid var(--command-line); }
 .repositorySetupFeedback { margin: 8px 0 0; font-size: var(--text-xs); line-height: 1.45; }
 .repositorySetupFeedback.pending { color: var(--command-muted); }
@@ -523,21 +506,10 @@
   .commandToolbar { align-items: stretch; flex-wrap: wrap; }
   .commandToolbar .commandSearch { width: 100%; }
   .commandToolbarCount { width: 100%; margin: 3px 0 0; }
-  .commandRepositoryHead, .commandRepositoryIcon, .commandRepositoryIdentity small, .commandRepositoryToolbar .commandToolbarCount { display: none; }
-  .commandRepositoryRow { min-height: 76px; grid-template-columns: minmax(0, 1fr) 24px; gap: 10px; padding: 12px 14px; }
-  .commandRepositoryBody { min-width: 0; display: grid; gap: 6px; }
-  .commandRepositoryNameAndSetup { min-width: 0; display: flex; align-items: center; gap: 8px; }
-  .commandRepositoryIdentity { flex: 1; }
-  .commandRepositorySetup { flex: 0 1 auto; max-width: 75%; }
-  .commandRepositoryMeta { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
-  .commandRepositorySessions { gap: 4px; }
-  .commandRepositoryProviders { gap: 8px 10px; }
-  .commandRepositoryMobileDot { display: inline; color: var(--command-faint); }
-  .commandRepositoryArrow { grid-column: 2; }
-  .commandRepositoryFilters { width: 100%; overflow-x: auto; padding: 2px; }
-  .commandRepositoryFilters .commandFilterChip { min-width: 44px; min-height: 44px; flex-shrink: 0; }
+  .commandRepositoryToolbar .commandToolbarCount { width: 100%; margin: 3px 0 0; }
+  .commandRepositoryFilters { width: 100%; overflow-x: auto; }
+  .commandRepositoryToolbar .commandFilterChip { flex: 1 0 auto; min-width: 44px; min-height: 44px; white-space: nowrap; }
   .commandRepositoryToolbar .commandSearch { min-height: 44px; }
-  .commandRepositoryListCount { display: block; padding: 12px 14px; color: var(--command-muted); font: var(--text-xs)/1.4 var(--font-ui); }
   .repositorySetupInstructions { width: 100%; }
   .repositorySetupInstructions summary { min-height: 44px; }
   .repositoryCaptureConfirm { margin-inline: 12px; padding-inline-start: 14px; }

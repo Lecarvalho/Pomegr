@@ -1,33 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import type { RepositorySummary } from "../../../shared/monitor-contract";
 import { useRepositoryInventory } from "../../repository-inventory-client";
-import { ProviderBadge } from "../ProviderBadge";
-import { CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, CommandToolbar } from "../command-center/CommandPage";
-import { repositoryLastActivity, repositorySetupSummary } from "./repository-setup";
+import { CommandEmpty, CommandFilter, CommandPage, CommandSearch, CommandToolbar } from "../command-center/CommandPage";
+import { RepositoryCard } from "./RepositoryCard";
+import styles from "./RepositoryCards.module.css";
+import { repositorySetupSummary } from "./repository-setup";
 
 type RepositoryFilter = "all" | "attention" | "live";
-
-function RepositoryRow({ repository }: { repository: RepositorySummary }) {
-  const setup = repositorySetupSummary(repository);
-  return <Link className="commandRepositoryRow" href={`/repositories/${repository.id}`} aria-label={`${repository.displayName}, ${setup.label}`}>
-    <span className="commandRepositoryIcon"><CommandIcon name="repositories" size="small" /></span>
-    <span className="commandRepositoryBody">
-      <span className="commandRepositoryNameAndSetup">
-        <span className="commandRepositoryIdentity"><strong>{repository.displayName}</strong><small>{repository.sessionCount} observed session{repository.sessionCount === 1 ? "" : "s"} · last {repositoryLastActivity(repository)}</small></span>
-        <span className={`commandChip commandRepositorySetup${setup.tone === "neutral" ? "" : ` ${setup.tone}`}`}><i aria-hidden="true" />{setup.label}</span>
-      </span>
-      <span className="commandRepositoryMeta">
-        <span className="commandRepositorySessions"><span><strong className={repository.liveCount > 0 ? "live" : undefined}>{repository.liveCount}</strong> live</span><span className="commandRepositoryMobileDot" aria-hidden="true">·</span><span><strong>{repository.historyCount}</strong> history</span></span>
-        <span className="commandRepositoryMobileDot" aria-hidden="true">·</span>
-        <span className="commandRepositoryProviders">{repository.providers.filter((provider) => provider.sessionCount > 0).map((provider) => <ProviderBadge key={provider.provider} source={provider.source} />)}</span>
-      </span>
-    </span>
-    <span className="commandRepositoryArrow"><CommandIcon name="chevron" size="small" /></span>
-  </Link>;
-}
 
 export function RepositoryInventoryView() {
   const { snapshot, loading, connected } = useRepositoryInventory();
@@ -45,7 +25,7 @@ export function RepositoryInventoryView() {
         ? { title: "No repositories match", detail: "Try a different repository name." }
         : { title: filter === "attention" ? "No repositories need attention" : "No repositories are live now", detail: `Clear the filter to see all ${snapshot.repositories.length} repositories.` };
 
-  return <CommandPage title="Repositories" description="Observed projects, Pomegr plugin setup, and saved provider diagnostics." busy={loading && !snapshot.repositories.length}>
+  return <CommandPage title="Repositories" description="Where your agents work, how busy each place is, and what still needs setting up." busy={loading && !snapshot.repositories.length}>
     <div className="commandRepositoryToolbar"><CommandToolbar>
       <CommandSearch value={query} onChange={setQuery} placeholder="Filter repositories" label="Filter repositories" />
       <div className="commandRepositoryFilters">
@@ -55,11 +35,8 @@ export function RepositoryInventoryView() {
       </div>
       <span className="commandToolbarCount">{count}</span>
     </CommandToolbar></div>
-    {repositories.length ? <div className="commandRepositoryList">
-      <div className="commandRepositoryListCount">{count}</div>
-      <div className="commandRepositoryHead" aria-hidden="true"><span /><span>Repository</span><span>Providers</span><span>Sessions</span><span>Setup</span><span /></div>
-      {repositories.map((repository) => <RepositoryRow key={repository.id} repository={repository} />)}
-    </div> : <CommandEmpty {...empty} icon="repositories" />}
-    <p className="commandRepositoryFootnote">Rows reflect session associations only. Branch, working-tree, and pull-request detail will appear inside each repository when the monitor can provide a bounded repository summary.</p>
+    {repositories.length ? <ul className={styles.grid} aria-label="Repositories">
+      {repositories.map((repository, index) => <li key={repository.id}><RepositoryCard repository={repository} enter={Math.min(index, 8)} /></li>)}
+    </ul> : <CommandEmpty {...empty} icon="repositories" />}
   </CommandPage>;
 }

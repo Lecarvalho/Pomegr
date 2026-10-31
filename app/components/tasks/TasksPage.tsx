@@ -9,7 +9,8 @@ import { repositoryRouteId } from "../repositories/repository-route";
 import { TaskBoardPane } from "./TaskBoardPane";
 import { TaskBoardSkeleton } from "./TaskBoardView";
 import { featureRouteId } from "./task-features";
-import { TasksHome, TasksHomeSkeleton, taskBoardHref } from "./TasksHome";
+import { TasksHome, TasksHomeSkeleton } from "./TasksHome";
+import { taskBoardHref } from "./task-board-href";
 
 const SWITCHER_ID = "tasks-repository-switcher";
 const HOME_HREF = "/tasks";

@@ -3,7 +3,7 @@ import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { DEFAULT_TASK_COLUMNS, type TaskBoard, type TaskHome, type TaskQueuePauseReason } from "../../../shared/task-contract";
 import type { TaskLog } from "../tasks/task-desktop";
 import { splitTaskTitle } from "../tasks/task-tags";
-import { taskBoardHref } from "../tasks/TasksHome";
+import { taskBoardHref } from "../tasks/task-board-href";
 
 // The fixed rules behind Home: the greeting, the last-24-hours tiles, and Needs you. Each one reads numbers and fixed kinds and writes fixed
 // words. No model runs, no answer of a model is read, and no heuristic is called an AI judgment (docs/internal/design/home.md).

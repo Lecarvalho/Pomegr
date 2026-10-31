@@ -22,9 +22,15 @@ tasks-board
 
 ## The board
 
-Select **Tasks** in the sidebar to open the Tasks home. **Needs you** lists the tasks
-that need review, are stalled, or are blocked by their agent. **Boards** shows one row
-for each repository; select its name to open its board.
+Select **Tasks** in the sidebar to open the Tasks home. The header counts the tasks that
+are open, in review, and done across all your boards. **Needs you** lists the tasks that
+need review, are stalled, or are blocked by their agent. **Boards** shows one card for each
+repository that has tasks: its open features and last change, a bar that splits its tasks
+between Backlog, Ready, In progress, Review, and Done, the count of each, and what is moving
+now. Select **Open board** to open its board. In the desktop app and on a paired device, the
+switch on a card turns that board's queue on or off; any other browser only reads whether it
+is on. A repository with no task yet is a short row, with **+ New task** where you can
+create tasks.
 
 A board has five fixed columns:
 

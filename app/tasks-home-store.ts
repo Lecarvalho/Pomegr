@@ -118,6 +118,16 @@ async function poll() {
   schedule();
 }
 
+/** Reads the home again at once, after an action of this page changed a board. It resolves when the answer, or its failure, is in. */
+export async function refreshTaskHome(): Promise<void> {
+  if (!listeners.size || typeof window === "undefined") return;
+  // A read that began before the action may predate it, so it is dropped for a new one.
+  controller?.abort();
+  controller = null;
+  if (timer !== null) { window.clearTimeout(timer); timer = null; }
+  await poll();
+}
+
 function stop() {
   controller?.abort();
   controller = null;

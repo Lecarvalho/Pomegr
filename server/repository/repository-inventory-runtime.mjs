@@ -6,6 +6,7 @@ import { createCommittedResponseCache } from "../persistence/committed-response-
 import { contextAllocationFromCategories, contextCategoryKind } from "../normalize/context-machinery.mjs";
 import { checkoutRoots, readGitCheckout, taskWorktreeMainRoot, taskWorktreeRepositoryId } from "./git-checkout.mjs";
 import { createRepositoryPluginRuntime } from "./repository-plugin-runtime.mjs";
+import { dailySessionCounts, nextLocalDayMs } from "./repository-daily-sessions.mjs";
 
 const GIT_ROOT_TTL_MS = 300_000;
 const GIT_ROOT_MAX_ENTRIES = 256;
@@ -181,6 +182,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
   let catalog = [];
   let lastProjection = "";
   let mutationQueue = Promise.resolve();
+  let dayTimer = null;
   const pluginSetup = createRepositoryPluginRuntime({ registry, now, ...options.pluginSetupOptions, onChange: () => commitProjection() });
 
   async function persist(candidate) {
@@ -414,11 +416,25 @@ export function createRepositoryInventoryRuntime(options = {}) {
         sessionCount: sessions.length,
         liveCount: sessions.filter((entry) => entry.isLive).length,
         historyCount: sessions.filter((entry) => !entry.isLive).length,
+        dailySessions: dailySessionCounts(sessions, now()),
         providerCount: providers.length,
         updatedAt,
         providers,
       };
     }).sort((left, right) => left.displayName.localeCompare(right.displayName) || left.id.localeCompare(right.id));
+  }
+
+  // The daily session series moves on at local midnight even when no session changes, so the list never shows yesterday as today.
+  function armDayRoll() {
+    if (dayTimer) return;
+    const delay = Math.min(Math.max(nextLocalDayMs(now()) - now() + 1_000, 1_000), 2_147_483_647);
+    dayTimer = setTimeout(() => { dayTimer = null; commitProjection(); armDayRoll(); }, delay);
+    dayTimer.unref?.();
+  }
+
+  function disarmDayRoll() {
+    if (dayTimer) clearTimeout(dayTimer);
+    dayTimer = null;
   }
 
   function commitProjection(force = false) {
@@ -504,8 +520,9 @@ export function createRepositoryInventoryRuntime(options = {}) {
     associateSession,
     reconcile,
     capture,
-    startPluginObservation: pluginSetup.start,
-    stopPluginObservation: pluginSetup.stop,
+    // Observation of a repository's setup, and of the day on which its session series ends, runs between these two.
+    startPluginObservation() { armDayRoll(); return pluginSetup.start(); },
+    stopPluginObservation() { disarmDayRoll(); return pluginSetup.stop(); },
     refreshPluginSetup: pluginSetup.refresh,
     readPluginSetup: pluginSetup.read,
     // Monitor-private main root of a repository seen this run, never a linked worktree's path; null when unknown.
