@@ -1,13 +1,13 @@
 "use client";
 
 import type { TaskLog } from "../tasks/task-desktop";
-import { HomeArilLine } from "../home/HomeArilLine";
+import { HomeDayMark, HomeDayReading, HomeDayTiles } from "../home/HomeDayTiles";
 import { HomeChips, HomeComposerShell } from "../home/HomeAril";
 import { HomeRunningList } from "../home/HomeContinue";
 import { HomeNeedsYou } from "../home/HomeNeedsYou";
 import { HomeUpdateCard } from "../home/HomeUpdateCard";
 import { HomeUpdateIllustration } from "../home/HomeUpdateIllustration";
-import { arilLine, type HomeLogReads, type NeedsLine, type RunningSession } from "../home/home-model";
+import { dayCounts, type HomeLogReads, type NeedsLine, type RunningSession } from "../home/home-model";
 import { homeSuggestions } from "../agent-chat/agent-chat-presentation";
 import { SampleComposer } from "./DesignSystemAgentChatSample";
 import { SAMPLE_TIME, Sample, Section } from "./DesignSystemKit";
@@ -16,7 +16,7 @@ const HIGHLIGHTS = ["A highlight is one short sentence.", "Two or three are enou
 const ignore = () => undefined;
 
 export function HomeUpdateSection() {
-  return <Section id="home-update" title="Home update" lede="Home's What's new card (HomeUpdateCard) is a horizontal teaser at the foot of Home, above the composer: a thumbnail of the announcement illustration at a small fixed size on the left, then a brand eyebrow, a title, and one summary line, a secondary See what's new action, and an icon dismiss. On a phone the card stays horizontal with a smaller thumbnail, and the action takes the row below. The action opens a modal dialog with the illustration at full size, the description, short highlights, and the primary Got it, which closes the dialog and keeps the card. Only the card's icon dismiss dismisses the announcement.">
+  return <Section id="home-update" title="Home update" lede="Home's What's new card (HomeUpdateCard) is a horizontal teaser at the foot of Home, above the composer: a thumbnail of the announcement illustration at a small fixed size on the left, then a brand eyebrow, a title, and one summary line, a secondary See what's new action, and an icon dismiss. On a phone the card is one compact row: a smaller thumbnail, the eyebrow and the title, and a chevron; the whole row opens the dialog, and the dismiss keeps its 44px target. The action opens a modal dialog with the illustration at full size, the description, short highlights, and the primary Got it, which closes the dialog and keeps the card. Only the card's icon dismiss dismisses the announcement.">
     <div className="designSystemStates">
       <Sample label="With illustration" note="The illustration is decorative static artwork authored 408px wide; the card scales the same node down. The dialog is a centered 560px panel on desktop and a bottom sheet at 760px and narrower. Dismiss is inert here.">
         <HomeUpdateCard title="Announcement title" summary="One short line for the Home card." description="A sentence or two naming the main benefit in the interface's own terms." highlights={HIGHLIGHTS} illustration={<HomeUpdateIllustration />} onDismiss={ignore} />
@@ -30,11 +30,11 @@ export function HomeUpdateSection() {
 
 // One line for each thing the owner has to do. No task ID and no title: the action, a failure detail in amber, and the repository.
 const NEEDS: NeedsLine[] = [
-  { key: "s", action: "Answer a session that is waiting for you", detail: null, repository: "clapline", href: "/sessions" },
-  { key: "r1", action: "Review 5 finished tasks", detail: null, repository: "clapline", href: "/tasks" },
-  { key: "r2", action: "Review 1 finished task", detail: { words: "CI failed", urgent: true }, repository: "pomegr", href: "/tasks" },
-  { key: "t", action: "Check 2 stalled tasks", detail: null, repository: "pomegr", href: "/tasks" },
-  { key: "q", action: "Restart the paused queue", detail: { words: "CLI not found", urgent: true }, repository: "waymark", href: "/tasks" },
+  { key: "s", kind: "session", action: "Answer a session that is waiting for you", detail: null, repository: "clapline", href: "/sessions" },
+  { key: "r1", kind: "review", action: "Review 5 finished tasks", detail: null, repository: "clapline", href: "/tasks" },
+  { key: "r2", kind: "review", action: "Review 1 finished task", detail: { words: "CI failed", urgent: true }, repository: "pomegr", href: "/tasks" },
+  { key: "t", kind: "stalled", action: "Check 2 stalled tasks", detail: null, repository: "pomegr", href: "/tasks" },
+  { key: "q", kind: "queue", action: "Restart the paused queue", detail: { words: "CLI not found", urgent: true }, repository: "waymark", href: "/tasks" },
 ];
 
 const RUNNING: RunningSession[] = [
@@ -50,28 +50,29 @@ const LOG: TaskLog = {
 };
 const QUIET_LOG: TaskLog = { entries: [entry(1, "T-20", "done", 30)], more: false, arilCursor: 0 };
 const reads = (...logs: (TaskLog | null)[]): HomeLogReads => new Map(logs.map((log, index) => [`repo-${String(index).repeat(24)}`, log]));
+const day = (logs: HomeLogReads) => dayCounts(logs, SAMPLE_TIME) ?? { counts: [0, 0, 0, 0], unreadable: 0 };
 
 export function HomeSection() {
-  return <Section id="home" title="Home" lede="Home is one centered column: a greeting, the Aril line, Needs you, Continue, the What's new card, and the composer with its suggestions. Fixed rules write the Aril line and pick the Needs you lines from the boards, the task logs, and the sessions Pomegr observes; no model runs. The composer is the chat composer, and the suggestion chips fill its field without sending. Focusing the composer lifts it to the middle of the page, and Send hands the page to the maximized Aril view.">
+  return <Section id="home" title="Home" lede="Home is one centered column: a date and a greeting, the last 24 hours in four tiles, Needs you and Continue as two cards side by side (stacked on a phone), the What's new card, and the composer with its suggestions. Fixed rules count the tiles and pick the Needs you lines from the boards, the task logs, and the sessions Pomegr observes; no model runs. The composer is the chat composer, and the suggestion chips fill its field without sending. Focusing the composer lifts it to the middle of the page, and Send hands the page to the maximized Aril view.">
     <div className="designSystemStates">
-      <Sample label="Aril line, with counts" note="The tasks the logs of the last 24 hours record, once for each event, in a fixed order. Sample times are illustrative.">
-        <div className="designSystemTaskFrame"><HomeArilLine>{arilLine(reads(LOG), SAMPLE_TIME)}</HomeArilLine></div>
+      <Sample label="Last 24 hours, with counts" note="Four tiles: the tasks the logs of the last 24 hours record, once for each event, in a fixed order. Marked Done is green when it counts. Sample times are illustrative. A phone draws one row with the short labels.">
+        <div className="designSystemTaskFrame"><HomeDayMark /><HomeDayTiles counts={day(reads(LOG)).counts} /></div>
       </Sample>
-      <Sample label="Aril line, nothing logged" note="Logs were read and hold no event in the window.">
-        <div className="designSystemTaskFrame"><HomeArilLine>{arilLine(reads(QUIET_LOG), SAMPLE_TIME)}</HomeArilLine></div>
+      <Sample label="Last 24 hours, nothing logged" note="Logs were read and hold no event in the window: the tiles stay and read zero, in quiet ink.">
+        <div className="designSystemTaskFrame"><HomeDayTiles counts={day(reads(QUIET_LOG)).counts} /></div>
       </Sample>
-      <Sample label="Aril line, a log could not be read" note="The line says so. When no log could be read, the line is not drawn, and it never says that nothing happened.">
-        <div className="designSystemTaskFrame"><HomeArilLine>{arilLine(reads(LOG, null), SAMPLE_TIME)}</HomeArilLine></div>
+      <Sample label="Last 24 hours, a log could not be read" note="The tiles count the logs that were read, and a quiet line says so. When no log could be read, the tiles are not drawn, and they never say that nothing happened.">
+        <div className="designSystemTaskFrame"><HomeDayTiles counts={day(reads(LOG, null)).counts} unreadable={1} /></div>
       </Sample>
-      <Sample label="Aril line, reading" note="Quiet words until the first read of the logs ends.">
-        <div className="designSystemTaskFrame"><HomeArilLine status>Reading the task logs…</HomeArilLine></div>
+      <Sample label="Last 24 hours, reading" note="Quiet words until the first read of the logs ends.">
+        <div className="designSystemTaskFrame"><HomeDayReading /></div>
       </Sample>
     </div>
     <div className="designSystemGrid designSystemChatGrid">
-      <Sample label="Needs you" note="One line for each thing to do, grouped by kind and repository, with the repository on the right. No task ID and no title. Amber text only for a failure: CI failed, Review failed, Merge refused, and the reason a queue is paused. Sessions that wait come first, then finished tasks, stalled tasks, blocked tasks, and paused queues.">
+      <Sample label="Needs you" note="A card with the count of what waits as a badge. One rounded item for each thing to do, grouped by kind and repository, with a glyph, the action, and the repository under it; no rule between items, a hover fill, and a closing line. No task ID and no title. Amber text only for a failure: CI failed, Review failed, Merge refused, and the reason a queue is paused. Sessions that wait come first, then finished tasks, stalled tasks, blocked tasks, and paused queues.">
         <div className="designSystemTaskFrame"><HomeNeedsYou lines={NEEDS} total={NEEDS.length} /></div>
       </Sample>
-      <Sample label="Continue, running sessions" note="Up to four live sessions that work or wait for the owner. A state dot, the title (the task's title for a session started for a task), the state, and the repository, provider, and time since the session started. A session that waits shows Waiting for you in amber.">
+      <Sample label="Continue, running sessions" note="Up to four live sessions that work or wait for the owner. A dot that pulses green while the session works, the title in two lines at most (the task's title for a session started for a task), the state, and the repository and time since the session last changed. Working is green, and a session that waits shows Waiting for you in amber with an amber dot.">
         <div className="designSystemTaskFrame"><HomeRunningList sessions={RUNNING} /></div>
       </Sample>
       <Sample label="Composer on Home, with suggestions" note="The chips are the Quiet role on the raised fill with the composer radius. A chip fills the message field and sends nothing.">

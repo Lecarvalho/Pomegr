@@ -1,0 +1,24 @@
+/* The two cards of Home, Needs you and Continue, and the parts they share. No rule runs between rows: each row is a rounded item that takes a hover fill,
+   and each card ends with a closing line. Tokens only. */
+.card { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; min-height: 196px; padding: var(--space-4) var(--space-3) var(--space-3); border: 1px solid var(--command-panel-2); border-radius: var(--panel-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.card :is(h2, h3, p) { margin: 0; }
+.card :is(a, button, summary, input):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+.head { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-1) var(--space-2); }
+.head h2 { color: var(--command-ink); font: 650 var(--text-base)/1.35 var(--font-ui); }
+
+.list { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.item { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; padding: var(--space-2) var(--space-3); border-radius: var(--panel-radius); color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); text-decoration: none; cursor: pointer; transition: background 160ms ease; }
+.item:hover { background: var(--command-panel-2); }
+
+/* The closing line sits at the foot of the card, however short the card is. */
+.closing { display: flex; align-items: center; gap: var(--space-2); margin-top: auto; padding: var(--space-2) var(--space-3) 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+
+@media (max-width: 760px) {
+  .card { min-height: 0; padding: var(--space-3) var(--space-1) var(--space-1); }
+  .head { padding-inline: var(--space-2); }
+  .head h2 { font-size: var(--text-sm); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .item { transition: none; }
+}

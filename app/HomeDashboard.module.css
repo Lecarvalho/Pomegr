@@ -1,30 +1,66 @@
-/* Home: one centered column. The composer block sits at the foot of the content area when the column is shorter than the window. */
+/* Home: one column, at most 820px wide, centered across the content area when it is shorter than the window; when it is taller it starts at the top and the page scrolls.
+   The composer is the last block of the column on the desktop and is pinned to the bottom of the screen on a phone. */
 .home { display: flex; flex-direction: column; min-height: 100%; color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); }
 .home:focus { outline: 0; }
 
-.column { display: flex; flex-direction: column; flex: 1 1 auto; gap: var(--space-8); width: min(720px, 100%); min-width: 0; margin: 0 auto; }
+/* The auto margins center the column on both axes while there is room, and fall to nothing when the column is taller than the window. */
+.column { display: flex; flex-direction: column; flex: 0 1 auto; gap: var(--space-6); width: min(820px, 100%); min-width: 0; margin: auto; }
+/* Until everything that decides the shape of Home has answered, the column is laid out but not drawn, so the first thing drawn is the entrance. */
+.column.isPending { visibility: hidden; }
 
 /* Everything but the composer: in focus mode and while the thread is open it fades out and rises a little; the composer block lifts on its own (HomeAril). */
-.content { display: flex; flex-direction: column; gap: var(--space-8); min-width: 0; transition: opacity 280ms ease, transform 280ms ease; }
+.content { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; transition: opacity 280ms ease, transform 280ms ease; }
 .content.isHidden { opacity: 0; transform: translateY(-10px); pointer-events: none; }
 
 /* In focus mode a transparent layer over the content area catches the click outside; the composer block is above it. A phone covers the whole screen. */
 .dim { position: fixed; z-index: 2; inset: var(--command-header-height) 0 0 var(--command-rail-width); }
 
-/* The title is empty until the client knows the hour, so it keeps its height and nothing moves when the greeting arrives. */
+/* The entrance: each block fades in and rises a little, one after another (--enter is its place). It plays once, when the column is first drawn. */
+.column:not(.isPending) .enter { animation: homeEnter 420ms cubic-bezier(.2, .8, .2, 1) backwards; animation-delay: calc(var(--enter, 0) * 60ms); }
+@keyframes homeEnter { from { opacity: 0; transform: translateY(var(--space-2)); } to { opacity: 1; transform: none; } }
+
+/* The date line above the greeting. Both lines keep their height until the client knows the day and the hour, so nothing moves when they arrive. */
+.home .header { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.date { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
 .home h1 { min-height: 1.25em; }
 
 .note { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); }
 
-.composer { margin-top: auto; min-width: 0; }
+/* Needs you and Continue, side by side. Without a Needs you card, Continue takes the row. */
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); min-width: 0; }
+.cards.isSingle { grid-template-columns: minmax(0, 1fr); }
+
+.composer { min-width: 0; margin-top: var(--space-2); }
 
 .home :is(a, button, summary):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 @media (max-width: 760px) {
-  .column, .content { gap: var(--space-6); }
-  .dim { z-index: 84; inset: 0; background: var(--command-ground); }
+  /* The document scrolls on a phone, so the content area must not be a scroll container of its own: the composer sticks to the screen only against the
+     nearest scroll container. Clipping keeps it from scrolling sideways. */
+  :global(.commandMain):has(.composer) { overflow: visible; overflow: clip; }
+  /* The column fills the screen from the top, and the composer sits at the foot of it, above the safe area. The cards stack. */
+  .column, .content { gap: var(--space-4); }
+  .column { flex: 1 1 auto; margin: 0 auto; }
+  .cards { grid-template-columns: minmax(0, 1fr); }
+  .composer { position: sticky; bottom: 0; z-index: 3; margin-top: auto; padding-block: var(--space-3) max(var(--space-3), env(safe-area-inset-bottom)); background: linear-gradient(to bottom, transparent, var(--command-ground) var(--space-3)); }
+  /* Focus mode takes the composer out of the sticky place: the block is fixed to the screen by HomeAril. The composer must also leave the stacking order and the
+     entrance: a flex item with a z-index (static or not) and an element under an animation that transforms are each a stacking context, and the fixed block inside
+     one stays under the dim (z-index 84) however high its own z-index is, so the screen would be blank. `.column` repeats the entrance rule's specificity. */
+  .column .composer.isLifted { position: static; z-index: auto; animation: none; background: none; }
+  /* Once the entrance has played, or focus mode cut it short, it never plays again. Leaving focus mode removes `.isLifted`, and the entrance would start over: the
+     wrapper would be invisible for its delay and fade back in, which is the block vanishing and reappearing. */
+  .column .composer.isEntered { animation: none; }
+  /* The layer is opaque, so a hard cut of it is a blink: it fades in over the content's own fade, and it fades out when Home comes back (useDimLayer keeps it in the page
+     for that). The block of the composer stays above it while it fades out: its wrapper rises above the layer for that time and falls back to its place afterwards. */
+  .dim { z-index: 84; inset: 0; background: var(--command-ground); animation: dimIn 280ms ease both; }
+  .dim.isLeaving { animation-name: dimOut; pointer-events: none; }
+  .column .composer.isReleasing { z-index: 85; }
 }
+@keyframes dimIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dimOut { from { opacity: 1; } to { opacity: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
   .content { transition: none; }
+  .column:not(.isPending) .enter { animation: none; }
+  .dim, .dim.isLeaving { animation: none; }
 }

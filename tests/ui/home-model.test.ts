@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { homeSuggestions } from "../../app/components/agent-chat/agent-chat-presentation";
-import { HOME_LOG_BOARDS, arilLine, greetingFor, isWaiting, isWorking, logBoards, needsDetail, needsYou, runningSessions, updatedAgo, suggestionFacts, type HomeLogReads, type NeedsLine } from "../../app/components/home/home-model";
+import { DAY_EVENTS, HOME_LOG_BOARDS, dayCounts, greetingFor, isWaiting, isWorking, logBoards, needsDetail, needsYou, runningSessions, updatedAgo, suggestionFacts, type HomeLogReads, type NeedsLine } from "../../app/components/home/home-model";
 import type { TaskLog } from "../../app/components/tasks/task-desktop";
 import type { SessionSummary } from "../../shared/monitor-contract";
 import type { TaskBoard, TaskHome, TaskHomeBoard } from "../../shared/task-contract";
@@ -28,8 +28,8 @@ describe("greetingFor", () => {
   });
 });
 
-describe("the Aril line", () => {
-  it("counts each task once for each event in the last 24 hours, in a fixed order, and leaves out an event with no count", () => {
+describe("the last 24 hours", () => {
+  it("counts each task once for each event in the last 24 hours, in the fixed order of the four tiles", () => {
     const reads: HomeLogReads = new Map([
       [POMEGR, log(
         entry(1, "T-1", "started", hoursAgo(20)), entry(2, "T-1", "grant_start", hoursAgo(19)), entry(3, "T-2", "started", hoursAgo(18)),
@@ -39,23 +39,24 @@ describe("the Aril line", () => {
       // The same task number in another repository is another task.
       [CLAPLINE, log(entry(1, "T-1", "started", hoursAgo(3)), entry(2, "T-5", "grant_done", hoursAgo(1)))],
     ]);
-    expect(arilLine(reads, NOW)).toBe("In the last 24 hours: 3 started, 1 reached Review, 1 merged, 1 marked Done.");
+    expect(DAY_EVENTS.map((event) => event.label)).toEqual(["Started", "Reached Review", "Merged", "Marked Done"]);
+    expect(DAY_EVENTS.map((event) => event.short)).toEqual(["Started", "Review", "Merged", "Done"]);
+    expect(dayCounts(reads, NOW)).toEqual({ counts: [3, 1, 1, 1], unreadable: 0 });
   });
 
-  it("says that nothing was logged only when a log was read and holds no event in the window", () => {
-    expect(arilLine(new Map([[POMEGR, log(entry(1, "T-1", "done", hoursAgo(30)))]]), NOW)).toBe("Nothing was logged in the last 24 hours.");
-    expect(arilLine(new Map([[POMEGR, log()]]), NOW)).toBe("Nothing was logged in the last 24 hours.");
+  it("counts zeros only when a log was read and holds no event in the window", () => {
+    expect(dayCounts(new Map([[POMEGR, log(entry(1, "T-1", "done", hoursAgo(30)))]]), NOW)).toEqual({ counts: [0, 0, 0, 0], unreadable: 0 });
+    expect(dayCounts(new Map([[POMEGR, log()]]), NOW)).toEqual({ counts: [0, 0, 0, 0], unreadable: 0 });
   });
 
-  it("draws no line when no log could be read, and says so when only some could not", () => {
-    expect(arilLine(new Map(), NOW)).toBeNull();
-    expect(arilLine(new Map([[POMEGR, null]]), NOW)).toBeNull();
-    expect(arilLine(new Map([[POMEGR, log(entry(1, "T-1", "review", hoursAgo(1)))], [CLAPLINE, null]]), NOW))
-      .toBe("In the last 24 hours: 1 reached Review. Some logs could not be read.");
+  it("counts nothing when no log could be read, and counts the logs that could not be read when only some could not", () => {
+    expect(dayCounts(new Map(), NOW)).toBeNull();
+    expect(dayCounts(new Map([[POMEGR, null]]), NOW)).toBeNull();
+    expect(dayCounts(new Map([[POMEGR, log(entry(1, "T-1", "review", hoursAgo(1)))], [CLAPLINE, null]]), NOW)).toEqual({ counts: [0, 1, 0, 0], unreadable: 1 });
   });
 
   it("ignores an entry with no task, such as a usage pause", () => {
-    expect(arilLine(new Map([[POMEGR, log(entry(1, null, "grant_usage_hold", hoursAgo(1)))]]), NOW)).toBe("Nothing was logged in the last 24 hours.");
+    expect(dayCounts(new Map([[POMEGR, log(entry(1, null, "grant_usage_hold", hoursAgo(1)))]]), NOW)).toEqual({ counts: [0, 0, 0, 0], unreadable: 0 });
   });
 });
 

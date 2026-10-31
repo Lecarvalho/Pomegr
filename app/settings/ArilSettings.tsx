@@ -8,7 +8,7 @@ import { useTasks } from "../tasks-store";
 import { useJevKey } from "../components/tasks/jev-key-desktop";
 import { sendTaskAction, useTaskEditAvailability } from "../components/tasks/task-desktop";
 import { timeOfDay } from "../components/tasks/task-schedule";
-import { ArilMemoryCard, ArilOffNotice, ArilSwitchCard, ConversationSpaceCard, EffortRoutingRow, OwnerMemoryPane, repositoryMemoryCaption, type MemoryTab } from "./ArilGlobalSettings";
+import { ArilMemoryCard, ArilOffNotice, ArilSwitchCard, ConversationSpaceCard, EffortRoutingNote, EffortRoutingRow, OwnerMemoryPane, repositoryMemoryCaption, type MemoryTab } from "./ArilGlobalSettings";
 import { MemoryEditor } from "./MemoryEditor";
 
 // The section keeps the controls of Aril itself: the switch, the memory (yours, then each repository's), the conversation space, and the effort
@@ -107,7 +107,7 @@ export function ArilSettingsSection({ initialRepositoryId = null }: { initialRep
           : <RepositoryMemoryPane key={activeTab} repositoryId={activeTab} name={names.get(activeTab) ?? ""} now={now} disabled={locked} pairedOn={aril.state?.pairedOn === true} />}
       </ArilMemoryCard>}
       <ConversationSpaceCard control={space} names={names} disabled={locked} />
-      {jev && <EffortRoutingRow jev={jev} disabled={locked} />}
+      {jev ? <EffortRoutingRow jev={jev} disabled={locked} /> : access === "paired" && <EffortRoutingNote />}
     </div>
   </section>;
 }

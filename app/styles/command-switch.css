@@ -16,6 +16,8 @@ html[data-theme="dark"] .commandSwitch[aria-checked="true"] { background: color-
 @media (pointer: coarse), (max-width: 760px) {
   /* The track stays the same size; the target reaches 44px. */
   .commandSwitch::after { content: ""; position: absolute; inset: -10px -6px; }
+  /* The small track is 20px high, so its target needs 12px above and below. */
+  .commandSwitch.isSmall::after { inset: -12px -6px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .commandSwitch, .commandSwitchThumb { transition: none; }

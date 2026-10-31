@@ -386,9 +386,12 @@ html[data-theme="dark"] body { background: var(--paper); }
   .commandMetricPanel { min-height: 112px; }
   .commandMetricPanel > b { margin-top: 16px; }
   .commandAttention small { display: none; }
-  .commandSettingsLayout { grid-template-columns: 1fr; }
-  .commandSettingsNav { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--command-line); }
-  .commandSettingsNav button { width: auto; flex: 0 0 auto; }
+  /* The track must be able to shrink to the screen (minmax(0, 1fr)): a bare 1fr grows to the full width of the tab strip, and the whole page scrolls sideways.
+     The tab strip scrolls inside its own frame, and its tabs reach 44px. */
+  .commandSettingsLayout { grid-template-columns: minmax(0, 1fr); }
+  .commandSettingsNav { display: flex; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; border-right: 0; border-bottom: 1px solid var(--command-line); }
+  .commandSettingsNav button { width: auto; flex: 0 0 auto; min-height: 44px; white-space: nowrap; }
+  .commandSettingsPane { min-width: 0; padding: var(--space-4); }
   .providerSettingRow { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
   .providerSettingsAdvanced > summary { min-height: 44px; }
   .providerSettingActions { justify-content: flex-start; }

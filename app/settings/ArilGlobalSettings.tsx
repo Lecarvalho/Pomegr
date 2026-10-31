@@ -194,6 +194,23 @@ export function ConversationSpaceCard({ control, names, disabled = false, initia
   </ArilCard>;
 }
 
+const EFFORT_CAPTION = "Jev may lower the effort you chose for simple replies, never raise it. It sees your message and the end of Aril's last answer.";
+
+/**
+ * What a paired device shows of effort routing: the title, the caption, and where the key is changed. It reads nothing and shows no state, so the
+ * phone never learns whether a key is set; the key, its state, and its field are the desktop app's alone.
+ */
+export function EffortRoutingNote() {
+  const titleId = useId();
+  return <section className="arilCard arilEffort" aria-labelledby={titleId}>
+    <div className="arilEffortText">
+      <div className="arilEffortTitle"><h3 id={titleId}>Effort routing</h3></div>
+      <p className="arilCardCaption">{EFFORT_CAPTION}</p>
+      <p className="arilCardCaption arilEffortNote">The key is changed in the desktop app.</p>
+    </div>
+  </section>;
+}
+
 /**
  * Effort routing as one compact row: the title, whether a Jev key is set, the caption, and the buttons. Replace key (or Add key) opens the key
  * field under the row. The key goes to desktop main once and the field is emptied when it was saved; the renderer never receives the key back,
@@ -223,7 +240,7 @@ export function EffortRoutingRow({ jev, disabled = false, initialEditing = false
     <div className="arilEffortRow">
       <div className="arilEffortText">
         <div className="arilEffortTitle"><h3 id={`${fieldId}-title`}>Effort routing</h3><span className={jev.state === "set" ? "isSet" : undefined}>{stateWord}</span></div>
-        <p className="arilCardCaption">Jev may lower the effort you chose for simple replies, never raise it. It sees your message and the end of Aril&apos;s last answer.</p>
+        <p className="arilCardCaption">{EFFORT_CAPTION}</p>
       </div>
       {jev.state !== "unavailable" && !editing && <button type="button" className="commandSecondaryAction" disabled={disabled} onClick={() => setEditing(true)}>{jev.state === "set" ? "Replace key" : "Add key"}</button>}
       {jev.state === "set" && !editing && <button type="button" className="commandQuietAction" aria-label="Remove Jev key" disabled={busy || disabled} onClick={() => void change("remove")}>Remove</button>}

@@ -48,6 +48,7 @@ export function HomeUpdateCard({ title, summary, description, highlights, illust
       <p>{summary}</p>
     </div>
     <button ref={trigger} type="button" className={`commandSecondaryAction ${styles.open}`} aria-haspopup="dialog" onClick={() => setOpen(true)}>See what’s new</button>
+    <CommandIcon name="chevron" size="small" className={`commandIcon ${styles.chevron}`} />
     <button type="button" className={`commandIconAction ${styles.dismiss}`} aria-label="Dismiss this update" onClick={onDismiss}><CommandIcon name="close" /></button>
     {open && <dialog ref={showDialog} className={styles.dialog} tabIndex={-1} aria-labelledby={dialogTitleId}
       onClose={() => { setOpen(false); trigger.current?.focus(); }}

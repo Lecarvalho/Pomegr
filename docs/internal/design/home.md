@@ -1,6 +1,6 @@
 # Home design
 
-> Scope: the Home page: its greeting, the Aril line, Needs you, Continue, the What's new card and dialog, and the composer with its suggestions and focus mode.
+> Scope: the Home page: its date and greeting, the last-24-hours tiles, Needs you, Continue, the What's new card and dialog, and the composer with its suggestions and focus mode.
 > Authority: visual and interaction contract for this surface. [DESIGN.md](../../../DESIGN.md)
 > owns the tokens, the six button roles, the chip contract, and the shared controls.
 > The composer and the suggestion chips are specified in [Agent chat design](agent-chat.md#composer-on-home).
@@ -11,68 +11,86 @@ Home is the page the owner sees first.
 It is a short briefing from the boards and the sessions, and a way to ask Aril, not a dashboard.
 The [Aril agent plan](../plans/aril-agent.md) set the direction on 2026-10-28.
 The owner approved the revised design, with Needs you, the running sessions, and focus mode, on 2026-10-30.
+The owner approved the cards, the tiles, and the phone layout of Home (`HomeV3.dc.html` and `HomeV3Phone.dc.html`) on 2026-10-30.
 
 ## Home
 
-- Home is one centered column, at most 720px wide.
+- Home is one centered column, at most 820px wide.
 - The column keeps the reading order in the table below, on the desktop and on the phone.
 - Home keeps bounded, identity-only local preferences.
 - Home shows honest unavailable content, and no coming-soon content.
 
 | Order | Part | Drawn |
 | --- | --- | --- |
-| 1 | Greeting and the Aril line | Always; the Aril line only where the task log can be read |
-| 2 | Needs you | When something waits for the owner |
-| 3 | Continue | Always |
+| 1 | Date line and greeting, with the mark “Last 24 hours” | Always; the mark only where the tiles are drawn |
+| 2 | The last 24 hours, four tiles | Only where the task log can be read |
+| 3 | Needs you and Continue, two cards | Needs you when something waits for the owner; Continue always |
 | 4 | What's new card | Until the owner dismisses the announcement |
 | 5 | Suggestions and composer | Only where the chat can be reached and Aril is On |
 
 - The session guides and the roadmap preview are not on Home.
-- The suggestions and the composer sit at the bottom of the content area when the column is shorter than the window.
-- When the column is taller, they follow the content.
-- While Aril is Off, Home has neither, and the other parts lay out as they do otherwise ([While Aril is Off](#while-aril-is-off)).
-- The page header is `CommandPageHeader`, with the greeting as its title and the Aril line as its meta line.
+- The desktop draws Needs you and Continue side by side, each card at least 196px high. The phone stacks them, and the cards take the height of their content.
+- No rule runs between the rows of a card. Each row is a rounded item with a hover fill, and each card ends with a closing line.
+- When nothing waits for the owner, Needs you is not drawn and Continue takes the whole row.
+- The column is centered vertically in the content area when it is shorter than the window. When it is taller, it starts at the top and the page scrolls as usual.
+- On the phone the column always starts at the top, and the composer is pinned to the bottom of the screen above the safe area.
+- On the desktop the composer is the last block of the column, and it centers with the column.
+- While Aril is Off, Home has neither the composer nor the suggestions, and the other parts lay out as they do otherwise ([While Aril is Off](#while-aril-is-off)).
+- The page header is `CommandPageHeader`, with the date line above the title, the greeting as its title, and the mark “Last 24 hours” as its action, bottom-aligned at the end.
+
+### Entrance
+
+- Home draws once, after everything that decides its shape has answered: the boards, the logs, the sessions, the preferences, and where the chat can be reached, the Aril switch.
+- Until then the column is laid out and not drawn, so nothing is drawn and then moved or taken away.
+- If an answer never comes, as from a desktop too old to answer the switch, Home draws after 1.5 seconds with what it has.
+- Each block then fades in and rises 8px over 420ms with the curve `cubic-bezier(.2, .8, .2, 1)`, 60ms after the block above it: the header, the tiles, the cards, the What's new card, and the composer.
+- The entrance plays once. Reduced motion removes it.
 
 ## Where Home is drawn
 
 - The chat is reached in the desktop app and on a paired phone. Nowhere else.
 - That decision is made before anything is drawn: `useAgentChatAvailability` decides.
-- While the client is still identified, Home draws no Aril line, no Needs you, and no composer.
+- While the client is still identified, Home draws no tiles, no Needs you, and no composer.
 - Where the chat can be reached, the composer waits for one more answer: the desktop's, whether Aril is On ([While Aril is Off](#while-aril-is-off)).
-- A browser on the same computer draws the greeting, Needs you, Continue, and the What's new card.
-- That browser draws no Aril line, no failure detail on Needs you, and no composer, because it reads no task log and cannot reach the chat.
+- A browser on the same computer draws the date, the greeting, Needs you, Continue, and the What's new card.
+- That browser draws no tiles, no failure detail on Needs you, and no composer, because it reads no task log and cannot reach the chat.
 - So no part is drawn and then taken away.
 
-## Greeting
+## Date line and greeting
 
+- The date line is a caption above the title, uppercase with wide letter spacing, in muted text: the weekday, the day, and the month, in the owner's locale.
+- The date line and the greeting are empty until the client knows its locale, the day, and the hour. They keep their height, and nothing moves when they arrive.
 - The greeting is the 28px page title: **Good morning**, **Good afternoon**, or **Good evening**.
 - The hour is the owner's local hour.
 - Hours 5 to 11 read **Good morning**, 12 to 17 read **Good afternoon**, and the others read **Good evening**.
 - Before the client knows the hour, the title is empty. It is never drawn with another word first.
 
-## The Aril line
+## The last 24 hours
 
-- The Aril line is one muted line under the greeting, with a 16px `spark` glyph.
-- A fixed rule writes the line from the task log. No model runs, and no model writes the words.
-- The line counts the tasks that the logs of the last 24 hours record for each of four events.
+- The last 24 hours are four tiles in one row under the greeting. The mark “Last 24 hours”, a 12px `spark` glyph and a caption in muted text, sits at the end of the header row.
+- A fixed rule counts the tiles from the task log. No model runs, and no model writes the words.
+- The tiles count the tasks that the logs of the last 24 hours record for each of four events.
 
-| Event | Log kinds counted | Words |
+| Tile | Short label on a phone | Log kinds counted |
 | --- | --- | --- |
-| Started | `started`, `grant_start` | “n started” |
-| Reached Review | `review` | “n reached Review” |
-| Merged | `merged`, `grant_merge` | “n merged” |
-| Marked Done | `done`, `grant_done` | “n marked Done” |
+| Started | Started | `started`, `grant_start` |
+| Reached Review | Review | `review` |
+| Merged | Merged | `merged`, `grant_merge` |
+| Marked Done | Done | `done`, `grant_done` |
 
+- A tile is the count in the 28px title step and the label under it in muted text, on the panel fill with a one-pixel rule and the 6px panel radius.
+- On a phone the four tiles are one row of equal columns, the count is 18px, and the label is the short one. The full label stays for assistive technology.
+- A count is in application ink, a zero is in muted ink, and Marked Done is green when it is above zero.
 - A task counts once for each event, however many entries it has.
-- The line reads “In the last 24 hours: ” and the events with a count above zero, in the order of the table, joined with commas.
-- When no event has a count, the line reads “Nothing was logged in the last 24 hours.”
-- When the owner has no task board, the line is not drawn.
-- When a log could not be read, the line adds “Some logs could not be read.”
-- When no log could be read, the line is not drawn, and it never says that nothing happened.
+- With no event in the window, the four tiles read zero. They are not hidden.
+- When the owner has no task board, the tiles are not drawn.
+- When a log could not be read and others could, the tiles count the logs that were read, and one muted line under them reads “Some logs could not be read.”
+- When no log could be read, the tiles are not drawn, and they never say that nothing happened.
 - The window ends at the moment of the newest read. The counts read the 12 boards that changed last.
 - Home reads those logs again every 60 seconds while the page is visible.
-- The line is a deterministic count, not a judgment, and not a complete record.
-- Until the Tasks home answers and the first read of the logs ends, the line shows the quiet words “Reading the task logs…”.
+- The tiles come from Pomegr's task logs and not from the chat, so they and the mark are drawn while Aril is Off too.
+- The tiles are a deterministic count, not a judgment, and not a complete record.
+- Until the Tasks home answers and the first read of the logs ends, the place of the tiles shows the quiet words “Reading the task logs…”, and no count.
 
 ## Needs you
 
@@ -81,7 +99,14 @@ The owner approved the revised design, with Needs you, the running sessions, and
 - A line is a current state of a board or a session, never an old log entry.
 - So a line leaves the list as soon as its state ends.
 - With nothing to do, Needs you is not drawn.
-- A line holds the action, an optional failure detail, the repository on the right, and a chevron.
+- Needs you is a card: the `h2` **Needs you**, the lines, and a closing line.
+- The heading carries no count, because a count of the lines (2) disagreed with the tasks that the lines name (7 and 1).
+- The lines already carry the numbers.
+- A line is a rounded item with no rule between lines, and it takes the raised fill on hover.
+- A line holds a 32px glyph tile on the soft amber fill, the action with an optional failure detail after it, the repository under them in caption text, and a chevron.
+- The glyph names the kind: `session` for a session that waits, `check` for a finished task, `timer` for a stalled task, `stop` for a blocked task, and `history` for a paused queue.
+- The closing line reads “Nothing else is waiting on you.” with a `check` glyph, in muted text, at the foot of the card. The phone does not draw it.
+- When more lines wait than are drawn, the closing line is the count of the rest instead.
 - A line names no task and shows no task title and no task ID.
 - The lines are grouped by kind and by repository, and phrased as the action.
 
@@ -102,12 +127,13 @@ The owner approved the revised design, with Needs you, the running sessions, and
 - The task log records no ask of an owner and no failed start by itself. A failed start is a paused queue.
 - The counts cover the 50 newest tasks that the Tasks home serves. [Tasks](../architecture/tasks.md#tasks-home) owns that read.
 - A repository that the inventory no longer lists has no board to open, so its lines are left out.
-- At most eight lines are drawn, and a muted line says how many more wait.
+- At most eight lines are drawn, and the closing line says how many more wait.
 
 ### Failure detail
 
 - A failure detail is one word after the action, in amber text.
 - Amber text marks a failure only. No other word on a line is amber.
+- The glyph tile is the attention tone of the card: amber on its soft fill, and no word.
 - A task in Needs review has a failure when its newest CI, review, or merge result after it reported complete failed. A failure is its own line.
 - A passed result, or no result, joins the plain line of its repository, and the line shows no word for it.
 - The detail is the newest entry of these kinds that follows the newest `review` entry of the task.
@@ -146,8 +172,9 @@ The owner approved the revised design, with Needs you, the running sessions, and
 
 ## Continue
 
-- Continue is the `h2` **Continue**, a muted “· n running” when sessions run, and a quiet **Browse sessions** link to the Sessions page.
-- It holds the running sessions, the last viewed session while none runs, and one small line of pinned destinations.
+- Continue is a card next to Needs you: the `h2` **Continue**, a muted “n running” when sessions run, and a quiet **All sessions** link to the Sessions page at the end. A phone draws **All**, and the link keeps its full name.
+- It holds the running sessions, the last viewed session while none runs, one small line of pinned destinations, and a closing line.
+- Its rows have no rule between them. Each row is a rounded item with a hover fill, like those of Needs you.
 
 ### Running sessions
 
@@ -155,9 +182,10 @@ The owner approved the revised design, with Needs you, the running sessions, and
 - A session that is idle, open, stopped, closed, unknown, or not live is not a running session.
 - At most four sessions are drawn, and “n running” counts all of them.
 - A session that waits comes first. The others follow, newest activity first.
-- A session is one link row: a 7px state dot, the title, the state, and where it runs.
-- The state reads “Working” in muted text, or “Waiting for you” in amber text.
-- The dot is green for a session that works and amber for a session that waits.
+- A session is one link row: an 8px state dot, the title, and under it the state and where it runs.
+- The title is clamped to two lines.
+- The state reads “Working” in green text, or “Waiting for you” in amber text.
+- The dot is green for a session that works and amber for a session that waits. The green dot pulses: a ring of the green at 40% grows to 7px and fades over 1.8s, again and again. The amber dot does not pulse. Reduced motion removes the pulse.
 - Its meta reads “repository · updated n min ago”, in muted text, with no provider.
 - The time is when the session last changed: “updated just now”, “updated n min ago”, “updated n h ago”, or “updated n d ago”. A session with no known change time has none.
 - A session started for a task, or assigned to it, shows the title line of that task. Any other session, a review session included, shows its own title.
@@ -166,7 +194,7 @@ The owner approved the revised design, with Needs you, the running sessions, and
 - The task text is a board value, so it never enters `/api/state`. Home draws only that one line.
 - The rows wait for the boards of the shown sessions, so no title is drawn and then replaced by another.
 - When a board cannot be read, the row shows the session's own title.
-- On the phone, the row wraps: the state goes to the end of the first line, and the place goes under the title.
+- On the phone, the row keeps the same shape and is at least 44px high.
 
 ### Last viewed session
 
@@ -174,12 +202,13 @@ The owner approved the revised design, with Needs you, the running sessions, and
 - With no last viewed session, one muted sentence says that a shortcut will appear after the owner opens a session.
 - A last viewed session that the catalog does not hold reads as unavailable. Home never invents a title.
 
-### Pinned line
+### Pinned line and closing line
 
-- The pinned destinations are one small muted line under the sessions: **Pinned**, the destinations as brand-text links, and **Add pins** at the end.
-- With no pin, the line holds **Add pins** only.
+- The pinned destinations are one small muted line above the closing line: **Pinned** and the destinations as brand-text links.
+- With no pin, there is no pinned line.
 - Each pin has an icon **Unpin** action. It shows for the pin that has the pointer or the focus, and it is always shown on a touch screen.
-- **Add pins** opens the picker under the line. The owner may pin up to six destinations.
+- The closing line reads “Pin a session to keep it here” with a `pin` glyph, at the foot of the card, as a rounded item with a hover fill. It replaces **Add pins**.
+- The closing line is the pin action: it opens the picker under it. The owner may pin up to six destinations.
 - The preferences keep only the kind and the identity of a pin.
 - Pins and the last viewed session stay in browser storage and do not survive a desktop restart.
 
@@ -187,6 +216,8 @@ The owner approved the revised design, with Needs you, the running sessions, and
 
 - The composer is the chat composer. [Agent chat design](agent-chat.md#composer-on-home) owns its parts and its look.
 - The suggestions sit above the composer as chips.
+- On the desktop the block of the chips and the composer is the last block of the column, 8px further from the block above it than the other blocks are from each other.
+- On the phone the block is pinned to the bottom of the screen, above the safe area, with the page scrolling under it. Focus mode takes it out of that place.
 - A suggestion chip fills the message field and sends nothing.
 - The dock draws no launcher on Home, because the composer is the way in.
 - Home has no way to open the conversation without a message. The owner opens it from another page, or sends a message.
@@ -195,7 +226,7 @@ The owner approved the revised design, with Needs you, the running sessions, and
 ## While Aril is Off
 
 - With Aril Off there is no Aril: Home draws no composer and no suggestion chips, on the desktop and on a paired phone.
-- The greeting, the Aril line, Needs you, Continue, and the What's new card are drawn as they are. Needs you and the Aril line read the task logs and the boards, not the chat.
+- The date, the greeting, the last-24-hours tiles and their mark, Needs you, Continue, and the What's new card are drawn as they are. Needs you and the tiles read the task logs and the boards, not the chat.
 - The column holds only the content block, so there is no empty gap, no placeholder, and no notice where the composer was. Nothing says that Aril is off; Settings › Aril does.
 - The composer block is never drawn before the desktop has said whether Aril is On, so it is never drawn and then taken away. Before that Home has no composer and, once it is On, the composer appears at the foot of the column without moving anything above it.
 - A client that cannot read the switch, such as an older desktop, draws no composer.
@@ -208,7 +239,7 @@ The owner approved the revised design, with Needs you, the running sessions, and
 
 - Focusing the message field of the composer, or picking a suggestion chip, starts focus mode.
 - Another control of the composer, such as attach or the repository choice, does not start it.
-- In focus mode the greeting, the Aril line, Needs you, Continue, and the What's new card fade out and cannot be reached.
+- In focus mode the date, the greeting, the tiles, Needs you, Continue, and the What's new card fade out and cannot be reached.
 - They fade over 280ms, and they rise 10px as they go.
 - The block of the chips and the composer moves to the vertical middle of the content area over 480ms, with the curve `cubic-bezier(.2, .8, .2, 1)`.
 - The page does not move: the shift is measured from the place of the block in the page, and the block keeps its place in the flow.
@@ -233,10 +264,83 @@ The owner approved the revised design, with Needs you, the running sessions, and
 ### Phone
 
 - On the phone, focus mode fills the screen: a layer in the canvas fill covers the page, header included.
-- The composer does not lift. It is fixed to the bottom of the screen, above the keyboard, with the chips above it.
-- The block follows the keyboard: the visual viewport tells how far the keyboard covers the screen.
+- The composer does not lift to the middle. It stands above the place the keyboard will take, with the chips above it. The block keeps its bottom edge and grows upward.
+- With the keyboard open the block sits just above it, which is the upper-middle of a tall phone, so it can look centered. Its place is the keyboard's top edge, never the middle.
+- The block is fixed only in focus mode, and its resting place is sticky at the bottom of Home. Changing between the two moves it in one frame unless it glides.
+- Starting and ending focus mode glide the block between the two places over 480ms, with the desktop's curve, while the other parts fade.
+- The glide is a transform that runs from the offset between the two places to none. `useComposerGlide` measures the composer before the mode changes, in the event that changes it, and after.
+- The composer decides the offset, not the block, so the chips and the Back to Home action, which comes and goes with focus mode, never make the composer jump.
+- Every way out glides the same: a tap outside, **Back to Home**, and Escape. A glide that is still running starts the next one from where the block is on the screen.
+- The wrapper's entrance plays once. It never starts over when focus mode ends, or the block would be invisible for the 240ms of its delay and then fade back in.
+- **Back to Home** is drawn only in focus mode, so it goes at once when focus mode ends.
+- Reduced motion has no glide and no fade: the layer, the parts, and the block are at their new state at once, with no blink.
+- The block must rise above the layer, so no ancestor of the block makes a stacking context or a containing block in focus mode: no z-index, no animation, no transform, no filter, no containment.
+- The wrapper of the block leaves its sticky place, its z-index, and its entrance as focus mode starts, even while the entrance still runs. `tests/ui/home-focus-stacking.test.tsx` guards it, and guards the glide and the single entrance.
 - The hint is not drawn, because a phone has no Escape key. A Quiet **Back to Home** action takes its place.
 - Send turns the screen into the full-screen sheet of the panel.
+
+#### Where the block stands
+
+- Home places the block once, when focus mode starts and before the keyboard opens. It does not move while the keyboard opens, changes, or closes.
+- The block starts with its top at the screen height, less the keyboard height, less the block height, less a 16px gap.
+- Example: a 696px screen, a 264px keyboard, and a 232px block put the top at 184px.
+- The block keeps its bottom edge and grows upward as the message grows.
+- The bottom edge (`--focus-bottom`, the CSS `bottom` of the fixed block) is the screen height, less where the block ends. That is its starting top plus its height.
+- Example: the block above ends at 416px, so its bottom edge is 280px above the bottom of the screen, which is the keyboard height and the gap.
+- A message that makes the block taller moves its top edge up. The bottom edge, with **Send** and **Back to Home**, stays where it was.
+- The owner measured this on the same phone, with five lines typed and the keyboard open, a visible height of 432px:
+  - Held by its top, the block ran from 184px to 493px. **Send** was at 425px, at the edge of the keyboard, and **Back to Home** was at 493px, under it.
+  - Held by its bottom, the block ran from 107px to 416px, 309px tall. **Send** was at 348px and **Back to Home** at 416px, all above the keyboard.
+- The bottom edge is set once, with the starting top, so the first place and the glide to it are the same as before.
+- The block grows to a cap (`--focus-max`, the CSS `max-height`): from its bottom edge up to a 12px gap under the header. In the example it is 348px.
+- Past the cap the composer gives its height to the message field, which scrolls. The block never goes under the header.
+- The cap is never less than the height of the block at the start, so a block that the header already holds down does not shrink.
+- The screen height is the layout viewport (`innerHeight`), which the keyboard does not shrink.
+- The block height is the height it has in focus mode, with its **Back to Home** action.
+- The keyboard height is the one last measured on this device. Where none was measured, it is 38% of the screen height.
+- The starting top is never lower than the resting place of the block, so focus mode never lowers the block.
+- The starting top is never under the header. It stops 12px below the header's bottom edge, and the header wins where the two disagree.
+- A keyboard that does not open, such as a hardware keyboard, leaves the block above empty space.
+- `tests/ui/home-focus-keyboard.test.tsx` and `tests/ui/home-focus-place.test.ts` guard the place.
+
+#### Why the block does not follow the keyboard
+
+- The owner measured an Android phone through remote DevTools on 2026-10-31.
+- It ran Chrome 156 on the paired view over LAN HTTP, with a 360×696 layout viewport.
+- The keyboard opens in one step. The visual viewport goes from 696px to 432px, so the keyboard takes 264px, which is 38% of the screen.
+- The layout viewport keeps its size, because `interactive-widget` is `resizes-visual`.
+- Chrome then pans the visual viewport to show the focused field. Its `offsetTop` goes from 0 to 264px in about 200ms.
+- A fixed block that follows the keyboard moves with that pan. It overshoots to about 43px from the top of the screen and then settles. This is the bump.
+- The owner rejected three attempts, each as a blink.
+- Moving the block at once on the resize gave a one-frame jump of 267px.
+- `interactive-widget=resizes-content` gave a full relayout and the same jump.
+- An instant move with a glide made Chrome pan again, because it works from the transformed rectangle.
+- The VirtualKeyboard API is not available, because a paired view over LAN HTTP is not a secure context.
+- The owner approved the placement on the phone: the block glides to a place the keyboard will not cover, and the keyboard opens below it.
+- Chrome then has nothing to pan, and the block never moves again.
+- The block must be placed before the keyboard opens, so the placement uses a predicted height and not a measured one.
+
+#### The keyboard height Home remembers
+
+- While focus mode is on, Home listens to the resize of the visual viewport. A shrink of more than 120px is a keyboard.
+- The keyboard height is the layout viewport height less the visual viewport height.
+- Home keeps the last measured height for the next time focus mode starts. It moves nothing now.
+- A smaller shrink is a browser bar. A pinch zoom shrinks the visual viewport too, so a zoomed viewport is not measured.
+- Home stops listening when focus mode ends.
+- The height is one whole number of pixels in browser storage, under the key `pomegr.home.keyboardHeight`. It stays on this device.
+- The value is a per-device convenience, not content. It is in no request, log, report, or checkpoint, and Home works without it.
+- Home ignores a stored value that is not a number above 120 and below the screen height.
+- Where the browser cannot read or write storage, Home uses 38% of the screen height and keeps nothing.
+
+#### The layer
+
+- The layer fades in over 280ms, with the fade of the other parts. The layer is opaque, so a hard cut of it is a blink.
+- The layer fades out over 280ms when Home returns. It stays in the page for that time, and it ignores taps.
+- The wrapper of the block rises above the layer while the layer fades out. Without that, the block would vanish under the layer for a frame.
+- The layer is taken away when its fade ends, or 340ms after the fade starts if the browser reports no end.
+- Send removes the layer at once, because the panel takes the screen.
+- The desktop's layer is transparent, so it goes at once there.
+- `tests/ui/home-focus-keyboard.test.tsx` and `tests/ui/home-focus-stacking.test.tsx` guard the fade.
 
 ## What Home reads
 
@@ -244,7 +348,7 @@ The owner approved the revised design, with Needs you, the running sessions, and
 | --- | --- | --- |
 | Session catalog | The shell | Needs you, Continue |
 | Tasks home | `GET /api/tasks?view=home` | Needs you, the suggestions |
-| Task log | The desktop or the paired route, once for each of 12 boards | The Aril line, the failure details of Needs you |
+| Task log | The desktop or the paired route, once for each of 12 boards | The last-24-hours tiles, the failure details of Needs you |
 | Boards | `GET /api/tasks?repositoryId=`, through the Tasks page's store, for the repositories of the shown running sessions | The title line of the task of a running session |
 | Aril switch | The desktop or the paired route, shared with the dock and Settings | Whether the composer and the suggestions are drawn |
 | Repository inventory | The shell | The repository names, the composer's repository |
@@ -263,18 +367,19 @@ The owner approved the revised design, with Needs you, the running sessions, and
 
 - The card sits at the foot of the content, above the composer, and as wide as the column.
 - The card is horizontal: the thumbnail on the left, the text beside it, and the actions at the end.
-- The card has the panel fill, a 3px brand line at its start, and one-pixel rules above and below.
+- The card has the panel fill, a one-pixel rule all around, and the 6px panel radius, like the two cards above it.
 - The thumbnail has a small fixed size, so the card never grows with the artwork.
-- On the phone, the card stays horizontal and the thumbnail is smaller.
-- On the phone, the **See what's new** action takes the row below.
+- On the phone, the card is one compact row: a smaller thumbnail, the eyebrow and the title on one line each, and a chevron.
+- On the phone, the whole row opens the dialog, through the **See what's new** action stretched over the row, and the summary is left to the dialog.
+- On the phone, the dismiss keeps its own 44px target at the end of the row.
 - The card uses tokens only, as the rest of Home does.
 
 ### Content
 
-- A 132×84 thumbnail, 88×56 on the phone.
+- A 120×72 thumbnail, 64×48 on the phone.
 - An uppercase caption eyebrow in brand text.
 - A 14px/650 title.
-- One muted 12px summary line.
+- One muted 14px summary line.
 - A [Secondary](../../../DESIGN.md#buttons) **See what's new** action.
 - An icon dismiss.
 
@@ -329,7 +434,7 @@ The owner approved the revised design, with Needs you, the running sessions, and
 ## Samples
 
 - `/design-system` renders both forms of the What's new card, and the dialog.
-- It renders Home's Needs you list with every line kind and a failure detail.
+- It renders Home's Needs you card with every line kind and a failure detail.
 - It renders the running sessions with a session that waits.
-- It renders the Aril line with counts, with nothing logged, with a log that could not be read, and while it reads.
+- It renders the last-24-hours tiles with counts, with nothing logged, with a log that could not be read, and while they read.
 - It renders the suggestion chips above the composer, and the composer in focus mode, as [Agent chat design](agent-chat.md#samples) lists.

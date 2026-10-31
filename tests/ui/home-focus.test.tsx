@@ -35,6 +35,7 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
 
 import { HomeDashboard } from "../../app/HomeDashboard";
 import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
+import { KEYBOARD_STORAGE_KEY } from "../../app/components/home/focus-place";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import { HOME_PREFERENCES_STORAGE_KEY, HOME_UPDATE_ID } from "../../app/hooks/useHomePreferences";
 
@@ -56,6 +57,7 @@ afterEach(() => {
   removeHarness();
   window.matchMedia = realMatchMedia;
   vi.restoreAllMocks();
+  window.localStorage.removeItem(KEYBOARD_STORAGE_KEY);
   Object.defineProperty(window, "visualViewport", { configurable: true, value: undefined });
 });
 
@@ -332,10 +334,10 @@ describe("Send from focus mode", () => {
 });
 
 describe("focus mode on a phone", () => {
-  it("fills the screen with the composer above the keyboard, no lift, and a way back that needs no Escape key", async () => {
+  it("fills the screen with the composer placed above the keyboard, no lift, and a way back that needs no Escape key", async () => {
     mediaMatching((query) => query === "(max-width: 760px)");
     const listeners = new Map<string, () => void>();
-    const viewport = { height: 500, offsetTop: 0, addEventListener: (name: string, handler: () => void) => listeners.set(name, handler), removeEventListener: (name: string) => listeners.delete(name) };
+    const viewport = { height: 800, scale: 1, offsetTop: 0, addEventListener: (name: string, handler: () => void) => listeners.set(name, handler), removeEventListener: (name: string) => listeners.delete(name) };
     Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
     const person = user();
@@ -345,14 +347,20 @@ describe("focus mode on a phone", () => {
     await person.click(homeField());
     expect(inFocusMode()).toBe(true);
     expect(block().style.getPropertyValue("--focus-shift")).toBe("0px");
-    expect(block().style.getPropertyValue("--keyboard-inset")).toBe("300px");
-    // The keyboard closes a little: the block follows.
+    // The block is placed once, when focus mode starts, and the keyboard's own opening and changes do not move it (home-focus-keyboard.test.tsx measures where).
+    expect(block().style.getPropertyValue("--focus-bottom")).toMatch(/^-?\d+px$/);
+    expect(block().style.getPropertyValue("--focus-max")).toMatch(/^\d+px$/);
+    expect(block().style.getPropertyValue("--keyboard-inset")).toBe("");
+    const placed = block().getAttribute("style");
+    viewport.height = 500;
+    listeners.get("resize")?.();
     viewport.height = 600;
     listeners.get("resize")?.();
-    expect(block().style.getPropertyValue("--keyboard-inset")).toBe("200px");
+    expect(block().getAttribute("style")).toBe(placed);
     await person.click(screen.getByRole("button", { name: "Back to Home" }));
     expect(inFocusMode()).toBe(false);
-    expect(block().style.getPropertyValue("--keyboard-inset")).toBe("");
+    expect(block().style.getPropertyValue("--focus-bottom")).toBe("");
+    expect(block().style.getPropertyValue("--focus-max")).toBe("");
     expect(listeners.size).toBe(0);
   });
 

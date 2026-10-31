@@ -85,6 +85,17 @@ describe("Home while Aril is Off", () => {
     expect(chat.agentChat).not.toHaveBeenCalled();
   });
 
+  it("draws the last-24-hours tiles and their mark while Aril is Off, since the numbers come from Pomegr and not from the chat", async () => {
+    busyHome();
+    chat.arilSwitch = { on: false, pairedOn: false };
+    home();
+    await settle();
+    noComposer();
+    expect(screen.getByText("Last 24 hours")).toBeInTheDocument();
+    const tiles = within(screen.getByRole("list", { name: "Tasks in the last 24 hours" })).getAllByRole("listitem");
+    expect(tiles.map((tile) => tile.firstElementChild?.textContent)).toEqual(["1", "1", "1", "1"]);
+  });
+
   it("draws the composer and the chips only when Aril is On", async () => {
     busyHome();
     home();

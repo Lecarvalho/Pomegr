@@ -11,6 +11,7 @@ import { CommandIcon, type CommandIconName } from "../command-center/CommandIcon
 import { CommandSelect, type CommandSelectOption } from "../command-center/CommandPage";
 import { useMinuteClock } from "../tasks/task-panel-hooks";
 import { HOME_RUNNING_SHOWN, runningCandidates, runningSessions, type RunningSession } from "./home-model";
+import card from "./HomeCard.module.css";
 import styles from "./HomeContinue.module.css";
 
 type Destination = HomePin & { title: string; detail: string; href: string; icon: CommandIconName };
@@ -70,15 +71,22 @@ function PinPicker({ destinations, pins, onToggle, catalogLoading }: {
   </div>;
 }
 
-/** The running sessions: a state dot, the title, the state (Working, or Waiting for you in amber), its repository, and when it last changed. */
+/**
+ * The running sessions: a dot (green and pulsing while the session works, amber while it waits), the title in two lines at most, then the state
+ * (Working in green, or Waiting for you in amber), its repository, and when it last changed.
+ */
 export function HomeRunningList({ sessions }: { sessions: readonly RunningSession[] }) {
-  return <ul className={styles.sessions} aria-label="Running sessions">
+  return <ul className={card.list} aria-label="Running sessions">
     {sessions.map((session) => <li key={session.key}>
-      <Link className={styles.sessionRow} href={session.href}>
+      <Link className={`${card.item} ${styles.sessionRow}`} href={session.href}>
         <span className={`${styles.dot} ${session.waiting ? styles.dotWaiting : styles.dotWorking}`} aria-hidden="true" />
-        <span className={styles.sessionTitle}>{session.title}</span>
-        <span className={session.waiting ? styles.waiting : styles.state}>{session.waiting ? "Waiting for you" : "Working"}</span>
-        <span className={styles.meta}>{session.meta}</span>
+        <span className={styles.sessionBody}>
+          <span className={styles.sessionTitle}>{session.title}</span>
+          <span className={styles.sessionSub}>
+            <span className={session.waiting ? styles.waiting : styles.state}>{session.waiting ? "Waiting for you" : "Working"}</span>
+            <span className={styles.meta}>{session.meta}</span>
+          </span>
+        </span>
       </Link>
     </li>)}
   </ul>;
@@ -108,19 +116,20 @@ export function HomeContinue({ preferences, names, browseRef }: { preferences: H
   const running = useMemo(() => runningSessions(sessions, names, boards, now), [sessions, names, boards, now]);
   const showRunning = running.total > 0 && running.settled;
 
-  return <section className={styles.continue} aria-labelledby={headingId} aria-busy={!ready || undefined}>
-    <header className={styles.heading}>
-      <h2 id={headingId}>Continue{showRunning && <span className={styles.count}> · {running.total} running</span>}</h2>
-      <Link ref={browseRef} className="commandQuietAction" href="/sessions">Browse sessions<CommandIcon name="arrow" size="small" /></Link>
+  return <section className={`${card.card} ${styles.continue}`} aria-labelledby={headingId} aria-busy={!ready || undefined}>
+    <header className={card.head}>
+      <h2 id={headingId}>Continue</h2>
+      {showRunning && <span className={styles.count}>{running.total} running</span>}
+      <Link ref={browseRef} className={`commandQuietAction ${styles.headLink}`} href="/sessions" aria-label="All sessions">All<span className={styles.long}> sessions</span><CommandIcon name="arrow" size="small" /></Link>
     </header>
     {!ready ? <p className={styles.quiet} role="status">Loading your shortcuts…</p> : <>
       {showRunning ? <HomeRunningList sessions={running.shown} /> : running.total === 0 && <div className={styles.last}>
-        {lastViewed ? <Link className={styles.returnLink} href={lastViewed.href} aria-label={`Open last viewed session: ${lastViewed.title}`}><CommandIcon name="session" /><span><small>Last viewed session</small><strong>{lastViewed.title}</strong><span>{lastViewed.detail}</span></span><CommandIcon name="arrow" size="small" /></Link>
+        {lastViewed ? <Link className={`${card.item} ${styles.returnLink}`} href={lastViewed.href} aria-label={`Open last viewed session: ${lastViewed.title}`}><CommandIcon name="session" /><span><small>Last viewed session</small><strong>{lastViewed.title}</strong><span>{lastViewed.detail}</span></span><CommandIcon name="arrow" size="small" /></Link>
           : <p>{lastViewedSessionId ? (catalogLoading ? "Finding your last viewed session…" : "Your last viewed session is not in the current catalog. Browse sessions to find another.") : "Open a session to inspect its agents and recorded evidence. A shortcut back to it will appear here."}</p>}
       </div>}
 
-      <div className={styles.pinned}>
-        {pins.length > 0 && <>
+      <div className={styles.foot}>
+        {pins.length > 0 && <div className={styles.pinned}>
           <span id="home-pins-heading" className={styles.pinnedLabel}>Pinned</span>
           <ul className={styles.pinList} aria-labelledby="home-pins-heading">
             {pins.map((pin, index) => {
@@ -133,9 +142,10 @@ export function HomeContinue({ preferences, names, browseRef }: { preferences: H
               </li>;
             })}
           </ul>
-        </>}
+        </div>}
+        {/* The closing line is the way to pin: it opens the picker under it. */}
         <details ref={pickerRef} className={styles.pinDisclosure} onToggle={(event) => setPickerOpen(event.currentTarget.open)}>
-          <summary ref={pickerSummaryRef}>Add pins<CommandIcon name="pin" size="small" /></summary>
+          <summary ref={pickerSummaryRef}><CommandIcon name="pin" size="small" />Pin a session to keep it here</summary>
           {pickerOpen && <PinPicker destinations={destinations} pins={pins} onToggle={togglePin} catalogLoading={catalogLoading} />}
           <button type="button" className="commandSecondaryAction" onClick={() => { if (pickerRef.current) pickerRef.current.open = false; pickerSummaryRef.current?.focus(); }}>Done</button>
         </details>

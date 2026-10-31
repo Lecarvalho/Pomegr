@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeChat, REPO_A, REPO_B, agentMessage, conversationOf, harness, installHarness, newUser, removeHarness, setBridge, setInventory, settle, userMessage } from "./agent-chat-fixture";
-import { answerLog, busyHome, desktopBridge, homeHarness, homeOf, board, liveSession, pairPhone, resetHome, taskLog } from "./home-fixture";
+import { answerLog, busyHome, desktopBridge, homeHarness, homeOf, board, liveSession, logEntry, logs, pairPhone, resetHome, taskLog } from "./home-fixture";
 
 // Home with Aril: the Aril line, Needs you, and the running sessions from the Tasks home, the task logs, and the sessions Pomegr observes (fixed rules,
 // no model run), and the composer with its suggestion chips. How focus mode works and how Send reaches the maximized panel is in home-focus.test.tsx.
@@ -59,6 +59,10 @@ const homeField = () => document.getElementById("home-aril-message") as HTMLText
 const launcher = () => screen.queryByRole("button", { name: /^Open Aril, the Pomegr agent/ });
 const needsYou = () => screen.getByRole("region", { name: "Needs you" });
 const rowsOf = (region: HTMLElement) => within(region).getAllByRole("link").map((row) => row.textContent);
+// The four tiles of the last 24 hours: the number, then the full label (the short label of a phone is aria-hidden).
+const DAY = "Tasks in the last 24 hours";
+const dayTiles = () => within(screen.getByRole("list", { name: DAY })).getAllByRole("listitem").map((tile) => `${tile.firstElementChild?.textContent} ${tile.lastElementChild?.firstElementChild?.textContent}`);
+const noTiles = () => { expect(screen.queryByRole("list", { name: DAY })).toBeNull(); expect(screen.queryByText("Last 24 hours")).toBeNull(); };
 
 function home(sessions: SessionSummary[] = []) {
   return render(<SessionCatalogProvider sessions={sessions}><HomeDashboard /><AgentChatDock /></SessionCatalogProvider>);
@@ -66,21 +70,26 @@ function home(sessions: SessionSummary[] = []) {
 
 const waitingIn = (repositoryId: string) => liveSession("claude:waiting", { repositoryId, activityStatus: "needs_input", needsInput: true, title: "Answer me", createdAt: new Date(Date.now() - 2 * 60_000).toISOString() });
 
-describe("the Aril line and Needs you", () => {
+describe("the last 24 hours and Needs you", () => {
   it("are written from the Tasks home, the task logs, and the sessions by fixed rules, and run no model", async () => {
     busyHome();
     home([waitingIn(REPO_B)]);
     await settle();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^Good (morning|afternoon|evening)$/);
-    expect(screen.getByText("In the last 24 hours: 1 started, 1 reached Review, 1 merged, 1 marked Done.")).toBeInTheDocument();
-    // One line for each thing to do: the action, a failure in amber, and the repository on the right. No task ID and no title.
+    expect(screen.getByText("Last 24 hours")).toBeInTheDocument();
+    expect(dayTiles()).toEqual(["1 Started", "1 Reached Review", "1 Merged", "1 Marked Done"]);
+    // One line for each thing to do: the action, a failure in amber, and the repository under it. No task ID and no title.
     expect(rowsOf(needsYou())).toEqual([
       "Answer a session that is waiting for youclapline",
-      "Review 1 finished taskCI failedpomegr",
+      "Review 1 finished task CI failedpomegr",
       "Check 1 stalled taskpomegr",
       "Unblock 1 taskclapline",
-      "Restart the paused queueA start failedclapline",
+      "Restart the paused queue A start failedclapline",
     ]);
+    // The heading carries no count, because the lines say how many, and the card ends with a closing line.
+    expect(within(needsYou()).getByRole("heading", { name: "Needs you" })).toHaveTextContent(/^Needs you$/);
+    expect(within(needsYou()).getByRole("heading", { name: "Needs you" }).nextElementSibling).toBeNull();
+    expect(within(needsYou()).getByText("Nothing else is waiting on you.")).toBeInTheDocument();
     expect(needsYou()).not.toHaveTextContent(/T-\d|Retry the upload|Cut the upload|Rename the export/);
     expect(within(needsYou()).getByText("CI failed")).toHaveClass(/urgent/);
     expect(within(needsYou()).getByText("A start failed")).toHaveClass(/urgent/);
@@ -102,19 +111,68 @@ describe("the Aril line and Needs you", () => {
     await settle();
     expect(screen.getByText("Reading the task logs…")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
-    expect(screen.queryByText(/^In the last 24 hours:/)).toBeNull();
+    noTiles();
     release();
     await settle();
     expect(screen.queryByText("Reading the task logs…")).toBeNull();
     expect(within(needsYou()).getByText("CI failed")).toBeInTheDocument();
-    expect(screen.getByText("In the last 24 hours: 1 started, 1 reached Review, 1 merged, 1 marked Done.")).toBeInTheDocument();
+    expect(dayTiles()).toEqual(["1 Started", "1 Reached Review", "1 Merged", "1 Marked Done"]);
   });
 
-  it("says that nothing was logged, and draws no Needs you when nothing waits", async () => {
+  it("draws the four tiles with zeros when nothing was logged, and draws no Needs you when nothing waits", async () => {
     home();
     await settle();
-    expect(screen.getByText("Nothing was logged in the last 24 hours.")).toBeInTheDocument();
+    expect(dayTiles()).toEqual(["0 Started", "0 Reached Review", "0 Merged", "0 Marked Done"]);
+    expect(screen.queryByText("Some logs could not be read.")).toBeNull();
     expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
+    // Continue takes the row on its own.
+    expect(screen.getByRole("region", { name: /^Continue/ }).parentElement?.className).toMatch(/isSingle/);
+  });
+
+  it("draws a zero in quiet ink and Marked Done in green once it counts", async () => {
+    logs.set(REPO_A, [logEntry(1, "T-1", "started", 2), logEntry(2, "T-2", "done", 1)]);
+    home();
+    await settle();
+    const numbers = within(screen.getByRole("list", { name: DAY })).getAllByRole("listitem").map((tile) => tile.firstElementChild as HTMLElement);
+    expect(numbers.map((number) => number.textContent)).toEqual(["1", "0", "0", "1"]);
+    expect(numbers.map((number) => (/zero/.test(number.className) ? "zero" : /done/.test(number.className) ? "done" : "ink"))).toEqual(["ink", "zero", "zero", "done"]);
+    // A phone draws the short labels and keeps the full ones for assistive technology.
+    const labels = within(screen.getByRole("list", { name: DAY })).getAllByRole("listitem").map((tile) => [...(tile.lastElementChild?.children ?? [])].map((part) => [part.textContent, part.getAttribute("aria-hidden")]));
+    expect(labels).toEqual([[["Started", null], ["Started", "true"]], [["Reached Review", null], ["Review", "true"]], [["Merged", null], ["Merged", "true"]], [["Marked Done", null], ["Done", "true"]]]);
+  });
+
+  it("draws the date line above the greeting in the owner's locale", async () => {
+    home();
+    await settle();
+    const weekday = new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(new Date());
+    const date = screen.getByText(new RegExp(weekday));
+    expect(date.className).toMatch(/date/);
+    expect(date.compareDocumentPosition(screen.getByRole("heading", { level: 1 })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("is laid out but not drawn until the boards, the logs, the sessions, and the switch have answered, and then is drawn at once", async () => {
+    busyHome();
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    taskLog.mockImplementation(async (id: string) => { if (id === REPO_A) await held; return answerLog(id); });
+    home();
+    await settle();
+    const column = () => screen.getByRole("heading", { level: 1, hidden: true }).closest('[class*="_column_"]') as HTMLElement;
+    expect(column().className).toMatch(/isPending/);
+    release();
+    await settle();
+    expect(column().className).not.toMatch(/isPending/);
+    // The blocks enter one after another, and the cards come in one block: the two cards share it.
+    const entering = [...column().querySelectorAll('[class*="enter"]')].map((block) => (block as HTMLElement).style.getPropertyValue("--enter"));
+    expect(entering).toEqual(["0", "1", "2", "3", "4"]);
+  });
+
+  it("draws the two cards side by side when something waits", async () => {
+    busyHome();
+    home();
+    await settle();
+    expect(needsYou().parentElement).toBe(screen.getByRole("region", { name: /^Continue/ }).parentElement);
+    expect(needsYou().parentElement?.className).not.toMatch(/isSingle/);
   });
 
   it("draws no line when no log could be read, and keeps the lines without a failure detail", async () => {
@@ -122,7 +180,7 @@ describe("the Aril line and Needs you", () => {
     taskLog.mockImplementation(async () => ({ ok: false, error: "unavailable" }) as never);
     home();
     await settle();
-    expect(screen.queryByText(/last 24 hours/)).toBeNull();
+    noTiles();
     expect(screen.queryByText("Reading the task logs…")).toBeNull();
     expect(within(needsYou()).getByText("Review 1 finished task")).toBeInTheDocument();
     expect(within(needsYou()).queryByText("CI failed")).toBeNull();
@@ -133,7 +191,8 @@ describe("the Aril line and Needs you", () => {
     taskLog.mockImplementation(async (id: string) => (id === REPO_B ? ({ ok: false, error: "unavailable" } as never) : answerLog(id)));
     home();
     await settle();
-    expect(screen.getByText("In the last 24 hours: 1 started, 1 reached Review, 1 merged, 1 marked Done. Some logs could not be read.")).toBeInTheDocument();
+    expect(dayTiles()).toEqual(["1 Started", "1 Reached Review", "1 Merged", "1 Marked Done"]);
+    expect(screen.getByText("Some logs could not be read.")).toBeInTheDocument();
   });
 
   it("leaves out the lines of a repository the inventory does not list", async () => {
@@ -141,7 +200,7 @@ describe("the Aril line and Needs you", () => {
     setInventory([[REPO_A, "pomegr"]]);
     home();
     await settle();
-    expect(rowsOf(needsYou())).toEqual(["Review 1 finished taskCI failedpomegr", "Check 1 stalled taskpomegr"]);
+    expect(rowsOf(needsYou())).toEqual(["Review 1 finished task CI failedpomegr", "Check 1 stalled taskpomegr"]);
   });
 
   it("shows eight lines and counts the rest", async () => {
@@ -152,6 +211,9 @@ describe("the Aril line and Needs you", () => {
     await settle();
     expect(within(needsYou()).getAllByRole("link")).toHaveLength(8);
     expect(within(needsYou()).getByText("2 more things need you.")).toBeInTheDocument();
+    // The heading has no badge, and the closing line is the count of the rest, not the claim that nothing else waits.
+    expect(within(needsYou()).getByRole("heading", { name: "Needs you" }).nextElementSibling).toBeNull();
+    expect(within(needsYou()).queryByText("Nothing else is waiting on you.")).toBeNull();
   });
 
   it("makes a session that waits a line even where the Tasks home cannot be read", async () => {
@@ -174,7 +236,8 @@ describe("Continue", () => {
     ]);
     await settle();
     const region = screen.getByRole("region", { name: /^Continue/ });
-    expect(within(region).getByRole("heading", { name: /^Continue/ })).toHaveTextContent("Continue · 3 running");
+    expect(within(region).getByRole("heading", { name: "Continue" })).toBeInTheDocument();
+    expect(within(region).getByText("3 running")).toBeInTheDocument();
     const list = within(region).getByRole("list", { name: "Running sessions" });
     expect(within(list).getAllByRole("link").map((row) => row.textContent)).toEqual([
       "Answer meWaiting for youclapline · updated just now",
@@ -182,7 +245,10 @@ describe("Continue", () => {
       "Rough overlay polishWorkingpomegr · updated 1 min ago",
     ]);
     expect(within(list).getByText("Waiting for you")).toHaveClass(/waiting/);
-    expect(within(list).getAllByText("Working")[0]).not.toHaveClass(/waiting/);
+    expect(within(list).getAllByText("Working")[0]).toHaveClass(/state/);
+    // A session that works has the pulsing dot, and one that waits has the amber dot.
+    const dots = within(list).getAllByRole("link").map((row) => row.firstElementChild?.className ?? "");
+    expect(dots.map((name) => (/dotWorking/.test(name) ? "working" : /dotWaiting/.test(name) ? "waiting" : "?"))).toEqual(["waiting", "working", "working"]);
     // A session started for a task shows the task's title, and any other shows its own: the title of an idle session is not drawn at all.
     expect(within(list).queryByText("Session of the task")).toBeNull();
     expect(within(list).getAllByRole("link")[0]).toHaveAttribute("href", "/sessions/claude-waiting");
@@ -194,7 +260,7 @@ describe("Continue", () => {
     await settle();
     const region = screen.getByRole("region", { name: /^Continue/ });
     expect(within(region).getAllByRole("link", { name: /updated/ }).filter((row) => row.closest("ul")?.getAttribute("aria-label") === "Running sessions")).toHaveLength(4);
-    expect(within(region).getByRole("heading", { name: /^Continue/ })).toHaveTextContent("Continue · 6 running");
+    expect(within(region).getByText("6 running")).toBeInTheDocument();
   });
 
   it("waits for the board a title comes from, so a title is never drawn and then replaced", async () => {
@@ -225,7 +291,10 @@ describe("Continue", () => {
     await settle();
     const list = screen.getByRole("list", { name: "Pinned" });
     expect(within(list).getAllByRole("link").map((link) => link.textContent)).toEqual(["Usage limits", "pomegr"]);
-    expect(screen.getByRole("link", { name: "Browse sessions" })).toHaveAttribute("href", "/sessions");
+    expect(screen.getByRole("link", { name: "All sessions" })).toHaveAttribute("href", "/sessions");
+    // The closing line of Continue is the way to pin, and replaces Add pins.
+    expect(screen.getByText("Pin a session to keep it here")).toBeInTheDocument();
+    expect(screen.queryByText("Add pins")).toBeNull();
   });
 });
 
@@ -340,7 +409,7 @@ describe("Home on a paired phone", () => {
     const person = user();
     home();
     await settle();
-    expect(screen.getByText("In the last 24 hours: 1 started, 1 reached Review, 1 merged, 1 marked Done.")).toBeInTheDocument();
+    expect(dayTiles()).toEqual(["1 Started", "1 Reached Review", "1 Merged", "1 Marked Done"]);
     expect(within(needsYou()).getByText(/CI failed/)).toBeInTheDocument();
     await person.type(homeField(), "From the phone");
     await person.keyboard("{Enter}");
@@ -361,8 +430,8 @@ describe("Home in a browser that cannot reach the chat", () => {
     harness.mode = "local";
     home();
     await settle();
-    expect(rowsOf(needsYou())).toEqual(["Review 1 finished taskpomegr", "Check 1 stalled taskpomegr", "Unblock 1 taskclapline", "Restart the paused queueA start failedclapline"]);
-    expect(screen.queryByText(/last 24 hours/)).toBeNull();
+    expect(rowsOf(needsYou())).toEqual(["Review 1 finished taskpomegr", "Check 1 stalled taskpomegr", "Unblock 1 taskclapline", "Restart the paused queue A start failedclapline"]);
+    noTiles();
     expect(screen.queryByText("Reading the task logs…")).toBeNull();
     expect(screen.queryByRole("textbox", { name: "Message Aril" })).toBeNull();
     expect(screen.queryByRole("list", { name: "Suggestions" })).toBeNull();
@@ -378,7 +447,7 @@ describe("Home in a browser that cannot reach the chat", () => {
     await settle();
     expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
     expect(screen.queryByRole("textbox", { name: "Message Aril" })).toBeNull();
-    expect(screen.queryByText(/last 24 hours/)).toBeNull();
+    noTiles();
   });
 
   it("says that task boards are unavailable when the Tasks home is, and nothing when it is desktop only", async () => {
@@ -390,7 +459,7 @@ describe("Home in a browser that cannot reach the chat", () => {
     view.rerender(<SessionCatalogProvider sessions={[]}><HomeDashboard /><AgentChatDock /></SessionCatalogProvider>);
     await settle();
     expect(screen.queryByText("Task boards are unavailable. Pomegr will retry.")).toBeNull();
-    expect(screen.queryByText(/last 24 hours/)).toBeNull();
+    noTiles();
   });
 });
 
