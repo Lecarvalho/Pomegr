@@ -28,7 +28,8 @@ The task board is in [Task board design](task-board.md).
 - The board rows come from `useTasks`.
 - The repositories come from the inventory.
 - The only thing the chat writes to browser storage is the last repository ID (`pomegr.agentChat.repository`), never a message.
-- The composer on Home reads and writes the same key and nothing else.
+- The composer on Home reads and writes the same key.
+- Home's focus mode on a phone keeps one more value, which is a keyboard height and not chat content. [Home design](home.md#the-keyboard-height-home-remembers) owns it.
 
 ## Launcher
 

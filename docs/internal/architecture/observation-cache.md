@@ -3151,6 +3151,8 @@ browser origin (including the desktop renderer), not monitor evidence or checkpo
 Unavailable storage falls back to memory and the UI explains the limitation. Missing
 catalog destinations remain removable and reappear if their records return.
 
+Home's focus mode on a phone keeps one more browser storage key, `pomegr.home.keyboardHeight`. It holds one whole number of pixels, above 120 and below the screen height: the last height of the on-screen keyboard that the visual viewport showed. The next focus mode uses it to place the composer block above the keyboard. It is a per-device convenience, never content, an identifier, or a monitor value, and it is in no request, log, report, or checkpoint. A browser that cannot read or write storage uses a share of the screen height ([Home design](../design/home.md#the-keyboard-height-home-remembers)).
+
 Session coach, Saved views, and Session comparison are non-interactive Coming soon
 previews. No agent runs, model call, external transmission, or session control is enabled
 by these previews. The coach's proposed opt-in policy is product direction only.

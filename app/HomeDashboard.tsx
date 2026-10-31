@@ -13,6 +13,7 @@ import { HomeUpdateCard } from "./components/home/HomeUpdateCard";
 import { HomeUpdateIllustration } from "./components/home/HomeUpdateIllustration";
 import { dayCounts, greetingFor, needsYou, suggestionFacts } from "./components/home/home-model";
 import { useComposerGlide } from "./components/home/useComposerGlide";
+import { useDimLayer } from "./components/home/useDimLayer";
 import { useHomeLogs } from "./components/home/useHomeLogs";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { useHomePreferences } from "./hooks/useHomePreferences";
@@ -63,6 +64,8 @@ export function HomeDashboard() {
   // On a phone the composer block changes its positioning when focus mode starts and ends. Where it is is marked in the event that changes the mode, before the
   // change, and the block glides from there, so it never jumps or disappears for a frame (useComposerGlide).
   const { block: composerBlock, mark: markGlide } = useComposerGlide(mode);
+  // The layer over the page in focus mode fades in and out on a phone, so it outlives focus mode for the fade (useDimLayer).
+  const dim = useDimLayer(mode);
   const leave = useCallback(() => { markGlide("home"); setMode("home"); page.current?.focus({ preventScroll: true }); }, [markGlide]);
   const enterFocus = useCallback(() => {
     if (mode !== "home") return;
@@ -115,7 +118,7 @@ export function HomeDashboard() {
   const waiting = needs !== null && needs.total > 0;
 
   return <section ref={page} id={HOME_SECTION_ID} tabIndex={-1} className={`commandView commandHome ${styles.home}`} aria-labelledby="home-heading" onKeyDown={keyDown}>
-    {mode === "focus" && <div className={styles.dim} aria-hidden="true" onClick={() => { if (emptyDraft) leave(); }} />}
+    {dim.present && <div className={`${styles.dim}${dim.leaving ? ` ${styles.isLeaving}` : ""}`} aria-hidden="true" onClick={() => { if (mode === "focus" && emptyDraft) leave(); }} onAnimationEnd={dim.end} />}
     <div className={`${styles.column}${revealed ? "" : ` ${styles.isPending}`}`}>
       <div className={`${styles.content}${mode === "home" ? "" : ` ${styles.isHidden}`}`} inert={mode === "home" ? undefined : true}>
         <div className={styles.enter} style={enter(0)}>
@@ -147,7 +150,7 @@ export function HomeDashboard() {
         /></div>}
       </div>
 
-      {chat && <div className={`${styles.composer} ${styles.enter}${mode === "home" ? "" : ` ${styles.isLifted}`}${composerEntered ? ` ${styles.isEntered}` : ""}`} style={enter(4)}
+      {chat && <div className={`${styles.composer} ${styles.enter}${mode === "home" ? "" : ` ${styles.isLifted}`}${composerEntered ? ` ${styles.isEntered}` : ""}${dim.leaving ? ` ${styles.isReleasing}` : ""}`} style={enter(4)}
         onAnimationEnd={(event) => { if (event.target === event.currentTarget) setComposerEntered(true); }}>
         <HomeAril suggestions={suggestions} mode={mode} blockRef={composerBlock} onFocus={enterFocus} onSent={sent} onLeave={leave} onEmptyChange={setEmptyDraft} />
       </div>}

@@ -11,13 +11,12 @@ import { CHAT_DEFAULT_EFFORT, chatModelOptions, chatModelValue, initialChatRun, 
 import { useAgentChatComposer } from "../agent-chat/useAgentChatComposer";
 import type { CommandSelectOption } from "../command-center/CommandSelect";
 import { NO_MODELS } from "../tasks/task-fields";
+import { focusTop, predictedKeyboardHeight, storeKeyboardHeight } from "./focus-place";
+import { onPhone } from "./home-media";
 import styles from "./HomeAril.module.css";
 
 /** Home is in one of three modes: its parts, the composer lifted to the middle (focus), or the thread the message was handed to. */
 export type HomeMode = "home" | "focus" | "thread";
-
-const PHONE = "(max-width: 760px)";
-const phone = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(PHONE).matches;
 
 /** The run the repository's thread last used, read once for each repository the composer shows. It is only the composer's first model and effort. */
 function useThreadRun(repositoryId: string): { run: ChatRunSource | null; ready: boolean } {
@@ -33,8 +32,8 @@ function useThreadRun(repositoryId: string): { run: ChatRunSource | null; ready:
 
 /**
  * While the composer is lifted (focus mode and the thread after it), shifts the block to the vertical middle of the content area: the shift is
- * measured from the block's own place in the page, so the page does not move. The block returns when Home does. On a phone the block is fixed to
- * the bottom instead, and there is no shift.
+ * measured from the block's own place in the page, so the page does not move. The block returns when Home does. On a phone the block is fixed above
+ * the keyboard instead (useFocusPlace), and there is no shift.
  */
 function useFocusShift(block: RefObject<HTMLElement | null>, lifted: boolean) {
   const shift = useRef(0);
@@ -42,7 +41,7 @@ function useFocusShift(block: RefObject<HTMLElement | null>, lifted: boolean) {
     const element = block.current;
     if (!element) return;
     const apply = () => {
-      if (!lifted || phone()) { shift.current = 0; element.style.setProperty("--focus-shift", "0px"); return; }
+      if (!lifted || onPhone()) { shift.current = 0; element.style.setProperty("--focus-shift", "0px"); return; }
       const area = (element.closest(".commandMain") ?? document.documentElement).getBoundingClientRect();
       const rect = element.getBoundingClientRect();
       const natural = rect.top - shift.current;
@@ -55,18 +54,47 @@ function useFocusShift(block: RefObject<HTMLElement | null>, lifted: boolean) {
   }, [block, lifted]);
 }
 
-/** On a phone in focus mode, keeps the block above the keyboard: the visual viewport shrinks when the keyboard opens, and the block follows its bottom edge. */
-function useKeyboardInset(block: RefObject<HTMLElement | null>, active: boolean) {
-  useEffect(() => {
+/**
+ * On a phone, places the block when focus mode starts, above the place the keyboard will take (`--focus-top`, see focus-place.ts), and never moves it again: it follows the
+ * keyboard neither as it opens nor as it changes. Call the returned function in the event that starts focus mode, before the mode changes, so that the block's resting
+ * place is known. The block is measured in its focus layout, after the render and before the paint, and in the same commit as `useComposerGlide`'s measure, which runs after
+ * this and so reads the block at its new place.
+ */
+function useFocusPlace(block: RefObject<HTMLElement | null>, focus: boolean): () => void {
+  const rest = useRef<number | null>(null);
+  const begin = () => {
     const element = block.current;
+    rest.current = element && onPhone() ? element.getBoundingClientRect().top : null;
+  };
+  useLayoutEffect(() => {
+    const element = block.current;
+    if (!focus || !element || !onPhone()) return;
+    const screen = window.innerHeight;
+    const header = document.querySelector(".commandHeader")?.getBoundingClientRect().bottom ?? 0;
+    const top = focusTop({ screen, keyboard: predictedKeyboardHeight(screen), block: element.getBoundingClientRect().height, headerBottom: header, restTop: rest.current });
+    rest.current = null;
+    element.style.setProperty("--focus-top", `${top}px`);
+    return () => { element.style.removeProperty("--focus-top"); };
+  }, [block, focus]);
+  return begin;
+}
+
+/**
+ * While focus mode is on, on a phone, learns how tall the keyboard is: the visual viewport shrinks by it when it opens, and the layout viewport does not. The height is kept for
+ * the next time focus mode starts. It moves nothing now.
+ */
+function useKeyboardMeasure(active: boolean) {
+  useEffect(() => {
     const viewport = typeof window === "undefined" ? null : window.visualViewport;
-    if (!active || !element || !viewport) return;
-    const update = () => element.style.setProperty("--keyboard-inset", `${Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop))}px`);
-    update();
-    viewport.addEventListener("resize", update);
-    viewport.addEventListener("scroll", update);
-    return () => { viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update); element.style.removeProperty("--keyboard-inset"); };
-  }, [block, active]);
+    if (!active || !viewport || !onPhone()) return;
+    const measure = () => {
+      // A pinch zoom shrinks the visual viewport too, and it is not a keyboard.
+      if ((viewport.scale ?? 1) > 1.01) return;
+      storeKeyboardHeight(window.innerHeight - viewport.height, window.innerHeight);
+    };
+    viewport.addEventListener("resize", measure);
+    return () => viewport.removeEventListener("resize", measure);
+  }, [active]);
 }
 
 /** The suggestion chips above the composer. A chip fills the message field and sends nothing. */
@@ -180,11 +208,14 @@ export function HomeAril({ suggestions, mode, blockRef, onFocus, onSent, onLeave
   const ownBlock = useRef<HTMLElement>(null);
   const block = blockRef ?? ownBlock;
   useFocusShift(block, mode !== "home");
-  useKeyboardInset(block, mode === "focus");
+  const beginFocus = useFocusPlace(block, mode === "focus");
+  useKeyboardMeasure(mode === "focus");
+  // Where the block rests is read in the event that starts focus mode, before the mode changes.
+  const focusStarts = () => { if (mode === "home") beginFocus(); onFocus(); };
 
   return <HomeComposerShell mode={mode} onLeave={onLeave} shellRef={block}>
     {repositoryId === null
       ? <HomeComposerWithoutRepository loading={loading && ids.length === 0} />
-      : <HomeComposer repositoryId={repositoryId} repositories={options} onRepositoryChange={choose} suggestions={suggestions} focus={{ block, onFocus, onSent, onEmptyChange }} />}
+      : <HomeComposer repositoryId={repositoryId} repositories={options} onRepositoryChange={choose} suggestions={suggestions} focus={{ block, onFocus: focusStarts, onSent, onEmptyChange }} />}
   </HomeComposerShell>;
 }

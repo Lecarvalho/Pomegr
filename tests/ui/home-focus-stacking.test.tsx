@@ -325,6 +325,35 @@ describe("focus mode on a phone: the block glides between the sticky place and t
     expect(animate).toHaveBeenLastCalledWith(...GLIDE(FOCUS_TOP, REST_TOP));
   });
 
+  it("keeps the block above the layer while the layer fades out, or the block would vanish under the opaque layer for a frame and fade back in through it", async () => {
+    const { block, layer, ancestors } = await focusModeOnAPhone();
+    const wrapper = ancestors[0];
+    const rules = rulesOf(SHIPPED);
+    // The layer fades in over the content's fade.
+    expect(declared(rules, layer, "animation")).toBe("dimIn 280ms ease both");
+    await newUser().click(layer);
+    // The block is back in its sticky place and no longer fixed above the layer, so its wrapper rises above the layer for as long as the layer fades out.
+    expect(block.className).not.toMatch(/_isFocus_/);
+    expect(layer.isConnected).toBe(true);
+    expect(layer.className).toMatch(/_isLeaving_/);
+    expect(declared(rules, layer, "animation-name")).toBe("dimOut");
+    expect(declared(rules, layer, "pointer-events")).toBe("none");
+    expect(wrapper.className).toMatch(/_isReleasing_/);
+    expect(declared(rules, wrapper, "position")).toBe("sticky");
+    expect(zIndexOf(rules, wrapper)).toBeGreaterThan(zIndexOf(rules, layer));
+    // Once the layer is gone, the wrapper falls back to its place, above the content and under everything else.
+    for (const type of ["animationend", "webkitAnimationEnd"]) fireEvent(layer, new Event(type, { bubbles: true }));
+    expect(layer.isConnected).toBe(false);
+    expect(wrapper.className).not.toMatch(/_isReleasing_/);
+    expect(zIndexOf(rules, wrapper)).toBe(3);
+    // Control: without the rule, a wrapper that is releasing would stay under the layer while it fades.
+    const bug = pageCss.replace(".column .composer.isReleasing { z-index: 85; }", "");
+    expect(bug).not.toBe(pageCss);
+    wrapper.classList.add("_isReleasing_control");
+    expect(zIndexOf(rules, wrapper)).toBe(85);
+    expect(zIndexOf(rulesOf([{ css: shellCss, modules: false }, { css: bug, modules: true }, { css: arilCss, modules: true }]), wrapper)).toBe(3);
+  });
+
   it("does not glide under reduced motion: the block is at its new place at once", async () => {
     stubMedia({ phone: true, reducedMotion: true });
     const { block } = await focusModeOnAPhone();

@@ -263,9 +263,8 @@ The owner approved the cards, the tiles, and the phone layout of Home (`HomeV3.d
 ### Phone
 
 - On the phone, focus mode fills the screen: a layer in the canvas fill covers the page, header included.
-- The composer does not lift to the middle. It is fixed to the bottom of the screen, above the keyboard, with the chips above it.
+- The composer does not lift to the middle. It stands above the place the keyboard will take, with the chips above it.
 - With the keyboard open the block sits just above it, which is the upper-middle of a tall phone, so it can look centered. Its place is the keyboard's top edge, never the middle.
-- The block follows the keyboard: the visual viewport tells how far the keyboard covers the screen, and the block's `bottom` follows it over 300ms.
 - The block is fixed only in focus mode, and its resting place is sticky at the bottom of Home. Changing between the two moves it in one frame unless it glides.
 - Starting and ending focus mode glide the block between the two places over 480ms, with the desktop's curve, while the other parts fade.
 - The glide is a transform that runs from the offset between the two places to none. `useComposerGlide` measures the composer before the mode changes, in the event that changes it, and after.
@@ -273,11 +272,64 @@ The owner approved the cards, the tiles, and the phone layout of Home (`HomeV3.d
 - Every way out glides the same: a tap outside, **Back to Home**, and Escape. A glide that is still running starts the next one from where the block is on the screen.
 - The wrapper's entrance plays once. It never starts over when focus mode ends, or the block would be invisible for the 240ms of its delay and then fade back in.
 - **Back to Home** is drawn only in focus mode, so it goes at once when focus mode ends.
-- Reduced motion has no glide: the block is at its new place at once, with no blink.
+- Reduced motion has no glide and no fade: the layer, the parts, and the block are at their new state at once, with no blink.
 - The block must rise above the layer, so no ancestor of the block makes a stacking context or a containing block in focus mode: no z-index, no animation, no transform, no filter, no containment.
 - The wrapper of the block leaves its sticky place, its z-index, and its entrance as focus mode starts, even while the entrance still runs. `tests/ui/home-focus-stacking.test.tsx` guards it, and guards the glide and the single entrance.
 - The hint is not drawn, because a phone has no Escape key. A Quiet **Back to Home** action takes its place.
 - Send turns the screen into the full-screen sheet of the panel.
+
+#### Where the block stands
+
+- Home places the block once, when focus mode starts and before the keyboard opens. It does not move while the keyboard opens, changes, or closes.
+- The top of the block (`--focus-top`) is the screen height, less the keyboard height, less the block height, less a 16px gap.
+- Example: a 696px screen, a 264px keyboard, and a 232px block put the top at 184px.
+- The screen height is the layout viewport (`innerHeight`), which the keyboard does not shrink.
+- The block height is the height it has in focus mode, with its **Back to Home** action.
+- The keyboard height is the one last measured on this device. Where none was measured, it is 38% of the screen height.
+- The top is never lower than the resting place of the block, so focus mode never lowers the block.
+- The top is never under the header. It stops 12px below the header's bottom edge, and the header wins where the two disagree.
+- The field grows downward as a message grows, because the block keeps its top.
+- A keyboard that does not open, such as a hardware keyboard, leaves the block above empty space.
+- `tests/ui/home-focus-keyboard.test.tsx` and `tests/ui/home-focus-place.test.ts` guard the place.
+
+#### Why the block does not follow the keyboard
+
+- The owner measured an Android phone through remote DevTools on 2026-10-31.
+- It ran Chrome 156 on the paired view over LAN HTTP, with a 360×696 layout viewport.
+- The keyboard opens in one step. The visual viewport goes from 696px to 432px, so the keyboard takes 264px, which is 38% of the screen.
+- The layout viewport keeps its size, because `interactive-widget` is `resizes-visual`.
+- Chrome then pans the visual viewport to show the focused field. Its `offsetTop` goes from 0 to 264px in about 200ms.
+- A fixed block that follows the keyboard moves with that pan. It overshoots to about 43px from the top of the screen and then settles. This is the bump.
+- The owner rejected three attempts, each as a blink.
+- Moving the block at once on the resize gave a one-frame jump of 267px.
+- `interactive-widget=resizes-content` gave a full relayout and the same jump.
+- An instant move with a glide made Chrome pan again, because it works from the transformed rectangle.
+- The VirtualKeyboard API is not available, because a paired view over LAN HTTP is not a secure context.
+- The owner approved the placement on the phone: the block glides to a place the keyboard will not cover, and the keyboard opens below it.
+- Chrome then has nothing to pan, and the block never moves again.
+- The block must be placed before the keyboard opens, so the placement uses a predicted height and not a measured one.
+
+#### The keyboard height Home remembers
+
+- While focus mode is on, Home listens to the resize of the visual viewport. A shrink of more than 120px is a keyboard.
+- The keyboard height is the layout viewport height less the visual viewport height.
+- Home keeps the last measured height for the next time focus mode starts. It moves nothing now.
+- A smaller shrink is a browser bar. A pinch zoom shrinks the visual viewport too, so a zoomed viewport is not measured.
+- Home stops listening when focus mode ends.
+- The height is one whole number of pixels in browser storage, under the key `pomegr.home.keyboardHeight`. It stays on this device.
+- The value is a per-device convenience, not content. It is in no request, log, report, or checkpoint, and Home works without it.
+- Home ignores a stored value that is not a number above 120 and below the screen height.
+- Where the browser cannot read or write storage, Home uses 38% of the screen height and keeps nothing.
+
+#### The layer
+
+- The layer fades in over 280ms, with the fade of the other parts. The layer is opaque, so a hard cut of it is a blink.
+- The layer fades out over 280ms when Home returns. It stays in the page for that time, and it ignores taps.
+- The wrapper of the block rises above the layer while the layer fades out. Without that, the block would vanish under the layer for a frame.
+- The layer is taken away when its fade ends, or 340ms after the fade starts if the browser reports no end.
+- Send removes the layer at once, because the panel takes the screen.
+- The desktop's layer is transparent, so it goes at once there.
+- `tests/ui/home-focus-keyboard.test.tsx` and `tests/ui/home-focus-stacking.test.tsx` guard the fade.
 
 ## What Home reads
 

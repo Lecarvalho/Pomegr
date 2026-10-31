@@ -178,11 +178,15 @@ describe("Home visual contract", () => {
       const shadowed = [...css.replace(/\/\*[^]*?\*\//g, "").matchAll(/([^{}]+)\{[^{}]*box-shadow: var\(--command-overlay-shadow\)/g)].map(([, selector]) => selector.trim());
       expect(shadowed, file).toEqual(file === "Home" ? [".aril.isFocus :global(.agentChatComposer)"] : [".agentChatLauncher"]);
     }
-    // On a phone, focus mode fills the screen, and the block sits above the keyboard.
-    expect(pageStyles).toMatch(/@media \(max-width: 760px\) \{[^@]*\.dim \{ z-index: 84; inset: 0; background: var\(--command-ground\); \}/);
-    expect(aril).toMatch(/\.aril\.isFocus \{ position: fixed; z-index: 85; inset-inline: var\(--space-3\); bottom: calc\(var\(--keyboard-inset, 0px\) \+ max\(var\(--space-3\), env\(safe-area-inset-bottom\)\)\); transform: none; transition: bottom 300ms cubic-bezier\(\.2, \.8, \.2, 1\); \}/);
-    // The block follows the keyboard with that transition, and not under reduced motion; its moves between the sticky place and this one are glides (useComposerGlide).
-    expect(aril).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^@]*\.aril\.isFocus \{ transition: none; \}/);
+    // On a phone, focus mode fills the screen with a layer that fades in over 280ms and out over 280ms, and the block stands above the place the keyboard will take.
+    expect(pageStyles).toMatch(/@media \(max-width: 760px\) \{[^@]*\.dim \{ z-index: 84; inset: 0; background: var\(--command-ground\); animation: dimIn 280ms ease both; \}/);
+    expect(pageStyles).toMatch(/\.dim\.isLeaving \{ animation-name: dimOut; pointer-events: none; \}/);
+    expect(pageStyles).toMatch(/\.column \.composer\.isReleasing \{ z-index: 85; \}/);
+    expect(pageStyles).toMatch(/@keyframes dimIn \{ from \{ opacity: 0; \} to \{ opacity: 1; \} \}\s*@keyframes dimOut \{ from \{ opacity: 1; \} to \{ opacity: 0; \} \}/);
+    expect(pageStyles).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^@]*\.dim, \.dim\.isLeaving \{ animation: none; \}/);
+    // The block is placed once with `top` and never follows the keyboard: no transition of its place, and no `bottom` that follows it. Its moves between the sticky place and this one are glides (useComposerGlide).
+    expect(aril).toMatch(/\.aril\.isFocus \{ position: fixed; z-index: 85; inset-inline: var\(--space-3\); top: var\(--focus-top\); bottom: auto; transform: none; transition: none; \}/);
+    expect(aril).not.toMatch(/keyboard-inset/);
     expect(aril).toMatch(/\.hint \{ display: none; \}\s*\.aril\.isFocus \.back \{ display: inline-flex; align-self: flex-start; \}/);
   });
 
