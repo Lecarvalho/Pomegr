@@ -141,6 +141,10 @@ export function createJevRouting({ key, fetch: fetchImpl = null, transport: give
         return await using.preconnect() === true;
       } catch { return false; }
     },
+    /** Gives up a connection being opened ahead and closes the ones kept: Aril turned Off. A call that is already on its way is not touched. */
+    stopPreconnect() {
+      try { (given ?? own)?.stopPreconnect?.(); } catch { /* nothing to close */ }
+    },
   });
 }
 

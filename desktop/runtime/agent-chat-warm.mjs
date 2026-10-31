@@ -25,10 +25,11 @@ const same = (left, right) => Object.keys(left).every((name) => left[name] === r
  * answer the arguments a turn of that thread would start with. `declare(provider)` makes and declares the run's session ID,
  * `redeclare(sessionId)` declares it again, and `withdraw(sessionId)` takes it back. `openBridge(stand)` opens the task-read bridge for
  * the run: it must answer nothing until `stand.bound` is the turn that took the run. `busy(repositoryId)` says whether a turn or a
- * compaction of that thread runs or waits. `setTimer` and `clearTimer` are the idle clock.
+ * compaction of that thread runs or waits. `on()` says whether Aril is On: no run starts while it is Off. `setTimer` and `clearTimer` are the
+ * idle clock.
  */
 export function createWarmRuns({ startProcess, spawn, clock, executable, repositoryRoot, instructions, imageFolder, environment, declare, redeclare, withdraw, openBridge, busy,
-  idleMs = WARM_IDLE_MS, limit = WARM_LIMIT, setTimer = setTimeout, clearTimer = clearTimeout }) {
+  on = () => true, idleMs = WARM_IDLE_MS, limit = WARM_LIMIT, setTimer = setTimeout, clearTimer = clearTimeout }) {
   // repositoryId to entry. An entry is starting until `ready`, then waits for a send, and leaves the map when it is taken or closed.
   const entries = new Map();
   let disposed = false;
@@ -91,7 +92,7 @@ export function createWarmRuns({ startProcess, spawn, clock, executable, reposit
      */
     async request(repositoryId, run) {
       try {
-        if (disposed || !startProcess || !WARM_PROVIDERS.includes(run.provider) || busy(repositoryId)) return;
+        if (disposed || !on() || !startProcess || !WARM_PROVIDERS.includes(run.provider) || busy(repositoryId)) return;
         const held = entries.get(repositoryId);
         if (held && same(held.run, run)) {
           held.touched = (order += 1);
@@ -140,6 +141,11 @@ export function createWarmRuns({ startProcess, spawn, clock, executable, reposit
         begin: (options) => handle.begin({ ...options, warm: true }) ?? failedChatRun(),
         discard() { stand.closeTaskRead?.(); handle.close(); withdraw(sessionId); },
       };
+    },
+
+    /** Closes every warm run and keeps working: Aril turned Off, so nothing waits for a message. */
+    closeAll() {
+      for (const entry of [...entries.values()]) close(entry);
     },
 
     /** Closes every warm run, as the app quits. */

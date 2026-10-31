@@ -18,7 +18,7 @@ The task board is in [Task board design](task-board.md).
 - The chat adds no button role.
 - The round **Send** and **Stop** compose the Icon role, and the composer has its own radius. [DESIGN.md](../../../DESIGN.md#agent-chat-exceptions) records both as intended exceptions.
 - `AppShell` mounts the chat once, after the shell.
-- The chat is drawn only where it can be reached: the desktop app and a paired phone.
+- The chat is drawn only where it can be reached: the desktop app and a paired phone, and only while Aril is On ([While Aril is Off](#while-aril-is-off)).
 - That decision is made before anything is drawn.
 - A client that is still being identified draws nothing.
 - A browser on the same computer draws nothing.
@@ -52,7 +52,18 @@ The task board is in [Task board design](task-board.md).
 | An answer finished while the panel was closed | A 7px `--command-brand` dot follows the name | Adds “new answer” until the panel is opened |
 
 - Both states follow a turn of the open conversation that another device started, once the open panel has seen it.
-- A turn that another device starts while the panel is closed and idle does not change the launcher, because that panel asks nothing.
+- A turn that another device starts while the panel is closed and idle does not change the launcher, because that panel asks the chat nothing. The dock asks one thing, whether Aril is On.
+
+## While Aril is Off
+
+- With Aril Off there is no Aril: the dock draws nothing. There is no launcher, no panel, no scrim, and no expanded page, on the desktop and on a paired phone.
+- The dock draws nothing either before the desktop has said whether Aril is On. So the chat is never drawn and then taken away, and an Off Aril never flashes a launcher.
+- A client that cannot read the switch, such as an older desktop, draws nothing.
+- A panel that is open when Aril turns Off closes with the rest of the dock, and its draft goes with it. A message that was being written is stopped by the desktop ([The switch](../architecture/agent-chat.md#the-switch)).
+- A link to the chat, such as a grant follow-up's notification or one clicked in the app, lands on Home instead.
+- The dock asks for the switch every five seconds for as long as it is mounted, together with Home and Settings, so a switch turned on the other device reaches it. A failed ask keeps what was known.
+- Nothing says that Aril is off: Settings › Aril does. The stored thread is kept and shows again, as it was, when Aril is turned On.
+- The owner's decision of 2026-10-30 settled this: Off hides the chat everywhere.
 
 ## Panel
 
@@ -92,7 +103,7 @@ The task board is in [Task board design](task-board.md).
 
 - The header (`.agentChatHeader`) has a one-pixel rule below it.
 - The header holds the `spark` glyph and the 16px/650 `h2` **Aril**, and, once the desktop has answered, the state of Aril as a `.commandChip`: **On** in the positive tone, **Off** in the neutral tone (never amber: Off is a choice, not a fault).
-- Nothing is drawn for a state that is not known yet, so the chip is never drawn and taken back. The open panel asks for the state every five seconds; a closed panel asks nothing.
+- Nothing is drawn for a state that is not known yet, so the chip is never drawn and taken back. The panel exists only while Aril is On, so the chip reads **On** whenever it is seen; its **Off** form is kept for the component and has no panel to appear in. The dock asks for the state every five seconds.
 - The header has no other caption.
 - The header ends with three [Icon](../../../DESIGN.md#buttons)-role actions, each with an `aria-label` and a `title`.
 - **Search** has a `search` glyph and `aria-pressed`.
@@ -643,6 +654,7 @@ The task board is in [Task board design](task-board.md).
 - It renders the panel with quick replies, answered, and waiting, and with a multiple-choice question, open and answered.
 - It renders the composer with a repository choice, with the model and the effort, with no known model, with an error, and over the limit.
 - It renders the composer as Home draws it, with the suggestion chips above it, and in focus mode, lifted, with the overlay shadow and the hint.
+- It renders no panel, launcher, or composer for Aril Off, because nothing is drawn then.
 - It renders the panel over a dimmed page, with the scrim.
 - It renders the answer text, including HTML and a link shown as literal text.
 - The panel's own behavior (docking, the room the page makes for it, focus, Escape, the repository choice, loading older pages, bringing a message into view, polling, and the desktop bridge) is specified here but is not rendered there.

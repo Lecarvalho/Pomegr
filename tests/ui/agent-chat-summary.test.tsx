@@ -1,6 +1,7 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AT, FakeChat, REPO_A, agentMessage, chatId, conversationOf, harness, installHarness, newUser, removeHarness, settle, userMessage } from "./agent-chat-fixture";
+import { renderDock } from "./dock-helper";
 
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
@@ -25,7 +26,6 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
   return { ...actual, useRepositoryInventory: () => harness.inventory };
 });
 
-import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 import { parseTiming } from "../../app/agent-chat-client";
 import { SUMMARIZED_LINE, answerTimeTitle, fullMessageTime, prepareLine, routeLine, timingLine } from "../../app/components/agent-chat/agent-chat-presentation";
 
@@ -50,7 +50,7 @@ function seedFour(extra: Record<string, unknown> = {}) {
   ]));
 }
 async function open() {
-  render(<AgentChatDock />);
+  await renderDock();
   await newUser().click(launcher());
   await settle();
 }

@@ -240,11 +240,8 @@ export function AgentChatSection() {
       <Sample label="Panel, images" note="The owner's message shows its images under the text. A proposal row that names an image shows it too.">
         <Panel messages={WITH_IMAGES}><SampleComposer /></Panel>
       </Sample>
-      <Sample label="Panel header, Aril On" note="The state sits beside the name as a chip: On in the positive tone. Nothing is drawn until the desktop has answered.">
+      <Sample label="Panel header, Aril On" note="The state sits beside the name as a chip: On in the positive tone. The panel exists only while Aril is On, and nothing is drawn until the desktop has answered. With Aril Off there is no panel, launcher, or expanded page to draw.">
         <AgentChatPanelFrame isStatic><AgentChatHeader searchOpen={false} onToggleSearch={noop} expanded={false} onToggleExpanded={noop} onClose={noop} arilOn /></AgentChatPanelFrame>
-      </Sample>
-      <Sample label="Panel header, Aril Off" note="Off is the neutral chip. The chat still answers when the owner writes.">
-        <AgentChatPanelFrame isStatic><AgentChatHeader searchOpen={false} onToggleSearch={noop} expanded={false} onToggleExpanded={noop} onClose={noop} arilOn={false} /></AgentChatPanelFrame>
       </Sample>
       <Sample label="Panel, no repository" note="The composer is disabled until a repository is observed.">
         <AgentChatPanelFrame isStatic>

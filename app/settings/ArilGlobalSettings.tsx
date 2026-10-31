@@ -13,7 +13,7 @@ import { formatStorageBytes } from "./StorageSettings";
 // effort routing. Each takes the control it shows, so the live section and the static design-system frames draw the same markup.
 
 const STATE_ON = "Keeping work moving as you settled it. Turn off to stop every action at once; running sessions keep going.";
-const STATE_OFF = "Takes no action of its own. The chat still answers when you write.";
+const STATE_OFF = "Aril is off: no chat and no actions. Turn it on to talk to Aril or change anything below.";
 
 /** A thread's size in the unit that reads best: bytes, kilobytes, then the storage meter's megabytes and gigabytes. */
 export function threadSize(bytes: number): string {

@@ -1,6 +1,7 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeChat, REPO_A, agentMessage, conversationOf, harness, installHarness, newUser, removeHarness, setBridge, settle, userMessage } from "./agent-chat-fixture";
+import { renderDock } from "./dock-helper";
 
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
@@ -26,7 +27,6 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
 });
 
 import { WARM_DEBOUNCE_MS } from "../../app/agent-chat-client";
-import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 
 // The message field asks the desktop to keep a provider run ready when it gains focus, once for a burst of focus events. The request
 // carries the run the composer shows and no text; closing the panel asks for nothing.
@@ -44,7 +44,7 @@ const after = (milliseconds: number) => act(async () => { await vi.advanceTimers
 
 async function openPanel() {
   const person = newUser();
-  render(<AgentChatDock />);
+  await renderDock();
   await person.click(launcher());
   await settle();
   return person;
@@ -110,7 +110,7 @@ describe("asking the desktop to warm a run", () => {
   });
 
   it("is dropped with the panel body when the repository's chat leaves before the pause ends", async () => {
-    const { unmount } = render(<AgentChatDock />);
+    const { unmount } = await renderDock();
     await newUser().click(launcher());
     await settle();
     unmount();

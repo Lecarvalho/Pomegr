@@ -1,6 +1,7 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AT, FakeChat, REPO_A, REPO_B, agentMessage, chatId, conversationOf, harness, installHarness, removeHarness, setInventory, settle, userMessage } from "./agent-chat-fixture";
+import { renderDock } from "./dock-helper";
 
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
@@ -25,7 +26,6 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
   return { ...actual, useRepositoryInventory: () => harness.inventory };
 });
 
-import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 import { agentChatLink, openAgentChatLink } from "../../app/components/agent-chat/agent-chat-presentation";
 
 // Grant follow-ups in the chat panel (T-183): a notification's link opens its repository's chat at the follow-up.
@@ -56,7 +56,7 @@ describe("a follow-up's link", () => {
   it("opens the panel on the page it loads, in the follow-up's own repository and conversation, drawn as Aril's grant follow-up", async () => {
     harness.pathname = "/tasks";
     window.history.replaceState(null, "", `/tasks?repository=${REPO_B}&aril=${chatId(1)}&message=m-1`);
-    render(<AgentChatDock />);
+    await renderDock();
     await settle();
     expect(panel()).toBeVisible();
     expect(chat.calls("thread").at(-1)).toEqual({ repositoryId: REPO_B });
@@ -73,7 +73,7 @@ describe("a follow-up's link", () => {
   });
 
   it("opens the chat from inside the app, as a tray click does, and never in another repository", async () => {
-    render(<AgentChatDock />);
+    await renderDock();
     await settle();
     expect(screen.queryByRole("log")).toBeNull();
     act(() => openAgentChatLink(`/tasks?repository=${REPO_B}&aril=${chatId(1)}&message=m-1`));

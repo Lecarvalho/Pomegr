@@ -1,6 +1,7 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeChat, REPO_A, agentMessage, conversationOf, installHarness, newUser, proposalOf, removeHarness, settle, userMessage } from "./agent-chat-fixture";
+import { renderDock } from "./dock-helper";
 
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
@@ -25,7 +26,6 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
   return { ...actual, useRepositoryInventory: () => harness.inventory };
 });
 
-import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 import { parseChoices } from "../../app/agent-chat-client";
 import { choiceStates } from "../../app/components/agent-chat/agent-chat-choices";
 
@@ -56,7 +56,7 @@ function seedAsk(choices: unknown, extra: Record<string, unknown> = {}) {
   chat.seed(REPO_A, conversationOf(1, [at(userMessage("How do I merge?", "m-1"), 1), at(agentMessage("Squash fits this repository.", { choices, ...extra }, "m-2"), 2)]));
 }
 async function open(person = user()) {
-  render(<AgentChatDock />);
+  await renderDock();
   await person.click(launcher());
   await settle();
   return person;

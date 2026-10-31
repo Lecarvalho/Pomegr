@@ -1,6 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EIGHT_OPERATIONS, FakeChat, PROPOSAL_ID, REPO_A, agentMessage, chatId, conversationOf, harness, installHarness, newUser, proposalOf, removeHarness, setBridge, settle, userMessage } from "./agent-chat-fixture";
+import { renderDock } from "./dock-helper";
+import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
@@ -25,7 +27,6 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
   return { ...actual, useRepositoryInventory: () => harness.inventory };
 });
 
-import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 import { AgentChatProposalCard } from "../../app/components/agent-chat/AgentChatProposalCard";
 
 let chat: FakeChat;
@@ -82,7 +83,7 @@ describe("proposals", () => {
 
   it("draws one row for each of the eight operations with fixed words, a first line of text and a muted line of what is set", async () => {
     withProposal();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(within(card()).getByText("Cut the upload work into tasks.")).toBeInTheDocument();
     expect(card().querySelector(".commandChip")).toBeNull();
@@ -148,7 +149,7 @@ describe("proposals", () => {
 
   it("omits the board's line for a task it does not hold, and the delete sentence for a proposal without a delete", async () => {
     withProposal([{ op: "update_task", id: "T-99", effort: undefined, run: { provider: "codex", model: null } }, { op: "queue_task", id: "T-12" }]);
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     const rows = within(card()).getAllByRole("listitem");
     expect(rows[0]).toHaveTextContent("Update T-99");
@@ -160,7 +161,7 @@ describe("proposals", () => {
   it("applies, reads its conversation again, shows each result and the chip, and reads the board again", async () => {
     withProposal();
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(within(card()).getByRole("button", { name: "Apply changes" }));
     await settle();
@@ -185,7 +186,7 @@ describe("proposals", () => {
       chat.followUps = true;
       withProposal();
       const person = user();
-      const view = render(<AgentChatDock />);
+      const view = await renderDock();
       await openPanel(person);
       await person.click(within(card()).getByRole("button", { name: button }));
       await settle();
@@ -215,7 +216,7 @@ describe("proposals", () => {
   it("offers Apply and Dismiss on a follow-up proposal and waits for the owner's next answer", async () => {
     chat.followUps = true;
     withProposal();
-    render(<AgentChatDock />);
+    await renderDock();
     const person = await openPanel();
     await person.click(within(card()).getByRole("button", { name: "Apply changes" }));
     await settle();
@@ -240,7 +241,7 @@ describe("proposals", () => {
   it("keeps both actions disabled and the card busy while the answer is in flight", async () => {
     withProposal();
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     let release = () => {};
     const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -259,7 +260,7 @@ describe("proposals", () => {
   it("dismisses without reading the board again", async () => {
     withProposal();
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(within(card()).getByRole("button", { name: "Dismiss" }));
     await settle();
@@ -275,7 +276,7 @@ describe("proposals", () => {
       { ok: false, error: "limit" }, { ok: false, error: "unsupported" }, { ok: false, error: "unavailable" }, { ok: false, error: "skipped" },
     ];
     chat.seed(REPO_A, conversationOf(1, [userMessage("Go"), agentMessage("Plan", { proposal: proposalOf(EIGHT_OPERATIONS, "partial", { results }) })]));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(card().querySelector(".commandChip")).toHaveTextContent("Partly applied");
     expect(card().querySelector(".commandChip")).toHaveClass("warning");
@@ -290,7 +291,7 @@ describe("proposals", () => {
   it("answers a proposal that was already answered with one fixed line", async () => {
     withProposal();
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     chat.refuse = "conflict";
     await person.click(within(card()).getByRole("button", { name: "Apply changes" }));
@@ -305,7 +306,7 @@ describe("proposals", () => {
       agentMessage("Plan A", { proposalUnreadable: true }, "m-2"),
       agentMessage("Plan B", { proposal: { id: "not-a-proposal-id", summary: "Broken", operations: [] } }, "m-3"),
     ]));
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     const notices = within(log()).getAllByText("Aril wrote a proposal that Pomegr could not read, so there is nothing to apply. Ask for it again.");
     expect(notices).toHaveLength(2);
@@ -316,7 +317,7 @@ describe("proposals", () => {
 
   it("draws the proposal's text and its tasks' text as plain text, never as markup", async () => {
     withProposal([{ op: "create_task", text: "<img src=x onerror=alert(1)> do it", feature: "<b>Bold</b>" }]);
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(card().querySelector("img, b, script")).toBeNull();
     expect(card()).toHaveTextContent("<img src=x onerror=alert(1)> do it");
@@ -336,7 +337,7 @@ describe("a proposed session start", () => {
 
   it("is drawn as a start that has not happened: the task, Start session, and a line that nothing starts yet", async () => {
     withStart();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(within(log()).queryByRole("region", { name: "Proposed board changes" })).toBeNull();
     const rows = within(card()).getAllByRole("listitem");
@@ -357,7 +358,7 @@ describe("a proposed session start", () => {
   it("says the session launched only after the desktop answered so, then offers no second start", async () => {
     withStart();
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(startButton());
     await settle();
@@ -381,7 +382,7 @@ describe("a proposed session start", () => {
     chat.startStatus = "gate_held";
     withStart();
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(startButton());
     await settle();
@@ -404,7 +405,7 @@ describe("a proposed session start", () => {
 
   it("names a held start without a gate line when the board reads no hold now", async () => {
     withStart("pending", { results: HELD });
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(card().querySelector(".agentChatOpResult")).toHaveTextContent("Not started. A start gate held this task.");
     expect(within(card()).queryByText(/This task is held/)).toBeNull();
@@ -431,7 +432,7 @@ describe("a proposed session start", () => {
       installHarness();
       chat = harness.chat;
       withStart("pending", { results: [{ ok: false, error: "not_started", start }] });
-      const view = render(<AgentChatDock />);
+      const view = await renderDock();
       await openPanel();
       expect(card().querySelector(".agentChatOpResult"), start).toHaveTextContent(line);
       expect(card().querySelector(".agentChatOpResult"), start).toHaveClass("is-error");
@@ -441,7 +442,7 @@ describe("a proposed session start", () => {
 
   it("drops a start result outside the fixed statuses instead of drawing it", async () => {
     withStart("pending", { results: [{ ok: false, error: "not_started", start: "C:\\private\\repo" }] });
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(card().querySelector(".agentChatOpResult")).toBeNull();
     expect(card()).not.toHaveTextContent("private");
@@ -451,7 +452,7 @@ describe("a proposed session start", () => {
     chat.startStatus = "cancelled";
     withStart();
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(startButton());
     await settle();
@@ -468,7 +469,7 @@ describe("a proposed session start", () => {
       return new Response(JSON.stringify(await chat.agentChat(body.operation, body.payload)), { status: 200, headers: { "content-type": "application/json" } });
     }));
     withStart();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(await within(log()).findByRole("region", { name: "Proposed session start" })).toBeInTheDocument();
     expect(within(card()).queryByRole("button", { name: "Start session" })).toBeNull();
@@ -482,7 +483,7 @@ describe("a proposed session start", () => {
     withStart();
     chat.refuse = "desktop_only";
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(startButton());
     await settle();
@@ -511,7 +512,7 @@ describe("a proposed queue change", () => {
 
   it("is drawn as a change that has not happened: the state, its own Primary, and what turning the queue on lets Pomegr do", async () => {
     withQueue();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(within(log()).queryByRole("region", { name: "Proposed board changes" })).toBeNull();
     const rows = within(card()).getAllByRole("listitem");
@@ -529,7 +530,7 @@ describe("a proposed queue change", () => {
 
   it("names Off as its own state, with a line that running sessions continue", async () => {
     withQueue(false);
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(within(card()).getAllByRole("listitem")[0]).toHaveTextContent("Turn the queue off");
     expect(within(card()).getByRole("button", { name: "Turn queue off" })).toHaveClass("commandPrimaryAction");
@@ -540,7 +541,7 @@ describe("a proposed queue change", () => {
   it("says the queue was turned on only after the desktop answered so, then offers no second change", async () => {
     withQueue();
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(within(card()).getByRole("button", { name: "Turn queue on" }));
     await settle();
@@ -558,7 +559,7 @@ describe("a proposed queue change", () => {
     chat.queueAnswer = { status: "blocked" };
     withQueue();
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(within(card()).getByRole("button", { name: "Turn queue on" }));
     await settle();
@@ -570,7 +571,7 @@ describe("a proposed queue change", () => {
   it("says that the queue was turned off", async () => {
     withQueue(false);
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(within(card()).getByRole("button", { name: "Turn queue off" }));
     await settle();
@@ -585,7 +586,7 @@ describe("a proposed queue change", () => {
       chat.queueAnswer = { error };
       withQueue();
       const person = user();
-      const view = render(<AgentChatDock />);
+      const view = await renderDock();
       await openPanel(person);
       await person.click(within(card()).getByRole("button", { name: "Turn queue on" }));
       await settle();
@@ -609,7 +610,7 @@ describe("a proposed queue change", () => {
     asPairedDevice();
     withQueue();
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     expect(await within(log()).findByRole("region", { name: "Proposed queue change" })).toBeInTheDocument();
     expect(within(card()).getByText(ON_NOTE)).toBeInTheDocument();
@@ -622,7 +623,7 @@ describe("a proposed queue change", () => {
   it("dismisses without changing the queue", async () => {
     withQueue();
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(within(card()).getByRole("button", { name: "Dismiss" }));
     await settle();
@@ -642,7 +643,7 @@ describe("a proposed worktree removal", () => {
 
   it("is drawn as a removal that has not happened: each task, its branch, one Primary, and a line that nothing is removed yet", async () => {
     withRemoval();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     const rows = within(card()).getAllByRole("listitem");
     expect(rows).toHaveLength(2);
@@ -657,7 +658,7 @@ describe("a proposed worktree removal", () => {
 
   it("names what became of each worktree and keeps the partial chip", async () => {
     withRemoval("partial", { results: [{ ok: true, worktree: "removed" }, { ok: false, worktree: "dirty", error: "dirty" }] });
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     const results = [...card().querySelectorAll(".agentChatOpResult")];
     expect(results.map((result) => result.textContent)).toEqual(["Worktree removed", "Worktree kept: uncommitted changes"]);
@@ -675,7 +676,7 @@ describe("a proposed worktree removal", () => {
       return new Response(JSON.stringify(await chat.agentChat(body.operation, body.payload)), { status: 200, headers: { "content-type": "application/json" } });
     }));
     withRemoval();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(await within(log()).findByRole("region", { name: "Proposed worktree removal" })).toBeInTheDocument();
     expect(within(card()).queryByRole("button", { name: "Remove worktrees" })).toBeNull();

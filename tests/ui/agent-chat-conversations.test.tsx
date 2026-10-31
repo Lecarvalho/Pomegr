@@ -1,6 +1,8 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeChat, REPO_A, REPO_B, STORAGE_KEY, agentMessage, chatId, conversationOf, harness, installHarness, newUser, removeHarness, setInventory, settle, userMessage } from "./agent-chat-fixture";
+import { renderDock } from "./dock-helper";
+import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
@@ -25,7 +27,6 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
   return { ...actual, useRepositoryInventory: () => harness.inventory };
 });
 
-import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 
 let chat: FakeChat;
 
@@ -56,7 +57,7 @@ async function ask(person: ReturnType<typeof user>, text: string) {
 describe("the panel", () => {
   it("closes on Escape and on Close, returns focus to the launcher, and keeps the draft", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.type(field(), "A draft");
     await person.keyboard("{Escape}");
@@ -73,7 +74,7 @@ describe("the panel", () => {
 
   it("leaves Escape to an open list, and closes on the next Escape", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await person.click(screen.getByRole("combobox", { name: "Model" }));
     expect(screen.getByRole("listbox", { name: "Model" })).toBeInTheDocument();
@@ -87,7 +88,7 @@ describe("the panel", () => {
 
   it("never moves focus while an answer is written", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await ask(person, "Cut it up");
     await person.click(screen.getByRole("button", { name: "Expand" }));
@@ -101,7 +102,7 @@ describe("the panel", () => {
 
   it("shows Answering on the launcher while the panel is closed, then a dot and a new-answer name until it is opened", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await ask(person, "Think about it");
     await person.click(within(panel()).getByRole("button", { name: "Close Aril" }));
@@ -126,7 +127,7 @@ describe("the panel", () => {
 
   it("asks nothing while closed and idle, and keeps the dot away when the answer ended with the panel open", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     await ask(person, "Quick one");
     chat.finish("Done already");
@@ -141,7 +142,7 @@ describe("the panel", () => {
   it("sends a message without a conversation, so the desktop continues the thread, and offers no way to pick or start one", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Old question"), agentMessage("Old answer")]));
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     expect(within(log()).getByText("Old answer")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Conversations" })).toBeNull();
@@ -158,7 +159,7 @@ describe("the panel", () => {
   it("follows the newest line only while the owner is at the bottom, and offers Jump to latest after they scroll up", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Q"), agentMessage("A")]));
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     const element = log();
     let top = 0;
@@ -196,7 +197,7 @@ describe("the thread", () => {
   it("shows the messages of every conversation of the repository as one thread in time order, with no conversation list", async () => {
     seedThree();
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     const articles = [...log().querySelectorAll<HTMLElement>("article")];
     expect(articles.map((article) => article.querySelector("p")?.textContent)).toBeDefined();
@@ -217,7 +218,7 @@ describe("the thread", () => {
 
   it("says nothing of conversations when there are none, and shows the empty state", async () => {
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     expect(screen.getByRole("heading", { level: 3, name: "Ask Aril about this board" })).toBeInTheDocument();
     expect(screen.queryByText("No conversations yet.")).toBeNull();
@@ -227,7 +228,7 @@ describe("the thread", () => {
     seedThree();
     chat.turn = { repositoryId: REPO_A, conversationId: chatId(1), startedAt: "2026-10-11T10:00:00.000Z", provider: "claude", model: null, activity: "writing", text: "Partway" };
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     expect(within(log()).getByText("Partway")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
@@ -239,19 +240,19 @@ describe("the repository", () => {
   const two: [string, string][] = [[REPO_A, "pomegr"], [REPO_B, "catalogus"]];
 
   it("draws no repository menu for one repository, and one in the composer for several", async () => {
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(screen.queryByRole("combobox", { name: "Repository" })).toBeNull();
     setInventory(two);
-    cleanupAndRender();
+    await cleanupAndRender();
     await openPanel();
     expect(screen.getByRole("combobox", { name: "Repository" })).toHaveTextContent("pomegr");
     expect(screen.getByRole("combobox", { name: "Repository" }).closest("form")).toHaveClass("agentChatComposer");
   });
 
-  function cleanupAndRender() {
+  async function cleanupAndRender() {
     document.body.innerHTML = "";
-    render(<AgentChatDock />);
+    await renderDock();
   }
 
   it("chooses from the validated repository parameter on a Tasks page", async () => {
@@ -259,7 +260,7 @@ describe("the repository", () => {
     harness.pathname = "/tasks";
     window.history.replaceState(null, "", `/tasks?repository=${REPO_B}`);
     window.localStorage.setItem(STORAGE_KEY, REPO_A);
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(listed()).toEqual([REPO_B]);
     expect(screen.getByRole("combobox", { name: "Repository" })).toHaveTextContent("catalogus");
@@ -269,14 +270,14 @@ describe("the repository", () => {
     setInventory(two);
     harness.pathname = "/tasks";
     window.history.replaceState(null, "", "/tasks?repository=repo-ffffffffffffffffffffffff");
-    const first = render(<AgentChatDock />);
+    const first = await renderDock();
     await openPanel();
     expect(listed()).toEqual([REPO_A]);
     first.unmount();
     chat.agentChat.mockClear();
     harness.pathname = "/sessions";
     window.history.replaceState(null, "", `/sessions?repository=${REPO_B}`);
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(listed()).toEqual([REPO_A]);
   });
@@ -285,7 +286,7 @@ describe("the repository", () => {
     setInventory(two);
     harness.pathname = `/repositories/${REPO_B}/files`;
     window.localStorage.setItem(STORAGE_KEY, REPO_A);
-    const first = render(<AgentChatDock />);
+    const first = await renderDock();
     await openPanel();
     expect(listed()).toEqual([REPO_B]);
     first.unmount();
@@ -293,14 +294,14 @@ describe("the repository", () => {
     chat.agentChat.mockClear();
     harness.pathname = "/sessions";
     window.localStorage.setItem(STORAGE_KEY, REPO_B);
-    const second = render(<AgentChatDock />);
+    const second = await renderDock();
     await openPanel();
     expect(listed()).toEqual([REPO_B]);
     second.unmount();
 
     chat.agentChat.mockClear();
     window.localStorage.setItem(STORAGE_KEY, "not-an-id");
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(listed()).toEqual([REPO_A]);
   });
@@ -310,7 +311,7 @@ describe("the repository", () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Pomegr question"), agentMessage("Pomegr answer")]));
     chat.seed(REPO_B, conversationOf(1, [userMessage("Catalogus question"), agentMessage("Catalogus answer")]));
     const person = user();
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel(person);
     expect(within(log()).getByText("Pomegr answer")).toBeInTheDocument();
     await person.type(field(), "unsent draft");
@@ -330,7 +331,7 @@ describe("the repository", () => {
 
   it("says that no repository is observed yet and disables the field, and asks nothing", async () => {
     setInventory([]);
-    render(<AgentChatDock />);
+    await renderDock();
     await openPanel();
     expect(screen.getByText("No repositories observed yet.")).toBeInTheDocument();
     expect(field()).toBeDisabled();
@@ -341,7 +342,7 @@ describe("the repository", () => {
 
   it("reads Loading while the repository inventory loads, and chooses once it arrives", async () => {
     setInventory([], true);
-    const view = render(<AgentChatDock />);
+    const view = await renderDock();
     await openPanel();
     expect(screen.getByText("Loading…")).toBeInTheDocument();
     expect(screen.queryByText("No repositories observed yet.")).toBeNull();

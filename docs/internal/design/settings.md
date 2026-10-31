@@ -168,14 +168,16 @@ The owner approved the mockup `ArilSettings.dc.html` on 2026-10-30. The section 
 - The mark is a rounded square with the 6px panel radius, with the Aril glyph in `currentColor`.
 - While On, the state word and the mark are green, the mark sits on `--color-green-soft`, and a soft glow fills the card: a one-pixel inner line of `--command-green` at 33% and a radial gradient of `--color-green-soft`. The glow fades in over 400ms and the mark recolors over 300ms. Reduced motion removes both.
 - While Off, the state word and the mark are neutral. Off is never amber: it is not a fault.
-- The On line reads “Keeping work moving as you settled it. Turn off to stop every action at once; running sessions keep going.” The Off line reads “Takes no action of its own. The chat still answers when you write.”
+- The On line reads “Keeping work moving as you settled it. Turn off to stop every action at once; running sessions keep going.” The Off line reads “Aril is off: no chat and no actions. Turn it on to talk to Aril or change anything below.”
+- Pomegr ships with Aril On: a fresh install reads On, and the card never shows Off before the owner has turned it off (or a damaged switch file has made it read Off).
+- Off means no Aril at all, so the chat is not drawn anywhere while the card reads Off ([Agent chat design](agent-chat.md#while-aril-is-off), [Home design](home.md#while-aril-is-off)). The switch card, the page below it, and its gray read-only state are the only parts of Aril the owner still sees.
 - The switch is named **Let Aril act**, acts at once in either direction, and asks for no confirmation. Turning it off grays the cards under it (see [While Aril is off](#while-aril-is-off)). While a change is sent it is unavailable. A failed change keeps the state it had and shows the alert “Aril could not be changed. Try again.” in a row under the card.
 - Nothing of the state is drawn until the desktop has answered: the card shows the heading and “Reading Aril…” as a status, with no word, no glow, and no switch. It never shows Off and then On.
 - The desktop app adds one row under the card, divided by a one-pixel rule: “A paired phone can always turn Aril off. Let it also turn Aril on and change Aril's repository memory and settings.”, with the small switch on the right, aligned to the main switch. It is the only paired-device permission on the page, for every repository, and it is off until the owner turns it on.
 - The row says repository memory, not memory: the owner's own memory is edited in the desktop app only, and a phone reads it whatever the row allows.
 - A paired device has no such row. While Aril is Off and the desktop app has not allowed it, its switch is unavailable and the row says “Turning Aril on needs the desktop app.”
 - A browser that is neither the desktop app nor a paired device shows the heading and one muted line, “Turn Aril on or off in the desktop app or on a paired device.”, and no switch.
-- The state is also the chip beside Aril's name in the [panel header](agent-chat.md#header).
+- The state is also the chip beside Aril's name in the [panel header](agent-chat.md#header), which reads On whenever the panel exists.
 
 ### While Aril is off
 

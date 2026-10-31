@@ -25,11 +25,12 @@ The owner approved the revised design, with Needs you, the running sessions, and
 | 2 | Needs you | When something waits for the owner |
 | 3 | Continue | Always |
 | 4 | What's new card | Until the owner dismisses the announcement |
-| 5 | Suggestions and composer | Only where the chat can be reached |
+| 5 | Suggestions and composer | Only where the chat can be reached and Aril is On |
 
 - The session guides and the roadmap preview are not on Home.
 - The suggestions and the composer sit at the bottom of the content area when the column is shorter than the window.
 - When the column is taller, they follow the content.
+- While Aril is Off, Home has neither, and the other parts lay out as they do otherwise ([While Aril is Off](#while-aril-is-off)).
 - The page header is `CommandPageHeader`, with the greeting as its title and the Aril line as its meta line.
 
 ## Where Home is drawn
@@ -37,6 +38,7 @@ The owner approved the revised design, with Needs you, the running sessions, and
 - The chat is reached in the desktop app and on a paired phone. Nowhere else.
 - That decision is made before anything is drawn: `useAgentChatAvailability` decides.
 - While the client is still identified, Home draws no Aril line, no Needs you, and no composer.
+- Where the chat can be reached, the composer waits for one more answer: the desktop's, whether Aril is On ([While Aril is Off](#while-aril-is-off)).
 - A browser on the same computer draws the greeting, Needs you, Continue, and the What's new card.
 - That browser draws no Aril line, no failure detail on Needs you, and no composer, because it reads no task log and cannot reach the chat.
 - So no part is drawn and then taken away.
@@ -188,6 +190,19 @@ The owner approved the revised design, with Needs you, the running sessions, and
 - A suggestion chip fills the message field and sends nothing.
 - The dock draws no launcher on Home, because the composer is the way in.
 - Home has no way to open the conversation without a message. The owner opens it from another page, or sends a message.
+- Where Aril is Off the composer and the suggestions are not there at all ([While Aril is Off](#while-aril-is-off)).
+
+## While Aril is Off
+
+- With Aril Off there is no Aril: Home draws no composer and no suggestion chips, on the desktop and on a paired phone.
+- The greeting, the Aril line, Needs you, Continue, and the What's new card are drawn as they are. Needs you and the Aril line read the task logs and the boards, not the chat.
+- The column holds only the content block, so there is no empty gap, no placeholder, and no notice where the composer was. Nothing says that Aril is off; Settings › Aril does.
+- The composer block is never drawn before the desktop has said whether Aril is On, so it is never drawn and then taken away. Before that Home has no composer and, once it is On, the composer appears at the foot of the column without moving anything above it.
+- A client that cannot read the switch, such as an older desktop, draws no composer.
+- Home asks for the switch every five seconds, together with the chat dock and Settings, so a switch turned on the other device reaches Home.
+- When Aril turns Off while the composer is lifted or its thread is open, Home comes back to its own parts at once.
+- When Aril turns On again, the composer and the suggestions come back as they were, and the stored thread shows again.
+- The owner's decision of 2026-10-30 settled this: Off hides the chat everywhere, including Home.
 
 ## Focus mode
 
@@ -231,6 +246,7 @@ The owner approved the revised design, with Needs you, the running sessions, and
 | Tasks home | `GET /api/tasks?view=home` | Needs you, the suggestions |
 | Task log | The desktop or the paired route, once for each of 12 boards | The Aril line, the failure details of Needs you |
 | Boards | `GET /api/tasks?repositoryId=`, through the Tasks page's store, for the repositories of the shown running sessions | The title line of the task of a running session |
+| Aril switch | The desktop or the paired route, shared with the dock and Settings | Whether the composer and the suggestions are drawn |
 | Repository inventory | The shell | The repository names, the composer's repository |
 | Thread run | The chat's `thread` operation, once for the repository the composer shows | The composer's first model and effort |
 

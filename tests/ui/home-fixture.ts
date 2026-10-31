@@ -49,7 +49,7 @@ export function resetHome() {
 
 /** The desktop app's bridge: the chat, its images, and the task log. */
 export function desktopBridge(chat: FakeChat) {
-  setBridge({ agentChat: chat.agentChat, agentChatImage: chat.agentChatImage, taskAction: vi.fn(), taskLog });
+  setBridge({ agentChat: chat.agentChat, agentChatImage: chat.agentChatImage, arilControl: chat.arilControl, taskAction: vi.fn(), taskLog });
 }
 
 /** A phone: no bridge, and the paired-device routes of the chat and the task log. */

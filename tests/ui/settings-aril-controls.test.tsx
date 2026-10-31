@@ -96,7 +96,7 @@ describe("Settings › Aril: the top card", () => {
     expect(within(section()).getAllByText("Aril")).toHaveLength(1);
     expect(section().querySelector(".arilSettings")?.firstElementChild).toBe(hero());
     expect(within(hero()).getByText("Off")).toHaveClass("arilHeroState");
-    expect(within(hero()).getByText("Takes no action of its own. The chat still answers when you write.")).toBeInTheDocument();
+    expect(within(hero()).getByText("Aril is off: no chat and no actions. Turn it on to talk to Aril or change anything below.")).toBeInTheDocument();
     expect(hero()).not.toHaveClass("isOn");
     await userEvent.click(row);
     await waitFor(() => expect(row).toBeChecked());

@@ -104,6 +104,14 @@ export function createJevTransport({ host = JEV_HOST, port = 443, resolver = dns
   }
   agent = new JevAgent({ keepAlive: true, maxSockets: 2, maxFreeSockets: 1, lookup });
 
+  // Gives up the connection being opened ahead and closes the ones kept, so nothing of Jev stays open (Aril turned Off).
+  let abandon = null;
+  function stopPreconnect() {
+    abandon?.();
+    dropHeld();
+    dropFree();
+  }
+
   function preconnect() {
     if (connecting) return connecting;
     if (!fresh()) { dropFree(); dropHeld(); }
@@ -117,9 +125,11 @@ export function createJevTransport({ host = JEV_HOST, port = 443, resolver = dns
         done = true;
         clearTimeout(timer);
         connecting = null;
+        abandon = null;
         if (!opened) socket?.destroy();
         resolve(opened);
       };
+      abandon = () => finish(false);
       try {
         const options = { ...agent.options, host, port, ...(secure ? { servername: host } : {}) };
         options._agentKey = agent.getName(options);
@@ -175,6 +185,7 @@ export function createJevTransport({ host = JEV_HOST, port = 443, resolver = dns
 
   return Object.freeze({
     preconnect,
+    stopPreconnect,
     fetch(url, init = {}) {
       let sent = false;
       // Where the call waits: in a name lookup, in the connection, or for the answer once the request went out.

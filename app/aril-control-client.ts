@@ -51,9 +51,46 @@ function switchOf(answer: Json | null): ArilSwitchState | null {
   return answer?.ok === true && typeof answer.on === "boolean" && typeof answer.pairedOn === "boolean" ? { on: answer.on, pairedOn: answer.pairedOn } : null;
 }
 
-// Every view that shows the switch hears a change as soon as one of them learns it, so Settings and the panel header agree at once.
+// Every view that shows the switch hears a change as soon as one of them learns it, so Settings, the dock, and Home agree at once. The views share
+// one reader: it asks every few seconds while at least one view listens, and stops, forgetting what it knew, when the last one leaves.
 const heard = new Set<(state: ArilSwitchState) => void>();
-const publish = (state: ArilSwitchState) => { for (const listener of [...heard]) listener(state); };
+let latest: ArilSwitchState | null = null;
+let reading: { timer: number | undefined; live: boolean } | null = null;
+const publish = (state: ArilSwitchState) => {
+  // An ask that learns nothing new tells nobody, so a view that follows the switch is not drawn again every few seconds.
+  if (latest !== null && latest.on === state.on && latest.pairedOn === state.pairedOn) return;
+  latest = state;
+  for (const listener of [...heard]) listener(state);
+};
+
+function startReading() {
+  const mine = { timer: undefined as number | undefined, live: true };
+  reading = mine;
+  const read = async () => {
+    const next = switchOf(await request("aril_switch", {}));
+    if (!mine.live) return;
+    if (next) publish(next);
+    mine.timer = window.setTimeout(() => { void read(); }, POLL_MS);
+  };
+  void read();
+}
+
+function stopReading() {
+  if (reading) { reading.live = false; window.clearTimeout(reading.timer); }
+  reading = null;
+  latest = null;
+}
+
+/** Listens for the switch. The first listener starts the shared reader; a later one is told what is known at once. Answers how to stop listening. */
+function listen(listener: (state: ArilSwitchState) => void): () => void {
+  heard.add(listener);
+  if (reading === null) startReading();
+  else if (latest !== null) listener(latest);
+  return () => {
+    heard.delete(listener);
+    if (heard.size === 0) stopReading();
+  };
+}
 
 export type ArilSwitchControl = {
   availability: ArilControlAvailability;
@@ -67,27 +104,22 @@ export type ArilSwitchControl = {
   setPairedOn(next: boolean): Promise<boolean>;
 };
 
-/** The switch. While `active`, it is asked every few seconds; a view that is closed passes false and asks nothing. */
+/**
+ * The switch. While `active`, it is asked every few seconds (once for all the views that listen); a view that passes false asks nothing and knows
+ * nothing. The state is null until the desktop has answered, and it is never taken back to null by a failed ask, so a view that waits for it
+ * (the dock and Home draw nothing of Aril before it is known) never shows something and then retracts it.
+ */
 export function useArilSwitch(active = true): ArilSwitchControl {
   const availability = useArilControlAvailability();
   const [state, setState] = useState<ArilSwitchState | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const ready = reachable(availability);
-  // Only a view that is open hears the switch and asks for it. One that closes forgets what it knew, so it never opens on an old state.
+  // A view that stops listening forgets what it knew, so it never opens on an old state.
   useEffect(() => {
     if (!ready || !active) return undefined;
-    let live = true;
-    let timer: number | undefined;
-    heard.add(setState);
-    const read = async () => {
-      const next = switchOf(await request("aril_switch", {}));
-      if (!live) return;
-      if (next) publish(next);
-      timer = window.setTimeout(() => { void read(); }, POLL_MS);
-    };
-    void read();
-    return () => { live = false; heard.delete(setState); window.clearTimeout(timer); setState(null); };
+    const stop = listen(setState);
+    return () => { stop(); setState(null); };
   }, [ready, active]);
   const change = useCallback(async (operation: "aril_switch_set" | "aril_paired_on_set", payload: Json) => {
     setBusy(true);
